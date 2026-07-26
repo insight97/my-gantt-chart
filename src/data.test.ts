@@ -1,0 +1,2 @@
+import {describe,expect,it} from 'vitest';import {addDays,daysBetween,validateImport} from './data';
+describe('資料工具',()=>{it('計算及調整日期',()=>{expect(daysBetween('2026-01-01','2026-01-08')).toBe(7);expect(addDays('2026-01-31',1)).toBe('2026-02-01')});it('拒絕未知或不完整格式',()=>{expect(validateImport({version:1,projects:[]})).toBe(false);expect(validateImport({schema:'gantt-local',version:2,projects:[]})).toBe(false)});it('接受版本一空備份',()=>{expect(validateImport({schema:'gantt-local',version:1,exportedAt:'now',projects:[]})).toBe(true)})});
