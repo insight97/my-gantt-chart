@@ -2,6 +2,8 @@
 
 一套以 React、TypeScript 與 Vite 製作的純前端甘特圖工具。第一個畫面即是工作表與可水平捲動的時間軸，適合在不建立帳號、不傳送資料到伺服器的情況下管理多個專案。
 
+線上使用：[GitHub Pages](https://insight97.github.io/my-gantt-chart/)
+
 ## 功能
 
 - 多專案與完整工作欄位（日期、進度、負責人、顏色、備註、里程碑、相依關係）
@@ -36,8 +38,8 @@ npm run preview
 
 ## GitHub Pages 部署
 
-Vite 的 `base` 已設為 `/my-gantt-chart/`。`.github/workflows/deploy.yml` 會在 `main` 更新時依序執行 lint、測試、建置並部署 `dist`。請在 GitHub repository 的 **Settings → Pages → Build and deployment** 將 Source 設為 **GitHub Actions**，網址即為：
+Vite 的 `base` 已設為 `/my-gantt-chart/`。`.github/workflows/deploy.yml` 會在 `main` 更新時依序執行 lint、測試、建置並部署 `dist`。請在 GitHub repository 的 **Settings → Pages → Build and deployment** 將 Source 設為 **GitHub Actions**。
 
-`https://insight97.github.io/my-gantt-chart/`
+網站網址：[https://insight97.github.io/my-gantt-chart/](https://insight97.github.io/my-gantt-chart/)
 
 若 fork 後更改 repository 名稱，請同步修改 `vite.config.ts` 的 `base`。
