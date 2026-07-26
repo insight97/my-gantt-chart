@@ -11,3 +11,9 @@ export const sampleProject=():Project=>{const tasks:Task[]=[
 export function validateImport(value:unknown): value is ExportFile { if(!value||typeof value!=='object')return false;const v=value as Partial<ExportFile>;if(v.schema!=='gantt-local'||v.version!==1||!Array.isArray(v.projects))return false;return v.projects.every(p=>typeof p?.id==='string'&&typeof p.name==='string'&&Array.isArray(p.tasks)&&p.tasks.every(t=>typeof t?.id==='string'&&typeof t.name==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(t.start)&&/^\d{4}-\d{2}-\d{2}$/.test(t.end)&&typeof t.progress==='number'&&t.progress>=0&&t.progress<=100&&Array.isArray(t.dependencies)));}
 export const daysBetween=(a:string,b:string)=>Math.round((new Date(`${b}T00:00:00Z`).getTime()-new Date(`${a}T00:00:00Z`).getTime())/86400000);
 export const addDays=(date:string,n:number)=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+export type TaskDragMode='move'|'start'|'end';
+export const applyTaskDrag=(task:Task,mode:TaskDragMode,delta:number)=>{
+ if(mode==='move')return {...task,start:addDays(task.start,delta),end:addDays(task.end,delta)};
+ if(mode==='start')return {...task,start:delta<=daysBetween(task.start,task.end)?addDays(task.start,delta):task.end};
+ return {...task,end:delta>=-daysBetween(task.start,task.end)?addDays(task.end,delta):task.start};
+};
