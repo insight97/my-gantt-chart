@@ -4,25 +4,47 @@
 
 > 目前的可用容量，是否足以承擔這些 Task？
 
+以下 Backlog／Gantt 互動規則是目前產品實作的行為；共同語言請參考 [`CONTEXT.md`](./CONTEXT.md)，重大取捨請參考 [`docs/adr/0001-backlog-gantt-allocation-interaction.md`](./docs/adr/0001-backlog-gantt-allocation-interaction.md)。
+
 ## 核心概念
 
-- **Project**：一組需要被追蹤的承諾或工作群組。
+- **Project**：一組需要被追蹤的工作群組。
 - **Task**：Project 底下可估時、可分配與可完成的工作項目。
-- **Backlog**：尚未產生 Allocation 的 Task；可以沒有日期。
+- **Backlog**：尚未被使用者放入 Gantt 的 Task；通常沒有 Allocation 與排程日期。
 - **Daily Capacity**：每天的總容量、不可用時間與可用容量。
 - **Allocation**：Task 在特定日期上的工時，可由使用者指定或系統自動產生。
-- **Capacity Gantt**：同時呈現 Task 日期範圍、每日 Allocation 與每日剩餘容量。
+- **Capacity Gantt**：呈現 Task 日期範圍、容量摘要與 Allocation 狀態的時間軸。
+- **Deadline**：Task 必須完成的日期；它獨立於 Allocation，超過時顯示逾期警告。
+- **Pending Hours**：估計工時與目前 Allocation 總和的有號差額；正值代表待安排，負值代表需要釋放。
 
-Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`）；點擊日期即可編輯總容量與不可用時間，超載日期會以紅色警告。
+Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`）；日層級點擊日期即可編輯總容量與不可用時間，超載日期會以紅色警告。
+
+## Backlog 與 Gantt 流程
+
+- Task 只有一份資料；Backlog 與 Gantt 是同一 Project 內的兩個排程狀態，不會同時顯示同一個 Task。
+- Backlog 卡片只需顯示名稱、優先順序與估計工時；點擊卡片開啟編輯，按住並移動可拖曳。
+- 拖曳 Backlog 卡片到 Gantt 後立即自動排程，不需要確認按鈕；放下位置是最早開始位置。
+- 拖回 Backlog 會清除所有 Allocation 與推導日期，但保留建立日期、Deadline、估計工時與 Task 資訊。
+- 沒有 Allocation 但尚未拖回 Backlog 的 Task，會在 Project 標題列以待處理徽章表示；點擊後才展開清單。
 
 ## Allocation 規則
 
-- 新增 Task 預設為 Backlog，預估工時預設為 8 小時，日期可留空。
-- 有完整日期範圍時，Automatic Allocation 會平均分配到仍有剩餘容量的日期。
-- 沒有完整日期範圍時，Automatic Allocation 從今天往後逐日分配，並自動推導 Task 日期。
-- Manual Allocation 必須被保留；Task 日期範圍不可排除既有 Manual Allocation。
-- 容量不足時仍允許分配，但會顯示超載警告。
+- 新增 Task 預設為 Backlog，預估工時預設為 8 小時，建立日期由系統記錄。
+- Automatic Allocation 從使用者指定的起始日期往後尋找有剩餘容量的日期；週末與假日不特殊處理，只看每日可用容量。
+- 搜尋範圍使用 Gantt 的預設規劃長度；範圍最後一天仍無法容納的工時會形成 Automatic Overflow，並顯示警告。
+- Allocate 模式中，被點擊調整過的整天都視為 Manual Allocation Day，包括 `0h`；Automatic Allocation 不會補回這些日期。
+- 左鍵增加 1 小時，右鍵減少 1 小時。正值 Pending Hours 會先被消耗；沒有可調整的 Automatic Allocation 時仍可增加，Pending Hours 會變成負值。
+- 減少工時時，差額通常補回 Task 尾端的 Automatic Allocation；Pending Hours 為負值時，減少其他日期會優先抵銷負值。
+- Task 的日期範圍根據 Allocation 自動拉長或縮短；Deadline 不會被改寫，超過時只顯示警告。
+- Manual Allocation 可以超過剩餘容量，但必須清楚顯示超載；Automatic Allocation 一般不主動造成超載。
+- 修改 Daily Capacity 後，只重新安排 Automatic Allocation，保留 Manual Allocation Day；有 Pending Hours 的 Task 不會因容量增加而偷偷補排。
 - 本階段不做跨 Task 的自動排程、相依關係推理或全域重新排序。
+
+## Gantt 顯示模式
+
+- **General Mode**：隱藏每日 Allocation 細節，只顯示 Task bar、期間 capacity summary 與 Pending Hours 警示。
+- **Allocate Mode**：全域切換所有展開的 Project。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。
+- Allocate Mode 不會改變縮放層級；所有 Project 的水平滾動位置同步。
 
 ## 本機開發
 

@@ -1,4 +1,4 @@
-import {addDays,datesBetween,sampleWorkspace,uid} from './data';
+import {addDays,datesBetween,normalizeWorkspaceData,sampleWorkspace,uid} from './data';
 import {normalizeCapacity} from './capacity';
 import type {DailyCapacity,Project,Task,WorkspaceData} from './types';
 
@@ -46,7 +46,9 @@ function migrateTask(value:Partial<Task>&Record<string,unknown>):Task{
   name:typeof value.name==='string'?value.name:'未命名工作',
   start:typeof value.start==='string'?value.start:null,
   end:typeof value.end==='string'?value.end:null,
+  deadline:typeof value.deadline==='string'?value.deadline:null,
   estimatedHours:0,
+  priority:value.priority==='low'||value.priority==='high'||value.priority==='medium'?value.priority:'medium',
   status:'backlog',
   notes:typeof value.notes==='string'?value.notes:'',
   owner:typeof value.owner==='string'?value.owner:'',
@@ -82,12 +84,12 @@ function migrateLegacyProjects(value:unknown):WorkspaceData{
 }
 
 function normalizeWorkspace(value:WorkspaceData):WorkspaceData{
- return {
+ return normalizeWorkspaceData({
   version:2,
   projects:value.projects,
   dailyCapacities:value.dailyCapacities.map(normalizeCapacity),
   allocations:value.allocations,
- };
+ });
 }
 
 export async function loadWorkspace(){

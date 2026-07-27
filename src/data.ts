@@ -1,4 +1,4 @@
-import type {ExportFile, Project, Task, ViewMode, WorkspaceData} from './types';
+import type {ExportFile, Project, Task, TaskPriority, ViewMode, WorkspaceData} from './types';
 import {addDays as addCapacityDays, datesBetween} from './capacity';
 
 export const uid=()=>crypto.randomUUID();
@@ -13,7 +13,9 @@ export const emptyTask=():Task=>({
  name:'新工作',
  start:null,
  end:null,
+ deadline:null,
  estimatedHours:8,
+ priority:'medium',
  status:'backlog',
  notes:'',
  owner:'',
@@ -50,10 +52,12 @@ export function sampleWorkspace():WorkspaceData{
 }
 
 const statuses=new Set(['backlog','scheduled','in_progress','completed']);
+const priorities=new Set(['low','medium','high']);
 const sources=new Set(['automatic','manual']);
 const datePattern=/^\d{4}-\d{2}-\d{2}$/;
 const isDate=(value:unknown):value is string=>typeof value==='string'&&datePattern.test(value);
 const isNullableDate=(value:unknown):value is string|null=>value===null||isDate(value);
+const isPriority=(value:unknown):value is TaskPriority=>typeof value==='string'&&priorities.has(value);
 
 function validTask(value:unknown):value is Task{
  if(!value||typeof value!=='object')return false;
@@ -62,8 +66,10 @@ function validTask(value:unknown):value is Task{
   &&typeof task.name==='string'
   &&isNullableDate(task.start)
   &&isNullableDate(task.end)
+  &&(typeof task.deadline==='undefined'||isNullableDate(task.deadline))
   &&typeof task.estimatedHours==='number'
   &&Number.isFinite(task.estimatedHours)
+  &&(typeof task.priority==='undefined'||isPriority(task.priority))
   &&task.estimatedHours>=0
   &&typeof task.status==='string'
   &&statuses.has(task.status)
@@ -106,11 +112,23 @@ export function validateImport(value:unknown):value is ExportFile{
    &&isDate(value.date)
    &&typeof value.allocatedHours==='number'
    &&Number.isFinite(value.allocatedHours)
-   &&value.allocatedHours>0
+   &&value.allocatedHours>=0
    &&typeof value.source==='string'
    &&sources.has(value.source)
-   &&typeof value.locked==='boolean';
+   &&typeof value.locked==='boolean'
+   &&(value.source!=='automatic'||value.allocatedHours>0);
  });
+}
+
+export function normalizeWorkspaceData(value:WorkspaceData):WorkspaceData{
+ return {
+  ...value,
+  projects:value.projects.map(project=>({...project,tasks:project.tasks.map(task=>({
+   ...task,
+   deadline:task.deadline??null,
+   priority:task.priority??'medium',
+  }))})),
+ };
 }
 
 export type TaskDragMode='move'|'start'|'end';

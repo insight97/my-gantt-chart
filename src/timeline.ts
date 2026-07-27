@@ -148,7 +148,7 @@ export function buildTimelinePeriods(start:string,end:string,view:ViewMode):Time
 }
 
 export function timelineRange(tasks:Task[],view:ViewMode){
- const dated=tasks.flatMap(task=>[task.start,task.end].filter((date):date is string=>Boolean(date))).sort();
+ const dated=tasks.flatMap(task=>[task.start,task.end,task.deadline].filter((date):date is string=>Boolean(date))).sort();
  const min=dated[0]||today();
  const max=dated.at(-1)||addDays(min,21);
  const baseStart=addDays(min,-2);
@@ -215,8 +215,9 @@ export function timelinePositionForDate(date:string,periods:TimelinePeriod[],sca
 }
 
 export function timelineDateAtPosition(position:number,periods:TimelinePeriod[],scale:number){
- if(!periods.length)return '';
- const bounded=Math.max(0,Math.min(periods.length*scale-0.001,position));
+ if(!periods.length||!Number.isFinite(scale)||scale<=0)return '';
+ const safePosition=Number.isFinite(position)?position:0;
+ const bounded=Math.max(0,Math.min(periods.length*scale-0.001,safePosition));
  const index=Math.min(periods.length-1,Math.floor(bounded/scale));
  const period=periods[index];
  const ratio=(bounded-index*scale)/scale;
