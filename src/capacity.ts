@@ -2,6 +2,7 @@ import type {Allocation, DailyCapacity, Task, WorkspaceData} from './types';
 
 const DAY_MS=86400000;
 export const DEFAULT_PLANNING_HORIZON_DAYS=180;
+export const DEFAULT_DAILY_CAPACITY_HOURS=8;
 
 export interface AllocationResult {
  allocations:Allocation[];
@@ -27,8 +28,12 @@ export function normalizeCapacity(capacity:DailyCapacity):DailyCapacity{
  return {...capacity,availableHours:capacityAvailableHours(capacity.totalCapacityHours,capacity.unavailableHours)};
 }
 
-export function getProjectEstimatedHours(project:Pick<{tasks:Task[]},'tasks'>){
+export function getProjectEstimatedHours(project:{tasks:Task[]}){
  return project.tasks.reduce((sum,task)=>sum+Math.max(0,task.estimatedHours),0);
+}
+
+export function isTaskOverdue(task:Task){
+ return Boolean(task.deadline&&task.end&&task.end>task.deadline);
 }
 
 export function getTaskAllocatedHours(taskId:string,allocations:Allocation[],source?:Allocation['source']){
@@ -41,24 +46,41 @@ export function getTaskPendingHours(task:Task,allocations:Allocation[]){
  return task.estimatedHours-getTaskAllocatedHours(task.id,allocations);
 }
 
-export function getTaskManualDates(taskId:string,allocations:Allocation[]){
- return new Set(allocations.filter(item=>item.taskId===taskId&&item.source==='manual').map(item=>item.date));
-}
-
 export function getDailyAllocatedHours(date:string,allocations:Allocation[],excludeTaskId?:string){
  return allocations
   .filter(allocation=>allocation.date===date&&allocation.taskId!==excludeTaskId)
   .reduce((sum,allocation)=>sum+allocation.allocatedHours,0);
 }
 
-export function getDailyCapacity(date:string,capacities:DailyCapacity[],fallbackHours=8){
+export function defaultDailyCapacity(date:string,fallbackHours=DEFAULT_DAILY_CAPACITY_HOURS):DailyCapacity{
+ return {date,totalCapacityHours:fallbackHours,unavailableHours:0,availableHours:fallbackHours};
+}
+
+export function getDailyCapacity(date:string,capacities:DailyCapacity[],fallbackHours=DEFAULT_DAILY_CAPACITY_HOURS){
  const existing=capacities.find(capacity=>capacity.date===date);
- return existing?normalizeCapacity(existing):{
-  date,
-  totalCapacityHours:fallbackHours,
-  unavailableHours:0,
-  availableHours:fallbackHours,
- };
+ return existing?normalizeCapacity(existing):defaultDailyCapacity(date,fallbackHours);
+}
+
+/** Date-keyed indexes so render paths avoid re-scanning the whole allocation set per day. */
+export function allocationsByTask(allocations:Allocation[]){
+ const index=new Map<string,Allocation[]>();
+ for(const allocation of allocations){
+  const existing=index.get(allocation.taskId);
+  if(existing)existing.push(allocation);else index.set(allocation.taskId,[allocation]);
+ }
+ return index;
+}
+
+export function allocatedHoursByDate(allocations:Allocation[]){
+ const index=new Map<string,number>();
+ for(const allocation of allocations)index.set(allocation.date,(index.get(allocation.date)||0)+allocation.allocatedHours);
+ return index;
+}
+
+export function capacityAvailableByDate(capacities:DailyCapacity[]){
+ const index=new Map<string,number>();
+ for(const capacity of capacities)index.set(capacity.date,capacityAvailableHours(capacity.totalCapacityHours,capacity.unavailableHours));
+ return index;
 }
 
 export function getRemainingCapacity(date:string,capacities:DailyCapacity[],allocations:Allocation[],excludeTaskId?:string){
@@ -151,6 +173,11 @@ function removeAutomaticHours(allocations:Allocation[],taskId:string,hours:numbe
  return allocations.filter(item=>item.allocatedHours>0||item.source==='manual');
 }
 
+function automaticBaseDate(taskId:string,allocations:Allocation[],startDate:string){
+ const automaticDates=allocations.filter(item=>item.taskId===taskId&&item.source==='automatic').map(item=>item.date).sort();
+ return automaticDates.at(-1)||taskPositiveDates(taskId,allocations).at(-1)||startDate;
+}
+
 function automaticTailDate(
  taskId:string,
  allocations:Allocation[],
@@ -159,12 +186,9 @@ function automaticTailDate(
  startDate:string,
  horizonDays:number,
 ){
- const taskDates=taskPositiveDates(taskId,allocations);
- const automaticDates=allocations.filter(item=>item.taskId===taskId&&item.source==='automatic').map(item=>item.date).sort();
- const base=automaticDates.at(-1)||taskDates.at(-1)||startDate;
- const otherAllocations=allocations.filter(item=>item.taskId!==taskId);
+ const base=automaticBaseDate(taskId,allocations,startDate);
  const search=forwardDates(base,horizonDays);
- return search.find(date=>!manualDates.has(date)&&getRemainingCapacity(date,capacities,[...otherAllocations,...allocations.filter(item=>item.taskId===taskId)])>0)
+ return search.find(date=>!manualDates.has(date)&&getRemainingCapacity(date,capacities,allocations)>0)
   ||search.find(date=>!manualDates.has(date))
   ||base;
 }
@@ -179,14 +203,12 @@ function appendAutomaticHours(
  horizonDays:number,
 ){
  let remaining=hours;
- const otherAllocations=allocations.filter(item=>item.taskId!==taskId);
- const taskDates=taskPositiveDates(taskId,allocations);
- const automaticDates=allocations.filter(item=>item.taskId===taskId&&item.source==='automatic').map(item=>item.date).sort();
- const base=automaticDates.at(-1)||taskDates.at(-1)||startDate;
+ const base=automaticBaseDate(taskId,allocations,startDate);
  for(const date of forwardDates(base,horizonDays)){
   if(remaining<=0)break;
   if(manualDates.has(date))continue;
-  const available=getRemainingCapacity(date,capacities,otherAllocations.concat(allocations.filter(item=>item.taskId===taskId)));
+  // `allocations` is mutated by mergeAutomaticHours below, so read it live each day.
+  const available=getRemainingCapacity(date,capacities,allocations);
   if(available<=0)continue;
   const hoursForDate=Math.min(remaining,available);
   mergeAutomaticHours(allocations,taskId,date,hoursForDate);
@@ -305,7 +327,7 @@ export function adjustManualAllocationDay(
 ):AllocationResult{
  if(!delta)return {allocations, ...resultRange(task,allocations)};
  const taskAllocations=allocations.filter(item=>item.taskId===task.id);
- const currentDayHours=taskAllocations.filter(item=>item.date===date).reduce((sum,item)=>sum+item.allocatedHours,0);
+ const currentDayHours=getDailyAllocatedHours(date,taskAllocations);
  const actualDelta=Math.max(0,currentDayHours+delta)-currentDayHours;
  const currentTotal=getTaskAllocatedHours(task.id,allocations);
  const pending=task.estimatedHours-currentTotal;

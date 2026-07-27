@@ -1,5 +1,5 @@
-import {addDays,datesBetween,normalizeWorkspaceData,sampleWorkspace,uid} from './data';
-import {normalizeCapacity} from './capacity';
+import {normalizeWorkspaceData,now,sampleWorkspace,uid} from './data';
+import {addDays,datesBetween,defaultDailyCapacity,normalizeCapacity,today} from './capacity';
 import type {DailyCapacity,Project,Task,WorkspaceData} from './types';
 
 const DB='gantt-local-db';
@@ -12,15 +12,21 @@ interface WorkspaceRecord extends WorkspaceData{
  id:string;
 }
 
+let connection:Promise<IDBDatabase>|null=null;
+
 function open(){
- return new Promise<IDBDatabase>((resolve,reject)=>{
-  const request=indexedDB.open(DB,VERSION);
-  request.onupgradeneeded=()=>{
-   if(!request.result.objectStoreNames.contains(WORKSPACE_STORE))request.result.createObjectStore(WORKSPACE_STORE,{keyPath:'id'});
-  };
-  request.onsuccess=()=>resolve(request.result);
-  request.onerror=()=>reject(request.error);
- });
+ // Saves are debounced on every workspace edit; reuse one connection instead of opening per write.
+ if(!connection){
+  connection=new Promise<IDBDatabase>((resolve,reject)=>{
+   const request=indexedDB.open(DB,VERSION);
+   request.onupgradeneeded=()=>{
+    if(!request.result.objectStoreNames.contains(WORKSPACE_STORE))request.result.createObjectStore(WORKSPACE_STORE,{keyPath:'id'});
+   };
+   request.onsuccess=()=>resolve(request.result);
+   request.onerror=()=>reject(request.error);
+  }).catch(error=>{connection=null;throw error;});
+ }
+ return connection;
 }
 
 function readAll<T>(db:IDBDatabase,storeName:string){
@@ -40,7 +46,7 @@ function readOne<T>(db:IDBDatabase,storeName:string,key:string){
 }
 
 function migrateTask(value:Partial<Task>&Record<string,unknown>):Task{
- const now=new Date().toISOString();
+ const timestamp=now();
  return {
   id:typeof value.id==='string'?value.id:uid(),
   name:typeof value.name==='string'?value.name:'未命名工作',
@@ -54,29 +60,29 @@ function migrateTask(value:Partial<Task>&Record<string,unknown>):Task{
   notes:typeof value.notes==='string'?value.notes:'',
   owner:typeof value.owner==='string'?value.owner:'',
   color:typeof value.color==='string'?value.color:'#2f75bb',
-  createdAt:typeof value.createdAt==='string'?value.createdAt:now,
-  updatedAt:typeof value.updatedAt==='string'?value.updatedAt:now,
+  createdAt:typeof value.createdAt==='string'?value.createdAt:timestamp,
+  updatedAt:typeof value.updatedAt==='string'?value.updatedAt:timestamp,
  };
 }
 
 function migrateProject(value:Record<string,unknown>):Project{
- const now=new Date().toISOString();
+ const timestamp=now();
  const tasks=Array.isArray(value.tasks)?value.tasks.map(task=>migrateTask((task||{}) as Partial<Task>&Record<string,unknown>)):[];
  return {
   id:typeof value.id==='string'?value.id:uid(),
   name:typeof value.name==='string'?value.name:'未命名專案',
   description:typeof value.description==='string'?value.description:'',
-  createdAt:typeof value.createdAt==='string'?value.createdAt:now,
-  updatedAt:typeof value.updatedAt==='string'?value.updatedAt:now,
+  createdAt:typeof value.createdAt==='string'?value.createdAt:timestamp,
+  updatedAt:typeof value.updatedAt==='string'?value.updatedAt:timestamp,
   tasks,
  };
 }
 
 function migrationCapacities(projects:Project[]):DailyCapacity[]{
  const dates=projects.flatMap(project=>project.tasks.flatMap(task=>[task.start,task.end].filter((date):date is string=>typeof date==='string'))).sort();
- const first=dates[0]||new Date().toISOString().slice(0,10);
+ const first=dates[0]||today();
  const last=dates.at(-1)||addDays(first,45);
- return datesBetween(first,last).map(date=>({date,totalCapacityHours:8,unavailableHours:0,availableHours:8}));
+ return datesBetween(first,last).map(date=>defaultDailyCapacity(date));
 }
 
 function migrateLegacyProjects(value:unknown):WorkspaceData{
@@ -114,7 +120,6 @@ export async function saveWorkspace(value:WorkspaceData){
  });
 }
 
-export function createEmptyWorkspace(){
- const sample=sampleWorkspace();
- return {version:2,projects:sample.projects,dailyCapacities:sample.dailyCapacities,allocations:[]} satisfies WorkspaceData;
+export function createEmptyWorkspace():WorkspaceData{
+ return sampleWorkspace();
 }

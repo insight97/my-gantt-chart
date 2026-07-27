@@ -1,9 +1,11 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import type {CSSProperties,DragEvent,PointerEvent} from 'react';
+import type {CSSProperties,PointerEvent} from 'react';
 import {applyTaskDrag} from './data';
-import {getTaskPendingHours,recalculateAutomaticAllocations,today} from './capacity';
+import type {TaskDragMode} from './data';
+import {allocatedHoursByDate,allocationsByTask,capacityAvailableByDate,isTaskOverdue,recalculateAutomaticAllocations,today} from './capacity';
 import {hoursLabel} from './formatters';
 import TaskCard from './TaskCard';
+import {pointerLeftElement} from './task-drag';
 import type {TaskDragState,TaskDropTargetHandler} from './task-drag';
 import type {Allocation,AllocationMode,DailyCapacity,Task,ViewMode} from './types';
 import {
@@ -22,13 +24,14 @@ import {
  taskRangeGeometry,
  TIMELINE_CAPACITY_ROW_HEIGHT,
  TIMELINE_CONTEXT_ROW_HEIGHT,
+ TIMELINE_TASK_RANGE_TOP,
+ TIMELINE_TASK_ROW_HEIGHT,
  weekendClass,
  zoomTimeline,
 } from './timeline';
 import type {TimelineContextCell,TimelinePeriod,TimelineZoom} from './timeline';
 
-type DragMode='move'|'start'|'end';
-type DragState={task:Task;mode:DragMode;startX:number;delta:number};
+type DragState={task:Task;mode:TaskDragMode;startX:number;delta:number};
 type PanState={startX:number;startScrollLeft:number;candidate:boolean;active:boolean};
 
 export type CapacityGanttProps={
@@ -47,9 +50,7 @@ export type CapacityGanttProps={
  onAddTask:()=>void;
  onBeginTaskDrag:(task:Task,event:PointerEvent<HTMLElement>,allocatedHours:number,pendingHours:number)=>void;
  onTaskDropTarget:TaskDropTargetHandler;
- onReorder:(sourceTaskId:string,targetTaskId:string)=>void;
  onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;
- onScheduleAtDate:(taskId:string,date:string)=>void;
  onMoveToBacklog:(taskId:string)=>void;
  onDelete:(taskId:string)=>void;
  onEditCapacity:(date:string)=>void;
@@ -71,22 +72,21 @@ function TimelineContext({cells,scale}:TimelineContextProps){
 
 type CapacityPeriodsProps={
  periods:TimelinePeriod[];
- capacities:DailyCapacity[];
- allocations:Allocation[];
+ availableByDate:Map<string,number>;
+ allocatedByDate:Map<string,number>;
  view:ViewMode;
  scale:number;
  onEditCapacity:(date:string)=>void;
 };
 
-function CapacityPeriods({periods,capacities,allocations,view,scale,onEditCapacity}:CapacityPeriodsProps){
+function CapacityPeriods({periods,availableByDate,allocatedByDate,view,scale,onEditCapacity}:CapacityPeriodsProps){
+ const editable=view==='day';
+ const density=periodDensity(scale);
  return <>
   {periods.map((period,index)=>{
-   const allocated=periodHours(period,allocations);
-   const available=periodAvailableHours(period,capacities);
-   const state=capacityState(allocated,available);
-   const editable=view==='day';
-   const density=periodDensity(scale);
-   const className=['capacity-period',state,density,editable?'editable':''].filter(Boolean).join(' ');
+   const allocated=periodHours(period,allocatedByDate);
+   const available=periodAvailableHours(period,availableByDate);
+   const className=['capacity-period',capacityState(allocated,available),density,editable?'editable':''].filter(Boolean).join(' ');
    const title=editable
     ?`${period.label} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)} · 點擊設定容量`
     :`${period.label} · ${period.dates.length} 天容量加總 · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)}`;
@@ -97,10 +97,10 @@ function CapacityPeriods({periods,capacities,allocations,view,scale,onEditCapaci
  </>;
 }
 
-function TimelineHeader({periods,context,capacities,allocations,view,scale,onEditCapacity}:{periods:TimelinePeriod[];context:TimelineContextCell[];capacities:DailyCapacity[];allocations:Allocation[];view:ViewMode;scale:number;onEditCapacity:(date:string)=>void}){
+function TimelineHeader({periods,context,availableByDate,allocatedByDate,view,scale,onEditCapacity}:{periods:TimelinePeriod[];context:TimelineContextCell[];availableByDate:Map<string,number>;allocatedByDate:Map<string,number>;view:ViewMode;scale:number;onEditCapacity:(date:string)=>void}){
  return <div className="dates capacity-dates" style={{width:periods.length*scale,height:TIMELINE_CONTEXT_ROW_HEIGHT+TIMELINE_CAPACITY_ROW_HEIGHT}}>
   <TimelineContext cells={context} scale={scale}/>
-  <CapacityPeriods periods={periods} capacities={capacities} allocations={allocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
+  <CapacityPeriods periods={periods} availableByDate={availableByDate} allocatedByDate={allocatedByDate} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
  </div>;
 }
 
@@ -126,18 +126,17 @@ type TaskRangeProps={
  width:number;
  dragging:DragState|null;
  allocationMode:AllocationMode;
- onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:DragMode)=>void;
+ onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:TaskDragMode)=>void;
  onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;
  onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;
 };
 
 function TaskRange({task,scale,left,width,dragging,allocationMode,onBeginDrag,onMoveDrag,onEndDrag}:TaskRangeProps){
  const rangePadding=Math.min(9,Math.max(2,Math.round(scale/10)));
- const rangeLabelStyle:CSSProperties={display:'block',minWidth:0,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'};
  const canDrag=allocationMode==='general'&&task.status!=='completed';
  const className=['task-range',task.status==='backlog'?'backlog-range':'scheduled-range',dragging?.task.id===task.id?'dragging':''].filter(Boolean).join(' ');
  return <div className={className} draggable={false} style={{left,width,backgroundColor:task.color,padding:`0 ${rangePadding}px`}} onPointerDown={canDrag?event=>onBeginDrag(event,task,'move'):undefined} onPointerMove={canDrag?onMoveDrag:undefined} onPointerUp={canDrag?onEndDrag:undefined} onPointerCancel={canDrag?onEndDrag:undefined} title={`${task.name} · ${canDrag?'拖曳以重新安排':'Allocate 模式下請操作每日工時'}`}>
-  <span className="range-label" style={rangeLabelStyle}>{task.name}</span>
+  <span className="range-label">{task.name}</span>
   {canDrag&&<><button className="resize-handle start" aria-label="調整開始日期" onPointerDown={event=>onBeginDrag(event,task,'start')}/><button className="resize-handle end" aria-label="調整結束日期" onPointerDown={event=>onBeginDrag(event,task,'end')}/></>}
  </div>;
 }
@@ -145,87 +144,70 @@ function TaskRange({task,scale,left,width,dragging,allocationMode,onBeginDrag,on
 function DeadlineMarker({task,periods,scale}:{task:Task;periods:TimelinePeriod[];scale:number}){
  if(!task.deadline)return null;
  const left=timelinePositionForDate(task.deadline,periods,scale);
- const overdue=Boolean(task.end&&task.end>task.deadline);
+ const overdue=isTaskOverdue(task);
  return <span className={`deadline-marker${overdue?' overdue':''}`} style={{left}} title={`截止 ${task.deadline}${overdue?' · 已逾期':''}`}><i>截止</i></span>;
 }
 
-function AllocationSummaries({task,taskAllocations,periods,scale,view,onAdjustAllocation}:{task:Task;taskAllocations:Allocation[];periods:TimelinePeriod[];scale:number;view:ViewMode;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void}){
+function AllocationSummaries({task,hoursByDate,periods,scale,view,onAdjustAllocation}:{task:Task;hoursByDate:Map<string,number>;periods:TimelinePeriod[];scale:number;view:ViewMode;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void}){
  const editable=task.status!=='completed';
  return <div className={`allocation-summaries ${view==='day'?'editable':''}`}>
   {periods.map((period,index)=>{
-   const hours=periodHours(period,taskAllocations);
+   const hours=periodHours(period,hoursByDate);
    if(view==='day')return <button key={period.start} className={`allocation-cell${hours?' has-hours':''}`} disabled={!editable} style={{left:index*scale,width:scale}} title={`${period.label} · ${hoursLabel(hours)}${editable?' · 左鍵 +1h，右鍵 -1h':' · 已完成，不可修改'}`} aria-label={`${task.name} ${period.label} ${hoursLabel(hours)}${editable?'，左鍵增加一小時，右鍵減少一小時':'，已完成不可修改'}`} onClick={event=>{event.stopPropagation();onAdjustAllocation(task.id,period.start,1);}} onContextMenu={event=>{event.preventDefault();event.stopPropagation();onAdjustAllocation(task.id,period.start,-1);}}>{hours?hoursLabel(hours):''}</button>;
    return <span key={period.start} className={`allocation-summary${hours?' has-hours':''}`} style={{left:index*scale,width:scale}} title={`${period.label} · ${hoursLabel(hours)}`}>{hours?hoursLabel(hours):''}</span>;
   })}
  </div>;
 }
 
-function TimelineTaskRows({tasks,allocations,periods,scale,view,allocationMode,dragging,preview,onBeginDrag,onMoveDrag,onEndDrag,onAdjustAllocation}:{tasks:Task[];allocations:Allocation[];periods:TimelinePeriod[];scale:number;view:ViewMode;allocationMode:AllocationMode;dragging:DragState|null;preview:(task:Task)=>Task;onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:DragMode)=>void;onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void}){
+const EMPTY_HOURS_BY_DATE=new Map<string,number>();
+
+function TimelineTaskRows({tasks,hoursByTask,periods,scale,view,allocationMode,dragging,preview,onBeginDrag,onMoveDrag,onEndDrag,onAdjustAllocation}:{tasks:Task[];hoursByTask:Map<string,Map<string,number>>;periods:TimelinePeriod[];scale:number;view:ViewMode;allocationMode:AllocationMode;dragging:DragState|null;preview:(task:Task)=>Task;onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:TaskDragMode)=>void;onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void}){
  return <>{tasks.map(task=>{
-  const taskAllocations=allocations.filter(item=>item.taskId===task.id);
-  const value=preview(task);
-  const geometry=taskRangeGeometry(value,periods,scale);
+  const geometry=taskRangeGeometry(preview(task),periods,scale);
   const left=geometry?.left||0;
   const width=geometry?.width||0;
-  const overdue=Boolean(task.deadline&&task.end&&task.end>task.deadline);
-  return <div className={`timeline-row${overdue?' deadline-overdue':''}`} key={task.id}>
+  return <div className={`timeline-row${isTaskOverdue(task)?' deadline-overdue':''}`} key={task.id}>
    {width>0&&<TaskRange task={task} scale={scale} left={left} width={width} dragging={dragging} allocationMode={allocationMode} onBeginDrag={onBeginDrag} onMoveDrag={onMoveDrag} onEndDrag={onEndDrag}/>}
    <DeadlineMarker task={task} periods={periods} scale={scale}/>
-   {allocationMode==='allocate'&&<AllocationSummaries task={task} taskAllocations={taskAllocations} periods={periods} scale={scale} view={view} onAdjustAllocation={onAdjustAllocation}/>}
+   {allocationMode==='allocate'&&<AllocationSummaries task={task} hoursByDate={hoursByTask.get(task.id)||EMPTY_HOURS_BY_DATE} periods={periods} scale={scale} view={view} onAdjustAllocation={onAdjustAllocation}/>}
   </div>;
  })}</>;
-}
-
-function TimelineRowSeparators(){
- return <div className="timeline-row-separators" style={{position:'absolute',top:0,right:0,bottom:0,left:0,zIndex:3,pointerEvents:'none'}} aria-hidden="true"/>;
 }
 
 function DropPreview({task,periods,scale,rowIndex}:{task:Task;periods:TimelinePeriod[];scale:number;rowIndex:number}){
  const geometry=taskRangeGeometry(task,periods,scale);
  if(!geometry)return null;
- return <div className="drop-preview task-range" style={{left:geometry.left,width:geometry.width,top:rowIndex*70+19,backgroundColor:task.color}} title={`${task.name} · 預覽排程`}><span className="range-label">{task.name}</span></div>;
+ return <div className="drop-preview task-range" style={{left:geometry.left,width:geometry.width,top:rowIndex*TIMELINE_TASK_ROW_HEIGHT+TIMELINE_TASK_RANGE_TOP,backgroundColor:task.color}} title={`${task.name} · 預覽排程`}><span className="range-label">{task.name}</span></div>;
 }
 
-function TimelineGrid({projectId,periods,view,scale,tasks,allocations,allocationMode,dragging,preview,dropPreview,onDropPreview,onBeginDrag,onMoveDrag,onEndDrag,onAdjustAllocation,onScheduleAtDate}:{projectId:string;periods:TimelinePeriod[];view:ViewMode;scale:number;tasks:Task[];allocations:Allocation[];allocationMode:AllocationMode;dragging:DragState|null;preview:(task:Task)=>Task;dropPreview:Task|null;onDropPreview:(taskId:string,date:string|null)=>void;onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:DragMode)=>void;onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;onScheduleAtDate:(taskId:string,date:string)=>void}){
- const style={width:periods.length*scale,minHeight:Math.max(70,tasks.length*70),'--scale':`${scale}px`} as CSSProperties;
- const readTransfer=(event:DragEvent<HTMLDivElement>)=>{try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};}catch{return null;}};
- const dropDate=(event:DragEvent<HTMLDivElement>)=>{const value=readTransfer(event);if(!value||value.projectId!==projectId)return null;const bounds=event.currentTarget.getBoundingClientRect();return timelineDateAtPosition(event.clientX-bounds.left+(event.currentTarget.parentElement?.scrollLeft||0),periods,scale)||null;};
- const handleDragOver=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();event.dataTransfer.dropEffect='move';const value=readTransfer(event);const date=dropDate(event);if(value?.projectId===projectId&&date)onDropPreview(value.taskId,date);};
- const handleDragLeave=(event:DragEvent<HTMLDivElement>)=>{const related=event.relatedTarget; if(!(related instanceof Node)||!event.currentTarget.contains(related))onDropPreview('',null);};
- const handleDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();const value=readTransfer(event);const date=dropDate(event);onDropPreview('',null);if(value?.projectId===projectId&&date)onScheduleAtDate(value.taskId,date);};
- return <div className="timeline-grid" style={style} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+function TimelineGrid({periods,view,scale,tasks,hoursByTask,allocationMode,dragging,preview,dropPreview,onBeginDrag,onMoveDrag,onEndDrag,onAdjustAllocation}:{periods:TimelinePeriod[];view:ViewMode;scale:number;tasks:Task[];hoursByTask:Map<string,Map<string,number>>;allocationMode:AllocationMode;dragging:DragState|null;preview:(task:Task)=>Task;dropPreview:Task|null;onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:TaskDragMode)=>void;onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void}){
+ const style={width:periods.length*scale,minHeight:Math.max(TIMELINE_TASK_ROW_HEIGHT,tasks.length*TIMELINE_TASK_ROW_HEIGHT),'--scale':`${scale}px`} as CSSProperties;
+ return <div className="timeline-grid" style={style}>
   <WeekendColumns periods={periods} view={view} scale={scale}/>
-  <TimelineTaskRows tasks={tasks} allocations={allocations} periods={periods} scale={scale} view={view} allocationMode={allocationMode} dragging={dragging} preview={preview} onBeginDrag={onBeginDrag} onMoveDrag={onMoveDrag} onEndDrag={onEndDrag} onAdjustAllocation={onAdjustAllocation}/>
+  <TimelineTaskRows tasks={tasks} hoursByTask={hoursByTask} periods={periods} scale={scale} view={view} allocationMode={allocationMode} dragging={dragging} preview={preview} onBeginDrag={onBeginDrag} onMoveDrag={onMoveDrag} onEndDrag={onEndDrag} onAdjustAllocation={onAdjustAllocation}/>
   {dropPreview&&<DropPreview task={dropPreview} periods={periods} scale={scale} rowIndex={Math.max(0,tasks.length-1)}/>}
-  <TimelineRowSeparators/>
+  <div className="timeline-row-separators" aria-hidden="true"/>
  </div>;
 }
 
-function GanttSidebar({projectId,tasks,allocations,headerHeight,taskDrag,onEdit,onAddTask,onDelete,onDragStart,onBeginTaskDrag,onTaskDropTarget,onScheduleAtDate,onReorder}:{projectId:string;tasks:Task[];allocations:Allocation[];headerHeight:number;taskDrag:TaskDragState|null;onEdit:(task:Task)=>void;onAddTask:()=>void;onDelete:(taskId:string)=>void;onDragStart:(event:DragEvent<HTMLElement>,task:Task)=>void;onBeginTaskDrag:(task:Task,event:PointerEvent<HTMLElement>,allocatedHours:number,pendingHours:number)=>void;onTaskDropTarget:TaskDropTargetHandler;onScheduleAtDate:(taskId:string,date:string)=>void;onReorder:(sourceTaskId:string,targetTaskId:string)=>void}){
- const taskIds=new Set(tasks.map(task=>task.id));
- const readTask=(event:DragEvent<HTMLDivElement>)=>{try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};}catch{return null;}};
- const handleDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();const value=readTask(event);if(value?.projectId===projectId&&!taskIds.has(value.taskId))onScheduleAtDate(value.taskId,today());};
- const readReorder=(event:DragEvent<HTMLDivElement>)=>{try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-reorder')) as {projectId:string;taskId:string};}catch{return null;}};
+function GanttSidebar({projectId,tasks,allocatedByTask,headerHeight,taskDrag,onEdit,onAddTask,onDelete,onBeginTaskDrag,onTaskDropTarget}:{projectId:string;tasks:Task[];allocatedByTask:Map<string,number>;headerHeight:number;taskDrag:TaskDragState|null;onEdit:(task:Task)=>void;onAddTask:()=>void;onDelete:(taskId:string)=>void;onBeginTaskDrag:(task:Task,event:PointerEvent<HTMLElement>,allocatedHours:number,pendingHours:number)=>void;onTaskDropTarget:TaskDropTargetHandler}){
  const handleSidebarPointerMove=(event:PointerEvent<HTMLDivElement>)=>{const target=event.target; if(!(target instanceof Element)||!target.closest('.gantt-side-row'))onTaskDropTarget({kind:'gantt-sidebar',projectId},event.currentTarget);};
- const handleSidebarPointerLeave=(event:PointerEvent<HTMLDivElement>)=>{const related=event.relatedTarget; if(!(related instanceof Node)||!event.currentTarget.contains(related))onTaskDropTarget(null);};
- return <div className="gantt-sidebar" onPointerMove={handleSidebarPointerMove} onPointerLeave={handleSidebarPointerLeave} onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect='move';}} onDrop={handleDrop}>
+ const handleLeave=(event:PointerEvent<HTMLDivElement>)=>{if(pointerLeftElement(event))onTaskDropTarget(null);};
+ return <div className="gantt-sidebar" onPointerMove={handleSidebarPointerMove} onPointerLeave={handleLeave}>
   <div className="gantt-head capacity-gantt-head" style={{height:headerHeight,paddingTop:TIMELINE_CONTEXT_ROW_HEIGHT}}><span>Gantt Task</span><small>工時摘要／操作</small></div>
   {tasks.map(task=>{
-   const allocated=allocations.filter(item=>item.taskId===task.id).reduce((sum,item)=>sum+item.allocatedHours,0);
-   const pending=getTaskPendingHours(task,allocations);
-   const overdue=Boolean(task.deadline&&task.end&&task.end>task.deadline);
+   const allocated=allocatedByTask.get(task.id)||0;
+   const pending=task.estimatedHours-allocated;
    const handleRowPointerMove=(event:PointerEvent<HTMLDivElement>)=>onTaskDropTarget({kind:'gantt-row',projectId,taskId:task.id},event.currentTarget);
-   const handleRowPointerLeave=(event:PointerEvent<HTMLDivElement>)=>{const related=event.relatedTarget; if(!(related instanceof Node)||!event.currentTarget.contains(related))onTaskDropTarget(null);};
-   const handleRowDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation();const reorder=readReorder(event);if(reorder?.projectId===projectId&&reorder.taskId!==task.id){onReorder(reorder.taskId,task.id);return;}const value=readTask(event);if(value?.projectId===projectId&&!taskIds.has(value.taskId))onScheduleAtDate(value.taskId,today());};
-   return <div className={`gantt-side-row${pending!==0?' has-pending':''}${overdue?' has-deadline-warning':''}`} key={task.id} onPointerMove={handleRowPointerMove} onPointerLeave={handleRowPointerLeave} onDragOver={event=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='move';}} onDrop={handleRowDrop}>
-    <TaskCard task={task} variant="gantt" allocatedHours={allocated} pendingHours={pending} isDragging={taskDrag?.projectId===projectId&&taskDrag.active&&taskDrag.task.id===task.id} onEdit={onEdit} onDelete={task.status!=='completed'?onDelete:undefined} onPointerDown={task.status!=='completed'?event=>onBeginTaskDrag(task,event,allocated,pending):undefined} onNativeDragStart={event=>onDragStart(event,task)}/>
+   return <div className={`gantt-side-row${pending!==0?' has-pending':''}${isTaskOverdue(task)?' has-deadline-warning':''}`} key={task.id} onPointerMove={handleRowPointerMove} onPointerLeave={handleLeave}>
+    <TaskCard task={task} variant="gantt" allocatedHours={allocated} pendingHours={pending} isDragging={taskDrag?.projectId===projectId&&taskDrag.active&&taskDrag.task.id===task.id} onEdit={onEdit} onDelete={task.status!=='completed'?onDelete:undefined} onPointerDown={task.status!=='completed'?event=>onBeginTaskDrag(task,event,allocated,pending):undefined}/>
    </div>;
   })}
   <button className="gantt-add-row" type="button" aria-label="Gantt 新增 Task" onClick={onAddTask}>＋ 新增 Task</button>
  </div>;
 }
 
-export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,capacityAllocations,capacities,timelineZoom,allocationMode,scrollLeft,taskDrag,onZoomChange,onEdit,onAddTask,onBeginTaskDrag,onTaskDropTarget,onReorder,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDelete,onEditCapacity,onTimelineScroll,onChangeDates}:CapacityGanttProps){
+export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,capacityAllocations,capacities,timelineZoom,allocationMode,scrollLeft,taskDrag,onZoomChange,onEdit,onAddTask,onBeginTaskDrag,onTaskDropTarget,onAdjustAllocation,onMoveToBacklog,onDelete,onEditCapacity,onTimelineScroll,onChangeDates}:CapacityGanttProps){
  const timelineRef=useRef<HTMLDivElement>(null);
  const dragRef=useRef<DragState|null>(null);
  const panRef=useRef<PanState|null>(null);
@@ -233,34 +215,46 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
  const layoutRef=useRef<{key:string;periods:TimelinePeriod[];scale:number}|null>(null);
  const skipScrollSyncRef=useRef(false);
  const [dragging,setDragging]=useState<DragState|null>(null);
- const [dropTarget,setDropTarget]=useState<{taskId:string;date:string}|null>(null);
  const [panning,setPanning]=useState(false);
  const suppressClickRef=useRef(false);
  const view=timelineZoom.view;
  const scale=timelineScale(view,timelineZoom.pixelsPerDay);
- const range=timelineRange(tasks,view);
- const periods=buildTimelinePeriods(range.start,range.end,view);
- const context=buildTimelineContext(periods,view);
+ const range=useMemo(()=>timelineRange(tasks,view),[tasks,view]);
+ const periods=useMemo(()=>buildTimelinePeriods(range.start,range.end,view),[range.start,range.end,view]);
+ const context=useMemo(()=>buildTimelineContext(periods,view),[periods,view]);
  const headerHeight=TIMELINE_CONTEXT_ROW_HEIGHT+TIMELINE_CAPACITY_ROW_HEIGHT;
  const layoutKey=`${view}:${timelineZoom.pixelsPerDay}:${range.start}:${range.end}`;
- const timelineZoomRef=useRef(timelineZoom);
- const periodsRef=useRef(periods);
- const scaleRef=useRef(scale);
- const onZoomChangeRef=useRef(onZoomChange);
- const customDropTarget=taskDrag?.projectId===projectId&&taskDrag.target?.kind==='gantt-timeline'&&taskDrag.target.date?{taskId:taskDrag.task.id,date:taskDrag.target.date}:null;
- const activeDropTarget=dropTarget||customDropTarget;
+
+ // Date/task keyed indexes, so the header and every row read O(1) instead of rescanning allocations per day.
+ const availableByDate=useMemo(()=>capacityAvailableByDate(capacities),[capacities]);
+ const capacityAllocatedByDate=useMemo(()=>allocatedHoursByDate(capacityAllocations),[capacityAllocations]);
+ const taskAllocations=useMemo(()=>allocationsByTask(allocations),[allocations]);
+ const allocatedByTask=useMemo(()=>{
+  const index=new Map<string,number>();
+  for(const [taskId,items] of taskAllocations)index.set(taskId,items.reduce((sum,item)=>sum+item.allocatedHours,0));
+  return index;
+ },[taskAllocations]);
+ const hoursByTask=useMemo(()=>{
+  const index=new Map<string,Map<string,number>>();
+  for(const [taskId,items] of taskAllocations)index.set(taskId,allocatedHoursByDate(items));
+  return index;
+ },[taskAllocations]);
+
+ const latestRef=useRef({timelineZoom,periods,scale,onZoomChange});
+ const dropTargetDate=taskDrag?.projectId===projectId&&taskDrag.target?.kind==='gantt-timeline'?taskDrag.target.date:undefined;
+ const dropTargetTaskId=dropTargetDate?taskDrag?.task.id:undefined;
  const dropPreview=useMemo(()=>{
-  if(!activeDropTarget)return null;
-  const task=backlogTasks.find(item=>item.id===activeDropTarget.taskId)||tasks.find(item=>item.id===activeDropTarget.taskId);
+  if(!dropTargetTaskId||!dropTargetDate)return null;
+  const task=backlogTasks.find(item=>item.id===dropTargetTaskId)||tasks.find(item=>item.id===dropTargetTaskId);
   if(!task)return null;
   try{
-   const result=recalculateAutomaticAllocations(task,capacityAllocations,capacities,activeDropTarget.date,{fillPending:true});
-   return {...task,start:result.start||activeDropTarget.date,end:result.end||activeDropTarget.date,status:'scheduled' as const};
-  }catch{return {...task,start:activeDropTarget.date,end:activeDropTarget.date,status:'scheduled' as const};}
- },[activeDropTarget,backlogTasks,capacityAllocations,capacities,tasks]);
+   const result=recalculateAutomaticAllocations(task,capacityAllocations,capacities,dropTargetDate,{fillPending:true});
+   return {...task,start:result.start||dropTargetDate,end:result.end||dropTargetDate,status:'scheduled' as const};
+  }catch{return {...task,start:dropTargetDate,end:dropTargetDate,status:'scheduled' as const};}
+ },[dropTargetTaskId,dropTargetDate,backlogTasks,capacityAllocations,capacities,tasks]);
 
  useEffect(()=>{
-  timelineZoomRef.current=timelineZoom;periodsRef.current=periods;scaleRef.current=scale;onZoomChangeRef.current=onZoomChange;
+  latestRef.current={timelineZoom,periods,scale,onZoomChange};
  },[timelineZoom,periods,scale,onZoomChange]);
  useEffect(()=>{if(skipScrollSyncRef.current){skipScrollSyncRef.current=false;return;}if(timelineRef.current&&Math.abs(timelineRef.current.scrollLeft-scrollLeft)>1)timelineRef.current.scrollLeft=scrollLeft;},[scrollLeft]);
  useLayoutEffect(()=>{
@@ -284,16 +278,18 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
   const handleWheel=(event:globalThis.WheelEvent)=>{
    if(!event.deltaY)return;
    event.preventDefault();event.stopPropagation();
-   const factor=event.deltaY<0?1.12:.88;const currentZoom=timelineZoomRef.current;const currentPeriods=periodsRef.current;const currentScale=scaleRef.current;const nextZoom=zoomTimeline(currentZoom,factor);
-   if(nextZoom.pixelsPerDay===currentZoom.pixelsPerDay)return;
+   const latest=latestRef.current;
+   const nextZoom=zoomTimeline(latest.timelineZoom,event.deltaY<0?1.12:.88);
+   if(nextZoom.pixelsPerDay===latest.timelineZoom.pixelsPerDay)return;
    const pointerOffset=event.clientX-timeline.getBoundingClientRect().left;
-   zoomAnchorRef.current={date:timelineDateAtPosition(timeline.scrollLeft+pointerOffset,currentPeriods,currentScale),pointerOffset};
-   timelineZoomRef.current=nextZoom;onZoomChangeRef.current(nextZoom);
+   zoomAnchorRef.current={date:timelineDateAtPosition(timeline.scrollLeft+pointerOffset,latest.periods,latest.scale),pointerOffset};
+   latest.timelineZoom=nextZoom;
+   latest.onZoomChange(nextZoom);
   };
   timeline.addEventListener('wheel',handleWheel,{passive:false});
   return()=>timeline.removeEventListener('wheel',handleWheel);
  },[]);
- const beginDrag=(event:PointerEvent<HTMLElement>,task:Task,mode:DragMode)=>{
+ const beginDrag=(event:PointerEvent<HTMLElement>,task:Task,mode:TaskDragMode)=>{
   if(allocationMode!=='general'||task.status==='completed'||!task.start||!task.end)return;
   event.preventDefault();event.stopPropagation();const next={task,mode,startX:event.clientX,delta:0};dragRef.current=next;if(typeof event.currentTarget.setPointerCapture==='function')event.currentTarget.setPointerCapture(event.pointerId);setDragging(next);
  };
@@ -312,8 +308,6 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
  const movePan=(event:PointerEvent<HTMLDivElement>)=>{const current=panRef.current;if(!current)return;if(current.candidate&&!current.active){if(Math.abs(event.clientX-current.startX)<4)return;current.active=true;event.preventDefault();if(typeof event.currentTarget.setPointerCapture==='function')event.currentTarget.setPointerCapture(event.pointerId);setPanning(true);}if(!current.active)return;event.preventDefault();event.currentTarget.scrollLeft=current.startScrollLeft-(event.clientX-current.startX);};
  const endPan=(event:PointerEvent<HTMLDivElement>)=>{const current=panRef.current;if(!current)return;if(current.active&&current.candidate){suppressClickRef.current=true;setTimeout(()=>{suppressClickRef.current=false;},0);}if(typeof event.currentTarget.hasPointerCapture==='function'&&event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);panRef.current=null;if(current.active)setPanning(false);};
  const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta,view):task;
- const handleTaskDragStart=(event:DragEvent<HTMLElement>,task:Task)=>{const value=JSON.stringify({projectId,taskId:task.id});event.dataTransfer.setData('application/x-gantt-task',value);event.dataTransfer.setData('application/x-gantt-reorder',value);event.dataTransfer.effectAllowed='move';event.dataTransfer.setDragImage?.(event.currentTarget,12,12);};
- const keepTaskDropEffect=(event:DragEvent<HTMLDivElement>)=>{const types=event.dataTransfer.types;const accepts=!types||Array.from(types).some(type=>type==='application/x-gantt-task'||type==='application/x-gantt-reorder');if(!accepts)return;event.preventDefault();event.dataTransfer.dropEffect='move';};
  const handleTaskDropMove=(event:PointerEvent<HTMLDivElement>)=>{
   if(!taskDrag?.active)return;
   const timeline=timelineRef.current;if(!timeline)return;
@@ -321,17 +315,17 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
   const date=timelineDateAtPosition(event.clientX-bounds.left+timeline.scrollLeft,periods,scale);
   onTaskDropTarget(date?{kind:'gantt-timeline',projectId,date}:null,date?timeline:undefined);
  };
- const handleTaskDropLeave=(event:PointerEvent<HTMLDivElement>)=>{const related=event.relatedTarget;if(!(related instanceof Node)||!event.currentTarget.contains(related))onTaskDropTarget(null);};
+ const handleTaskDropLeave=(event:PointerEvent<HTMLDivElement>)=>{if(pointerLeftElement(event))onTaskDropTarget(null);};
  const handleTimelinePointerMove=(event:PointerEvent<HTMLDivElement>)=>{handleTaskDropMove(event);movePan(event);};
- const canvasHeight=headerHeight+Math.max(70,tasks.length*70);
+ const canvasHeight=headerHeight+Math.max(TIMELINE_TASK_ROW_HEIGHT,tasks.length*TIMELINE_TASK_ROW_HEIGHT);
  return <section className="gantt-section">
   <div className="section-heading"><div><h2>Capacity Gantt</h2><small>{allocationMode==='allocate'?'Allocate 模式：日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。':'一般模式：拖曳 Task bar 調整排程；可將 Task 拖回 Backlog。'} 滾輪縮放、拖曳平移時間軸</small></div></div>
-  <div className="gantt" onDragEnterCapture={keepTaskDropEffect} onDragOverCapture={keepTaskDropEffect}>
-   <GanttSidebar projectId={projectId} tasks={tasks} allocations={allocations} headerHeight={headerHeight} taskDrag={taskDrag} onEdit={onEdit} onAddTask={onAddTask} onDelete={onDelete} onDragStart={handleTaskDragStart} onBeginTaskDrag={onBeginTaskDrag} onTaskDropTarget={onTaskDropTarget} onScheduleAtDate={onScheduleAtDate} onReorder={onReorder}/>
+  <div className="gantt">
+   <GanttSidebar projectId={projectId} tasks={tasks} allocatedByTask={allocatedByTask} headerHeight={headerHeight} taskDrag={taskDrag} onEdit={onEdit} onAddTask={onAddTask} onDelete={onDelete} onBeginTaskDrag={onBeginTaskDrag} onTaskDropTarget={onTaskDropTarget}/>
    <div className={`timeline${panning?' panning':''}`} data-view={view} data-pixels-per-day={timelineZoom.pixelsPerDay} ref={timelineRef} onScroll={event=>onTimelineScroll(event.currentTarget.scrollLeft)} onClickCapture={event=>{if(suppressClickRef.current){event.preventDefault();event.stopPropagation();suppressClickRef.current=false;}}} onPointerDown={beginPan} onPointerMove={handleTimelinePointerMove} onPointerLeave={handleTaskDropLeave} onPointerUp={endPan} onPointerCancel={endPan}>
     <div className="timeline-canvas" style={{width:periods.length*scale,minHeight:canvasHeight}}>
-     <TimelineHeader periods={periods} context={context} capacities={capacities} allocations={capacityAllocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
-     <TimelineGrid projectId={projectId} periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} allocationMode={allocationMode} dragging={dragging} preview={preview} dropPreview={dropPreview} onDropPreview={(taskId,date)=>setDropTarget(taskId&&date?{taskId,date}:null)} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate}/>
+     <TimelineHeader periods={periods} context={context} availableByDate={availableByDate} allocatedByDate={capacityAllocatedByDate} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
+     <TimelineGrid periods={periods} view={view} scale={scale} tasks={tasks} hoursByTask={hoursByTask} allocationMode={allocationMode} dragging={dragging} preview={preview} dropPreview={dropPreview} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onAdjustAllocation={onAdjustAllocation}/>
      <TodayMarker periods={periods} scale={scale}/>
     </div>
    </div>
