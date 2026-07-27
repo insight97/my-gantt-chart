@@ -101,6 +101,15 @@ function derivedRange(taskId:string,allocations:Allocation[]):Pick<AllocationRes
  return {start:dates[0]||null,end:dates.at(-1)||null};
 }
 
+function resultRange(task:Task,allocations:Allocation[]):Pick<AllocationResult,'start'|'end'>{
+ const derived=derivedRange(task.id,allocations);
+ if(task.allocationStrategy!=='balanced'||(!task.start&&!task.end))return derived;
+ const dates=taskPositiveDates(task.id,allocations);
+ const starts=[task.start,...dates].filter((date):date is string=>Boolean(date)).sort();
+ const ends=[task.end,...dates].filter((date):date is string=>Boolean(date)).sort();
+ return {start:starts[0]||null,end:ends.at(-1)||null};
+}
+
 export function validateTaskDateRange(task:Task,allocations:Allocation[]):AllocationValidation{
  const manual=allocations.filter(allocation=>allocation.taskId===task.id&&allocation.source==='manual');
  if(!manual.length)return {valid:true};
@@ -189,6 +198,52 @@ function appendAutomaticHours(
  }
 }
 
+function recalculateBalancedAllocations(
+ task:Task,
+ allocations:Allocation[],
+ capacities:DailyCapacity[],
+ automaticHours:number,
+ manualDates:Set<string>,
+ manualHoursByDate:Map<string,number>,
+ horizonDays:number,
+):Allocation[]{
+ const otherAllocations=allocations.filter(item=>item.taskId!==task.id);
+ const range=task.start&&task.end
+  ?datesBetween(task.start,task.end)
+  :forwardDates(task.start||today(),horizonDays);
+ const candidates=range
+  .filter(date=>!manualDates.has(date))
+  .map(date=>({
+   date,
+   available:Math.max(0,getRemainingCapacity(date,capacities,otherAllocations)- (manualHoursByDate.get(date)||0)),
+  }));
+ const result=allocations.filter(item=>item.taskId===task.id&&item.source==='manual').map(item=>({...item}));
+ let remaining=automaticHours;
+ let active=candidates.filter(item=>item.available>0);
+ while(remaining>0&&active.length){
+  const share=remaining/active.length;
+  let allocatedThisRound=0;
+  const nextActive=[];
+  for(const candidate of active){
+   const hours=Math.min(share,candidate.available);
+   if(hours>0){
+    mergeAutomaticHours(result,task.id,candidate.date,hours);
+    candidate.available-=hours;
+    remaining-=hours;
+    allocatedThisRound+=hours;
+   }
+   if(candidate.available>0.000001)nextActive.push(candidate);
+  }
+  if(allocatedThisRound<=0)break;
+  active=nextActive;
+ }
+ if(remaining>0){
+  const overflow=candidates.at(-1)?.date||task.end||task.start||today();
+  mergeAutomaticHours(result,task.id,overflow,remaining);
+ }
+ return result;
+}
+
 export function recalculateAutomaticAllocations(
  task:Task,
  allocations:Allocation[],
@@ -210,6 +265,12 @@ export function recalculateAutomaticAllocations(
  const automaticHours=fillPending
   ?Math.max(0,task.estimatedHours-manualHours)
   :existingAutomaticHours;
+ const manualHoursByDate=new Map<string,number>();
+ for(const allocation of manual)manualHoursByDate.set(allocation.date,(manualHoursByDate.get(allocation.date)||0)+allocation.allocatedHours);
+ if(task.allocationStrategy==='balanced'&&(task.start||task.end)){
+  const balancedAllocations=recalculateBalancedAllocations(task,allocations,capacities,automaticHours,manualDates,manualHoursByDate,horizonDays);
+  return {allocations:balancedAllocations,...resultRange(task,balancedAllocations)};
+ }
  const otherAllocations=allocations.filter(item=>item.taskId!==task.id);
  const anchor=[...manualDates].sort()[0]||task.start||startDate;
  const resultAllocations=[...manual];
@@ -230,7 +291,7 @@ export function recalculateAutomaticAllocations(
   const overflow=overflowCandidates.at(-1)||anchor;
   mergeAutomaticHours(resultAllocations,task.id,overflow,remaining);
  }
- return {allocations:resultAllocations,...derivedRange(task.id,resultAllocations)};
+ return {allocations:resultAllocations,...resultRange(task,resultAllocations)};
 }
 
 export function adjustManualAllocationDay(
@@ -242,7 +303,7 @@ export function adjustManualAllocationDay(
  startDate=today(),
  options:RecalculateOptions={},
 ):AllocationResult{
- if(!delta)return {allocations, ...derivedRange(task.id,allocations)};
+ if(!delta)return {allocations, ...resultRange(task,allocations)};
  const taskAllocations=allocations.filter(item=>item.taskId===task.id);
  const currentDayHours=taskAllocations.filter(item=>item.date===date).reduce((sum,item)=>sum+item.allocatedHours,0);
  const actualDelta=Math.max(0,currentDayHours+delta)-currentDayHours;
@@ -253,20 +314,20 @@ export function adjustManualAllocationDay(
  manualDates.add(date);
  next.push({id:taskAllocations.find(item=>item.taskId===task.id&&item.date===date&&item.source==='manual')?.id||crypto.randomUUID(),taskId:task.id,date,allocatedHours:Math.max(0,currentDayHours+delta),source:'manual',locked:true});
 
- if(!actualDelta)return {allocations:next,...derivedRange(task.id,next)};
+ if(!actualDelta)return {allocations:next,...resultRange(task,next)};
 
  if(actualDelta>0){
   const borrow=pending>0?Math.max(0,actualDelta-pending):pending===0?actualDelta:0;
   const adjusted=removeAutomaticHours(next,task.id,borrow);
-  return {allocations:adjusted,...derivedRange(task.id,adjusted)};
+  return {allocations:adjusted,...resultRange(task,adjusted)};
  }
 
  if(pending<0){
-  return {allocations:next,...derivedRange(task.id,next)};
+  return {allocations:next,...resultRange(task,next)};
  }
 
  appendAutomaticHours(task.id,next,capacities,manualDates,task.start||startDate,-actualDelta,options.horizonDays??DEFAULT_PLANNING_HORIZON_DAYS);
- return {allocations:next,...derivedRange(task.id,next)};
+ return {allocations:next,...resultRange(task,next)};
 }
 
 export function trimManualAllocationsToEstimate(taskId:string,allocations:Allocation[],estimatedHours:number){

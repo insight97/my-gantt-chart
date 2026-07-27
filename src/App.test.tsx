@@ -32,7 +32,7 @@ const workspace:WorkspaceData={
 const aggregationWorkspace:WorkspaceData={
  version:2,
  projects:[
-  {id:'project-a',name:'Alpha Project',description:'第一個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[{id:'task-a',name:'跨週 Task',start:'2026-01-05',end:'2026-01-18',deadline:null,priority:'medium',estimatedHours:40,status:'scheduled',notes:'',owner:'',color:'#2f75bb',createdAt:'2026-01-01',updatedAt:'2026-01-01'}]},
+  {id:'project-a',name:'Alpha Project',description:'第一個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[{id:'task-a',name:'跨週 Task',start:'2026-01-05',end:'2026-01-18',deadline:null,estimatedHours:40,allocationStrategy:'fastest',priority:'medium',status:'scheduled',notes:'',owner:'',color:'#2f75bb',createdAt:'2026-01-01',updatedAt:'2026-01-01'}]},
   {id:'project-b',name:'Beta Project',description:'第二個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[]},
  ],
  dailyCapacities:[],
@@ -45,6 +45,15 @@ denseWorkspace.allocations=[{id:'allocation-a',taskId:'task-a',date:'2026-01-05'
 
 const backlogWorkspace:WorkspaceData=structuredClone(workspace);
 backlogWorkspace.projects[0].tasks=[{...emptyTask(),id:'backlog-task',name:'待排 Task',estimatedHours:16}];
+
+const pendingWorkspace:WorkspaceData=structuredClone(workspace);
+pendingWorkspace.projects[0].tasks=[{...emptyTask(),id:'pending-task',name:'待處理 Task',status:'scheduled'}];
+
+const orderedWorkspace:WorkspaceData=structuredClone(backlogWorkspace);
+orderedWorkspace.projects[0].tasks=[
+ {...orderedWorkspace.projects[0].tasks[0],id:'backlog-task',name:'新加入 Task'},
+ {...emptyTask(),id:'existing-task',name:'既有 Task',status:'scheduled',start:'2026-01-01',end:'2026-01-01'},
+];
 
 const zeroHourWorkspace:WorkspaceData=structuredClone(workspace);
 zeroHourWorkspace.projects[0].tasks=[{...emptyTask(),id:'zero-hour-task',name:'零工時 Task',estimatedHours:0,status:'scheduled'}];
@@ -256,6 +265,43 @@ describe('Project arrangement',()=>{
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
   expect(document.querySelector('.gantt-side-row')).toHaveTextContent('零工時 Task');
+ });
+
+ it('shows pending tasks immediately and hides the tray when there are none',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(pendingWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  expect(document.querySelector('.pending-tray')).toBeInTheDocument();
+  expect(document.querySelector('.pending-tray')).toHaveTextContent('待處理 Task');
+ });
+
+ it('puts a newly scheduled Task at the bottom of the Gantt order',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(orderedWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const card=document.querySelector('.backlog .task-card') as HTMLElement;
+  const timeline=document.querySelector('.timeline-grid') as HTMLElement;
+  const dataTransfer={
+   effectAllowed:'',
+   dropEffect:'',
+   setData:vi.fn(),
+   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
+  };
+  fireEvent.dragStart(card,{dataTransfer});
+  fireEvent.drop(timeline,{dataTransfer,clientX:20});
+  await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['既有 Task','新加入 Task']));
+ });
+
+ it('shows start and end dates in Task details',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.gantt-sidebar .task-link') as HTMLElement);
+  expect(screen.getByLabelText('開始日期')).toHaveValue('2026-01-05');
+  expect(screen.getByLabelText('結束日期')).toHaveValue('2026-01-18');
  });
 
  it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{

@@ -49,6 +49,16 @@ describe('容量 domain',()=>{
   expect(value.allocations.every(item=>item.source==='automatic')).toBe(true);
  });
 
+ it('平均分配會在明確日期範圍內盡量平均使用每日容量',()=>{
+  const value=recalculateAutomaticAllocations(
+   task({id:'balanced',start:'2026-01-01',end:'2026-01-03',estimatedHours:6,allocationStrategy:'balanced'}),
+   [],
+   [capacity('2026-01-01'),capacity('2026-01-02'),capacity('2026-01-03')],
+  );
+  expect(value.allocations.map(item=>item.allocatedHours)).toEqual([2,2,2]);
+  expect(value).toMatchObject({start:'2026-01-01',end:'2026-01-03'});
+ });
+
  it('Manual Allocation 會保留，且仍有剩餘容量的日期可再自動分配',()=>{
   const manual:Allocation={id:'manual',taskId:'task',date:'2026-01-01',allocatedHours:2,source:'manual',locked:true};
   const value=recalculateAutomaticAllocations(

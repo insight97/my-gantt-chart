@@ -18,6 +18,7 @@ const task:Task={
  end:'2026-07-18',
  deadline:null,
  estimatedHours:8,
+ allocationStrategy:'fastest',
  priority:'medium',
  status:'scheduled',
  notes:'',

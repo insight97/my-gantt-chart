@@ -1,5 +1,6 @@
 export type ViewMode = 'day' | 'week' | 'month';
 export type AllocationMode = 'general' | 'allocate';
+export type AllocationStrategy = 'fastest' | 'balanced';
 export type TaskStatus = 'backlog' | 'scheduled' | 'in_progress' | 'completed';
 export type TaskPriority = 'low' | 'medium' | 'high';
 export type AllocationSource = 'automatic' | 'manual';
@@ -11,6 +12,7 @@ export interface Task {
  end:string|null;
  deadline:string|null;
  estimatedHours:number;
+ allocationStrategy:AllocationStrategy;
  priority:TaskPriority;
  status:TaskStatus;
  notes:string;

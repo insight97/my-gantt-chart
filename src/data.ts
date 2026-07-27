@@ -1,4 +1,4 @@
-import type {ExportFile, Project, Task, TaskPriority, ViewMode, WorkspaceData} from './types';
+import type {AllocationStrategy,ExportFile,Project,Task,TaskPriority,ViewMode,WorkspaceData} from './types';
 import {addDays as addCapacityDays, datesBetween} from './capacity';
 
 export const uid=()=>crypto.randomUUID();
@@ -15,6 +15,7 @@ export const emptyTask=():Task=>({
  end:null,
  deadline:null,
  estimatedHours:8,
+ allocationStrategy:'fastest',
  priority:'medium',
  status:'backlog',
  notes:'',
@@ -53,11 +54,13 @@ export function sampleWorkspace():WorkspaceData{
 
 const statuses=new Set(['backlog','scheduled','in_progress','completed']);
 const priorities=new Set(['low','medium','high']);
+const allocationStrategies=new Set(['fastest','balanced']);
 const sources=new Set(['automatic','manual']);
 const datePattern=/^\d{4}-\d{2}-\d{2}$/;
 const isDate=(value:unknown):value is string=>typeof value==='string'&&datePattern.test(value);
 const isNullableDate=(value:unknown):value is string|null=>value===null||isDate(value);
 const isPriority=(value:unknown):value is TaskPriority=>typeof value==='string'&&priorities.has(value);
+const isAllocationStrategy=(value:unknown):value is AllocationStrategy=>typeof value==='string'&&allocationStrategies.has(value);
 
 function validTask(value:unknown):value is Task{
  if(!value||typeof value!=='object')return false;
@@ -69,6 +72,7 @@ function validTask(value:unknown):value is Task{
   &&(typeof task.deadline==='undefined'||isNullableDate(task.deadline))
   &&typeof task.estimatedHours==='number'
   &&Number.isFinite(task.estimatedHours)
+  &&(typeof task.allocationStrategy==='undefined'||isAllocationStrategy(task.allocationStrategy))
   &&(typeof task.priority==='undefined'||isPriority(task.priority))
   &&task.estimatedHours>=0
   &&typeof task.status==='string'
@@ -126,6 +130,7 @@ export function normalizeWorkspaceData(value:WorkspaceData):WorkspaceData{
   projects:value.projects.map(project=>({...project,tasks:project.tasks.map(task=>({
    ...task,
    deadline:task.deadline??null,
+   allocationStrategy:task.allocationStrategy??'fastest',
    priority:task.priority??'medium',
   }))})),
  };
