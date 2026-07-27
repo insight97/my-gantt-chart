@@ -114,6 +114,22 @@ describe('Project arrangement',()=>{
   expect(timeline.querySelectorAll('.timeline-context-cell.month-start')).toHaveLength(0);
  });
 
+ it('keeps task row separators above weekend backgrounds',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  const timeline=document.querySelector('.timeline') as HTMLElement;
+  const weekend=timeline.querySelector('.timeline-weekend-column.weekend') as HTMLElement;
+  const separators=timeline.querySelector('.timeline-row-separators') as HTMLElement;
+
+  expect(separators).toBeInTheDocument();
+  expect(getComputedStyle(separators).zIndex).toBe('3');
+  expect(getComputedStyle(separators).pointerEvents).toBe('none');
+  expect(weekend).toHaveClass('weekend');
+ });
+
  it('zooms the timeline with the wheel and pans it by dragging',async()=>{
   render(<App/>);
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
@@ -195,7 +211,7 @@ describe('Project arrangement',()=>{
   fireEvent.click(screen.getByRole('button',{name:'週'}));
   await waitFor(()=>expect(document.querySelectorAll('.capacity-period').length).toBeGreaterThan(0));
   const weekPeriods=document.querySelectorAll('.capacity-period');
-  expect(weekPeriods.length).toBeLessThan(10);
+  expect(weekPeriods.length).toBeGreaterThan(20);
   expect(document.querySelectorAll('.capacity-period[role="button"]')).toHaveLength(0);
   expect(Array.from(weekPeriods).some(period=>period.textContent?.includes('56h'))).toBe(true);
 

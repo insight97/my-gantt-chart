@@ -263,6 +263,10 @@ function TimelineTaskRows({
  );
 }
 
+function TimelineRowSeparators(){
+ return <div className="timeline-row-separators" style={{position:'absolute',top:0,right:0,bottom:0,left:0,zIndex:3,pointerEvents:'none'}} aria-hidden="true"/>;
+}
+
 type TimelineGridProps=TimelineTaskRowsProps & {view:ViewMode};
 
 function TimelineGrid({
@@ -283,6 +287,7 @@ function TimelineGrid({
   <div className="timeline-grid" style={style}>
    <WeekendColumns periods={periods} view={view} scale={scale}/>
    <TimelineTaskRows tasks={tasks} allocations={allocations} periods={periods} scale={scale} dragging={dragging} preview={preview} onBeginDrag={onBeginDrag} onMoveDrag={onMoveDrag} onEndDrag={onEndDrag}/>
+   <TimelineRowSeparators/>
   </div>
  );
 }
