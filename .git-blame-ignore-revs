@@ -1,0 +1,9 @@
+# Revisions to skip in `git blame` — bulk reformats only, never behavior changes.
+#
+# GitHub applies this file automatically. Locally, either pass it explicitly:
+#   git blame --ignore-revs-file .git-blame-ignore-revs <file>
+# or configure it once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Apply Prettier to the whole repository
+30b43742cb3f70a40cf8f524c1f31faea9aeb5c9
