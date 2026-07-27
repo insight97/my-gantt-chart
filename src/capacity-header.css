@@ -1,0 +1,64 @@
+.capacity-gantt-head,
+.capacity-dates {
+ height:60px;
+}
+
+.capacity-date {
+ display:grid;
+ align-content:center;
+ justify-items:center;
+ gap:3px;
+ height:60px !important;
+ padding:6px 2px !important;
+ color:#71808e;
+ cursor:pointer;
+ overflow:hidden;
+ white-space:normal !important;
+ text-align:center;
+}
+
+.capacity-date:hover {
+ background:#edf5fa;
+ color:#174f7c;
+}
+
+.capacity-date:focus-visible {
+ z-index:1;
+ outline:3px solid #99c9f2;
+ outline-offset:-3px;
+}
+
+.capacity-date b,
+.capacity-date strong {
+ display:block;
+ line-height:1.1;
+ white-space:nowrap;
+}
+
+.capacity-date b {
+ font-size:10px;
+ font-weight:600;
+}
+
+.capacity-date strong {
+ font-size:10px;
+ font-weight:600;
+ color:#426074;
+}
+
+.capacity-date.available strong {
+ color:var(--green);
+}
+
+.capacity-date.full {
+ background:#f3f5f6;
+}
+
+.capacity-date.overloaded {
+ background:#fff1ec;
+ color:#a33d36;
+}
+
+.capacity-date.overloaded strong {
+ color:var(--orange);
+}
