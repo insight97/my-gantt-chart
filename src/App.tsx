@@ -1,5 +1,5 @@
-import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import type {ChangeEvent,DragEvent,FormEvent} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
+import type {ChangeEvent,DragEvent,FormEvent,PointerEvent as ReactPointerEvent} from 'react';
 import {emptyTask,normalizeWorkspaceData,uid,validateImport} from './data';
 import {
  adjustManualAllocationDay,
@@ -14,6 +14,8 @@ import {
 import {createEmptyWorkspace,loadWorkspace,saveWorkspace} from './db';
 import CapacityGantt from './CapacityGantt';
 import {hoursLabel} from './formatters';
+import TaskCard from './TaskCard';
+import type {TaskDragOrigin,TaskDragState,TaskDropTarget,TaskDropTargetHandler} from './task-drag';
 import {timelineZoomPreset} from './timeline';
 import type {Allocation,AllocationMode,DailyCapacity,ExportFile,Project,Task,TaskPriority,TaskStatus,ViewMode,WorkspaceData} from './types';
 import type {TimelineZoom} from './timeline';
@@ -72,7 +74,11 @@ export default function App(){
  const [notice,setNotice]=useState('');
  const [history,setHistory]=useState<WorkspaceData[]>([]);
  const [future,setFuture]=useState<WorkspaceData[]>([]);
+ const [taskDrag,setTaskDrag]=useState<TaskDragState|null>(null);
  const fileRef=useRef<HTMLInputElement>(null);
+ const taskDragRef=useRef<TaskDragState|null>(null);
+ const taskDropRef=useRef<{target:TaskDropTarget;element:HTMLElement}|null>(null);
+ const suppressTaskClickRef=useRef(false);
 
  useEffect(()=>{
   let mounted=true;
@@ -98,17 +104,33 @@ export default function App(){
   localStorage.setItem('gantt-pixels-per-day',String(timelineZoom.pixelsPerDay));
  },[timelineZoom]);
 
- const commit=(next:WorkspaceData)=>{
+ const commit=useCallback((next:WorkspaceData)=>{
   if(!workspace)return;
   setHistory(items=>[...items.slice(-39),clone(workspace)]);
   setFuture([]);
   setWorkspace(next);
+ },[workspace]);
+ const beginTaskDrag=(projectId:string,task:Task,origin:TaskDragOrigin,event:ReactPointerEvent<HTMLElement>,allocatedHours=0,pendingHours=0)=>{
+  if(event.button!==0||task.status==='completed')return;
+  const next:TaskDragState={projectId,task,origin,allocatedHours,pendingHours,x:event.clientX,y:event.clientY,active:false,target:null};
+  taskDragRef.current=next;
+  taskDropRef.current=null;
+  setTaskDrag(next);
+ };
+ const updateTaskDropTarget:TaskDropTargetHandler=(target,element)=>{
+  const current=taskDragRef.current;
+  if(!current?.active)return;
+  if(target&&target.projectId!==current.projectId){taskDropRef.current=null;const next={...current,target:null};taskDragRef.current=next;setTaskDrag(next);return;}
+  taskDropRef.current=target&&element?{target,element}:null;
+  const next={...current,target:target&&element?target:null};
+  taskDragRef.current=next;
+  setTaskDrag(next);
  };
  const patchProject=(projectId:string,fn:(value:Project)=>Project)=>{
   if(!workspace)return;
   commit({...workspace,projects:workspace.projects.map(item=>item.id===projectId?{...fn(item),updatedAt:now()}:item)});
  };
- const reorderTasks=(projectId:string,sourceTaskId:string,targetTaskId:string)=>{
+ const reorderTasks=useCallback((projectId:string,sourceTaskId:string,targetTaskId:string)=>{
   if(!workspace||sourceTaskId===targetTaskId)return;
   const project=workspace.projects.find(item=>item.id===projectId);
   if(!project)return;
@@ -120,7 +142,7 @@ export default function App(){
   const insertionIndex=sourceIndex<targetIndex?targetIndex-1:targetIndex;
   tasks.splice(insertionIndex,0,moved);
   commit({...workspace,projects:workspace.projects.map(item=>item.id===projectId?{...item,tasks,updatedAt:now()}:item)});
- };
+ },[workspace,commit]);
  const undo=()=>{
   if(!workspace||!history.length)return;
   const previous=history.at(-1)!;
@@ -229,7 +251,7 @@ export default function App(){
   }catch(error){return error instanceof Error?error.message:'Allocation 更新失敗。';}
  };
 
- const scheduleTaskAtDate=(projectId:string,taskId:string,date:string)=>{
+ const scheduleTaskAtDate=useCallback((projectId:string,taskId:string,date:string)=>{
   if(!workspace)return;
   const project=workspace.projects.find(item=>item.id===projectId);
   const task=project?.tasks.find(item=>item.id===taskId);
@@ -241,16 +263,59 @@ export default function App(){
    const nextTask:Task={...anchored,start:result.start,end:result.end,updatedAt:now()};
    commit(replaceTaskAndAllocations(workspace,projectId,nextTask,result.allocations,true));
   }catch(error){setNotice(error instanceof Error?error.message:'自動分配失敗。');}
- };
+ },[workspace,commit]);
 
- const moveTaskToBacklog=(projectId:string,taskId:string)=>{
+ const moveTaskToBacklog=useCallback((projectId:string,taskId:string)=>{
   if(!workspace)return;
   const project=workspace.projects.find(item=>item.id===projectId);
   const task=project?.tasks.find(item=>item.id===taskId);
   if(!project||!task||task.status==='completed')return;
   const nextTask:Task={...task,status:'backlog',start:null,end:null,updatedAt:now()};
   commit(replaceTaskAndAllocations(workspace,projectId,nextTask,[]));
- };
+ },[workspace,commit]);
+
+ const taskDragActionsRef=useRef({moveTaskToBacklog,reorderTasks,scheduleTaskAtDate});
+ useEffect(()=>{taskDragActionsRef.current={moveTaskToBacklog,reorderTasks,scheduleTaskAtDate};},[moveTaskToBacklog,reorderTasks,scheduleTaskAtDate]);
+ const hasTaskDrag=taskDrag!==null;
+ useEffect(()=>{
+  if(!hasTaskDrag)return;
+  const handlePointerMove=(event:globalThis.PointerEvent)=>{
+   const current=taskDragRef.current;
+   if(!current)return;
+   if(!current.active&&Math.hypot(event.clientX-current.x,event.clientY-current.y)<5)return;
+   const next={...current,x:event.clientX,y:event.clientY,active:true};
+   taskDragRef.current=next;
+   setTaskDrag(next);
+  };
+  const handlePointerUp=(event:globalThis.PointerEvent)=>{
+   const current=taskDragRef.current;
+   if(!current)return;
+   if(!current.active){taskDragRef.current=null;taskDropRef.current=null;setTaskDrag(null);return;}
+   const tracked=taskDropRef.current;
+   const hit=typeof document.elementFromPoint==='function'?document.elementFromPoint(event.clientX,event.clientY):null;
+   const target=tracked&&(!hit||tracked.element.contains(hit))?tracked.target:null;
+   const actions=taskDragActionsRef.current;
+   if(target?.projectId===current.projectId){
+    if(target.kind==='backlog'&&current.origin==='gantt')actions.moveTaskToBacklog(current.projectId,current.task.id);
+    if(target.kind==='gantt-row'){
+     if(current.origin==='gantt'&&target.taskId)actions.reorderTasks(current.projectId,current.task.id,target.taskId);
+     if(current.origin==='backlog')actions.scheduleTaskAtDate(current.projectId,current.task.id,today());
+    }
+    if(target.kind==='gantt-sidebar'&&current.origin==='backlog')actions.scheduleTaskAtDate(current.projectId,current.task.id,today());
+    if(target.kind==='gantt-timeline'&&target.date)actions.scheduleTaskAtDate(current.projectId,current.task.id,target.date);
+   }
+   suppressTaskClickRef.current=true;
+   setTimeout(()=>{suppressTaskClickRef.current=false;},0);
+   taskDragRef.current=null;
+   taskDropRef.current=null;
+   setTaskDrag(null);
+  };
+  const handlePointerCancel=()=>{taskDragRef.current=null;taskDropRef.current=null;setTaskDrag(null);};
+  window.addEventListener('pointermove',handlePointerMove);
+  window.addEventListener('pointerup',handlePointerUp);
+  window.addEventListener('pointercancel',handlePointerCancel);
+  return()=>{window.removeEventListener('pointermove',handlePointerMove);window.removeEventListener('pointerup',handlePointerUp);window.removeEventListener('pointercancel',handlePointerCancel);};
+ },[hasTaskDrag]);
 
  const rescheduleTask=(projectId:string,next:Task):string|null=>{
   if(!workspace)return '目前沒有可編輯的工作區。';
@@ -330,7 +395,7 @@ export default function App(){
   if(task.status==='completed'){setNotice('已完成 Task 不可修改。');return;}
   setEditingTask({projectId,task});
  };
- return <div className="app">
+ return <div className="app" onClickCapture={event=>{if(suppressTaskClickRef.current){event.preventDefault();event.stopPropagation();suppressTaskClickRef.current=false;}}}>
   <header>
    <div className="brand"><span className="brandmark">容</span><div><b>Capacity Gantt</b><small>本機容量工作台</small></div></div>
    <div className="header-actions">
@@ -351,13 +416,14 @@ export default function App(){
     </div>
     {workspace.projects.length===0?<div className="empty-projects"><p>目前還沒有 Project。</p><button className="primary" onClick={addProject}>＋ 建立第一個 Project</button></div>:<div className="project-panels">{workspace.projects.map(project=>{
      const projectAllocations=workspace.allocations.filter(allocation=>project.tasks.some(task=>task.id===allocation.taskId));
-     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} timelineZoom={timelineZoom} allocationMode={allocationMode} timelineScrollLeft={timelineScrollLeft} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id,'backlog')} onAddGanttTask={()=>addTask(project.id,'gantt')} onEditTask={task=>editTask(project.id,task)} onReorderTasks={(sourceTaskId,targetTaskId)=>reorderTasks(project.id,sourceTaskId,targetTaskId)} onAdjustAllocation={(taskId,date,delta)=>{const error=adjustAllocationDay(project.id,taskId,date,delta);if(error)setNotice(error);}} onScheduleAtDate={(taskId,date)=>scheduleTaskAtDate(project.id,taskId,date)} onMoveToBacklog={taskId=>moveTaskToBacklog(project.id,taskId)} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={value=>setTimelineZoom(timelineZoomPreset(value))} onZoomChange={setTimelineZoom} onTimelineScroll={setTimelineScrollLeft} onChangeDates={next=>{
+     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} timelineZoom={timelineZoom} allocationMode={allocationMode} timelineScrollLeft={timelineScrollLeft} taskDrag={taskDrag} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id,'backlog')} onAddGanttTask={()=>addTask(project.id,'gantt')} onEditTask={task=>editTask(project.id,task)} onBeginTaskDrag={beginTaskDrag} onTaskDropTarget={updateTaskDropTarget} onReorderTasks={(sourceTaskId,targetTaskId)=>reorderTasks(project.id,sourceTaskId,targetTaskId)} onAdjustAllocation={(taskId,date,delta)=>{const error=adjustAllocationDay(project.id,taskId,date,delta);if(error)setNotice(error);}} onScheduleAtDate={(taskId,date)=>scheduleTaskAtDate(project.id,taskId,date)} onMoveToBacklog={taskId=>moveTaskToBacklog(project.id,taskId)} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={value=>setTimelineZoom(timelineZoomPreset(value))} onZoomChange={setTimelineZoom} onTimelineScroll={setTimelineScrollLeft} onChangeDates={next=>{
       const error=rescheduleTask(project.id,next);
       if(error)setNotice(error);
      }}/>
     })}</div>}
    </section>
   </main>
+  {taskDrag?.active&&<div className="task-drag-layer" style={{left:taskDrag.x+12,top:taskDrag.y+12}}><TaskCard task={taskDrag.task} variant={taskDrag.origin} allocatedHours={taskDrag.allocatedHours} pendingHours={taskDrag.pendingHours} isGhost/></div>}
   {editingTask&&editingProject&&<TaskDialog task={editingTask.task} allocations={workspace.allocations.filter(allocation=>allocation.taskId===editingTask.task.id)} onClose={()=>setEditingTask(null)} onSave={task=>saveTask(editingTask.projectId,task)} onAutoSchedule={()=>{autoScheduleTask(editingTask.projectId,editingTask.task.id);setEditingTask(null);}}/>}
   {capacityDate&&<CapacityDialog date={capacityDate} capacity={getDailyCapacity(capacityDate,workspace.dailyCapacities)} onClose={()=>setCapacityDate(null)} onSave={saveCapacity}/>}
   <footer>Capacity Gantt · 所有資料皆留在您的瀏覽器 · <button onClick={exportJson}>立即備份</button></footer>
@@ -373,6 +439,7 @@ type ProjectPanelProps={
  timelineZoom:TimelineZoom;
  allocationMode:AllocationMode;
  timelineScrollLeft:number;
+ taskDrag:TaskDragState|null;
  expanded:boolean;
  onToggle:()=>void;
  onChange:(fn:(value:Project)=>Project)=>void;
@@ -380,6 +447,8 @@ type ProjectPanelProps={
  onAddTask:()=>void;
  onAddGanttTask:()=>void;
  onEditTask:(task:Task)=>void;
+ onBeginTaskDrag:(projectId:string,task:Task,origin:TaskDragOrigin,event:ReactPointerEvent<HTMLElement>,allocatedHours?:number,pendingHours?:number)=>void;
+ onTaskDropTarget:TaskDropTargetHandler;
  onReorderTasks:(sourceTaskId:string,targetTaskId:string)=>void;
  onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;
  onScheduleAtDate:(taskId:string,date:string)=>void;
@@ -392,7 +461,7 @@ type ProjectPanelProps={
  onChangeDates:(task:Task)=>void;
 };
 
-function ProjectPanel({project,allocations,allAllocations,capacities,view,timelineZoom,allocationMode,timelineScrollLeft,expanded,onToggle,onChange,onDelete,onAddTask,onAddGanttTask,onEditTask,onReorderTasks,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDeleteTask,onEditCapacity,onViewChange,onZoomChange,onTimelineScroll,onChangeDates}:ProjectPanelProps){
+function ProjectPanel({project,allocations,allAllocations,capacities,view,timelineZoom,allocationMode,timelineScrollLeft,taskDrag,expanded,onToggle,onChange,onDelete,onAddTask,onAddGanttTask,onEditTask,onBeginTaskDrag,onTaskDropTarget,onReorderTasks,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDeleteTask,onEditCapacity,onViewChange,onZoomChange,onTimelineScroll,onChangeDates}:ProjectPanelProps){
  const allocatedHours=allocations.reduce((sum,item)=>sum+item.allocatedHours,0);
  const backlogTasks=project.tasks.filter(task=>task.status==='backlog').sort((a,b)=>({high:0,medium:1,low:2}[a.priority]-({high:0,medium:1,low:2}[b.priority]))||a.createdAt.localeCompare(b.createdAt));
  const hasPositiveAllocation=(task:Task)=>allocations.some(item=>item.taskId===task.id&&item.allocatedHours>0);
@@ -411,8 +480,8 @@ function ProjectPanel({project,allocations,allAllocations,capacities,view,timeli
   {expanded&&<div className="project-card-content">
    <div className="workspace-title"><div><h2>{project.name}</h2><p>{project.tasks.length} 個 Task · 預估 {getProjectEstimatedHours(project)} 小時</p></div><div className="view-switch" aria-label={`${project.name} 時間檢視`}>{(['day','week','month'] as const).map(value=><button key={value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{value==='day'?'日':value==='week'?'週':'月'}</button>)}</div></div>
    <div className="planning-layout">
-    <Backlog projectId={project.id} tasks={backlogTasks} pendingTasks={pendingTasks} onEdit={onEditTask} onAddTask={onAddTask} onDelete={onDeleteTask} onDropToBacklog={onMoveToBacklog}/>
-    <CapacityGantt projectId={project.id} tasks={scheduledTasks} backlogTasks={[...backlogTasks,...pendingTasks]} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} allocationMode={allocationMode} scrollLeft={timelineScrollLeft} onZoomChange={onZoomChange} onEdit={onEditTask} onAddTask={onAddGanttTask} onReorder={onReorderTasks} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate} onMoveToBacklog={onMoveToBacklog} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onTimelineScroll={onTimelineScroll} onChangeDates={onChangeDates}/>
+    <Backlog projectId={project.id} tasks={backlogTasks} pendingTasks={pendingTasks} draggingTaskId={taskDrag?.projectId===project.id&&taskDrag.active?taskDrag.task.id:null} onEdit={onEditTask} onAddTask={onAddTask} onDelete={onDeleteTask} onDropToBacklog={onMoveToBacklog} onTaskPointerDown={(task,event)=>onBeginTaskDrag(project.id,task,'backlog',event)} onTaskDropTarget={onTaskDropTarget}/>
+    <CapacityGantt projectId={project.id} tasks={scheduledTasks} backlogTasks={[...backlogTasks,...pendingTasks]} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} allocationMode={allocationMode} scrollLeft={timelineScrollLeft} taskDrag={taskDrag} onZoomChange={onZoomChange} onEdit={onEditTask} onAddTask={onAddGanttTask} onBeginTaskDrag={(task,event,allocatedHours,pendingHours)=>onBeginTaskDrag(project.id,task,'gantt',event,allocatedHours,pendingHours)} onTaskDropTarget={onTaskDropTarget} onReorder={onReorderTasks} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate} onMoveToBacklog={onMoveToBacklog} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onTimelineScroll={onTimelineScroll} onChangeDates={onChangeDates}/>
    </div>
   </div>}
  </article>;
@@ -422,13 +491,7 @@ function taskTransferData(projectId:string,taskId:string){
  return JSON.stringify({projectId,taskId});
 }
 
-function TaskCard({projectId,task,onEdit,onDelete,onDragStart}:{projectId:string;task:Task;onEdit:(task:Task)=>void;onDelete:(taskId:string)=>void;onDragStart:(task:Task)=>void}){
- return <article className="backlog-item task-card" draggable onDragStart={event=>{event.dataTransfer.setData('application/x-gantt-task',taskTransferData(projectId,task.id));event.dataTransfer.effectAllowed='move';event.dataTransfer.setDragImage?.(event.currentTarget,12,12);onDragStart(task);}} onClick={()=>onEdit(task)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onEdit(task);}}} tabIndex={0}>
-  <div><b>{task.name}</b><span><em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> · 預估 {task.estimatedHours}h</span></div><button className="task-card-delete" type="button" aria-label={`刪除 ${task.name}`} onClick={event=>{event.stopPropagation();onDelete(task.id);}}>×</button>
- </article>;
-}
-
-function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDelete,onDropToBacklog}:{projectId:string;tasks:Task[];pendingTasks:Task[];onEdit:(task:Task)=>void;onAddTask:()=>void;onDelete:(taskId:string)=>void;onDropToBacklog:(taskId:string)=>void}){
+function Backlog({projectId,tasks,pendingTasks,draggingTaskId,onEdit,onAddTask,onDelete,onDropToBacklog,onTaskPointerDown,onTaskDropTarget}:{projectId:string;tasks:Task[];pendingTasks:Task[];draggingTaskId:string|null;onEdit:(task:Task)=>void;onAddTask:()=>void;onDelete:(taskId:string)=>void;onDropToBacklog:(taskId:string)=>void;onTaskPointerDown:(task:Task,event:ReactPointerEvent<HTMLElement>)=>void;onTaskDropTarget:TaskDropTargetHandler}){
  const readTransfer=(event:DragEvent<HTMLElement>)=>{
   try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};}catch{return null;}
  };
@@ -438,11 +501,15 @@ function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDelete,onDropT
   if(value?.projectId===projectId)onDropToBacklog(value.taskId);
  };
  const handleDragOver=(event:React.DragEvent)=>{event.preventDefault();event.dataTransfer.dropEffect='move';};
- return <aside className="backlog" onDragEnterCapture={handleDragOver} onDragOver={handleDragOver} onDrop={handleDrop}>
+ const handleTaskPointerMove=(event:ReactPointerEvent<HTMLElement>)=>onTaskDropTarget({kind:'backlog',projectId},event.currentTarget);
+ const handleTaskPointerLeave=(event:ReactPointerEvent<HTMLElement>)=>{const related=event.relatedTarget; if(!(related instanceof Node)||!event.currentTarget.contains(related))onTaskDropTarget(null);};
+ const handleNativeDragStart=(event:DragEvent<HTMLElement>,task:Task)=>{event.dataTransfer.setData('application/x-gantt-task',taskTransferData(projectId,task.id));event.dataTransfer.effectAllowed='move';event.dataTransfer.setDragImage?.(event.currentTarget,12,12);};
+ const renderTask=(task:Task)=><TaskCard key={task.id} task={task} variant="backlog" isDragging={draggingTaskId===task.id} onEdit={onEdit} onDelete={onDelete} onPointerDown={event=>onTaskPointerDown(task,event)} onNativeDragStart={handleNativeDragStart}/>;
+ return <aside className="backlog" onPointerMove={handleTaskPointerMove} onPointerLeave={handleTaskPointerLeave} onDragEnterCapture={handleDragOver} onDragOver={handleDragOver} onDrop={handleDrop}>
   <div className="section-heading"><div><h2>Backlog</h2><small>{tasks.length} 個待排程 Task</small></div></div>
   {tasks.length===0&&<div className="empty">把 Gantt Task 拖回這裡，或從下方新增 Task。</div>}
-  <div className="backlog-list">{tasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDelete={onDelete} onDragStart={()=>undefined}/>)}<button className="add-task-row" type="button" aria-label="Backlog 新增 Task" onClick={onAddTask}>＋ 新增 Task</button></div>
-  {pendingTasks.length>0&&<div className="pending-tray"><div className="section-heading"><div><h3>待處理</h3><small>尚未安排工時的 Gantt Task</small></div></div><div className="backlog-list">{pendingTasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDelete={onDelete} onDragStart={()=>undefined}/>)}</div></div>}
+  <div className="backlog-list">{tasks.map(renderTask)}<button className="add-task-row" type="button" aria-label="Backlog 新增 Task" onClick={onAddTask}>＋ 新增 Task</button></div>
+  {pendingTasks.length>0&&<div className="pending-tray"><div className="section-heading"><div><h3>待處理</h3><small>尚未安排工時的 Gantt Task</small></div></div><div className="backlog-list">{pendingTasks.map(renderTask)}</div></div>}
  </aside>;
 }
 
