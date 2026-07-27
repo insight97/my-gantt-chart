@@ -403,6 +403,30 @@ describe('Project arrangement',()=>{
   await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['既有 Task','新加入 Task']));
  });
 
+ it('initializes Backlog drags with the same move preview as Gantt drags',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
+
+  const card=document.querySelector('.backlog .task-card') as HTMLElement;
+  const dataTransfer={effectAllowed:'',dropEffect:'',setData:vi.fn(),setDragImage:vi.fn()};
+  fireEvent.dragStart(card,{dataTransfer});
+
+  expect(dataTransfer.effectAllowed).toBe('move');
+  expect(dataTransfer.setDragImage).toHaveBeenCalledWith(card,12,12);
+ });
+
+ it('keeps the Backlog drop cursor in move mode while entering Backlog',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const backlog=document.querySelector('.backlog') as HTMLElement;
+  const dataTransfer={dropEffect:'copy',types:['application/x-gantt-task']};
+  fireEvent.dragEnter(backlog,{dataTransfer});
+  expect(dataTransfer.dropEffect).toBe('move');
+ });
+
  it('shows start and end dates in Task details',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
   render(<App/>);
