@@ -493,6 +493,86 @@ describe('Project arrangement',()=>{
   expect(dataTransfer.dropEffect).toBe('move');
  });
 
+ it('renders each Gantt Task as one integrated card',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const card=document.querySelector('.task-card-gantt') as HTMLElement;
+  expect(card).toBeInTheDocument();
+  expect(card.querySelector('.task-card-info')).toBeInTheDocument();
+  expect(card.querySelector('.task-card-hours')).toBeInTheDocument();
+  expect(card.querySelector('.task-card-actions')).toBeInTheDocument();
+  expect(card.querySelector('.row-actions')).not.toBeInTheDocument();
+  expect(card).toHaveAttribute('draggable','false');
+ });
+
+ it('moves a Backlog card into Gantt with a pointer ghost and placeholder',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
+
+  const card=document.querySelector('.backlog .task-card') as HTMLElement;
+  const sidebar=document.querySelector('.gantt-sidebar') as HTMLElement;
+  fireEvent.pointerDown(card,{button:0,clientX:10,clientY:10,pointerId:1});
+  fireEvent.pointerMove(sidebar,{clientX:40,clientY:40,pointerId:1});
+  expect(document.querySelector('.task-drag-layer')).toBeInTheDocument();
+  expect(card).toHaveClass('dragging-source');
+  fireEvent.pointerMove(sidebar,{clientX:42,clientY:42,pointerId:1});
+  fireEvent.pointerUp(sidebar,{clientX:42,clientY:42,pointerId:1});
+
+  await waitFor(()=>expect(document.querySelector('.gantt-sidebar .task-card-gantt')).toHaveTextContent('待排 Task'));
+  expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
+ });
+
+ it('moves a Gantt card back to Backlog with the same pointer drag',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const card=document.querySelector('.task-card-gantt') as HTMLElement;
+  const backlog=document.querySelector('.backlog') as HTMLElement;
+  fireEvent.pointerDown(card,{button:0,clientX:100,clientY:100,pointerId:1});
+  fireEvent.pointerMove(backlog,{clientX:80,clientY:100,pointerId:1});
+  fireEvent.pointerMove(backlog,{clientX:82,clientY:102,pointerId:1});
+  fireEvent.pointerUp(backlog,{clientX:82,clientY:102,pointerId:1});
+
+  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).toHaveTextContent('這是一個很長的任務標題需要在窄欄位省略'));
+  expect(document.querySelector('.task-card-gantt')).not.toBeInTheDocument();
+ });
+
+ it('inserts a Gantt card at a row with the same pointer drag',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(reorderWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const rows=document.querySelectorAll('.gantt-side-row');
+  const source=rows[2].querySelector('.task-card-gantt') as HTMLElement;
+  const target=rows[0] as HTMLElement;
+  fireEvent.pointerDown(source,{button:0,clientX:120,clientY:120,pointerId:1});
+  fireEvent.pointerMove(target,{clientX:80,clientY:80,pointerId:1});
+  fireEvent.pointerMove(target,{clientX:82,clientY:82,pointerId:1});
+  fireEvent.pointerUp(target,{clientX:82,clientY:82,pointerId:1});
+
+  await waitFor(()=>expect(Array.from(document.querySelectorAll('.task-card-gantt .task-card-info b')).map(item=>item.textContent)).toEqual(['最後 Task','第一個 Task','中間 Task']));
+ });
+
+ it('previews a Backlog card while pointer dragging it across the timeline',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
+
+  const card=document.querySelector('.backlog .task-card') as HTMLElement;
+  const timeline=document.querySelector('.timeline') as HTMLElement;
+  fireEvent.pointerDown(card,{button:0,clientX:10,clientY:10,pointerId:1});
+  fireEvent.pointerMove(timeline,{clientX:100,clientY:100,pointerId:1});
+  fireEvent.pointerMove(timeline,{clientX:102,clientY:102,pointerId:1});
+
+  expect(document.querySelector('.task-drag-layer')).toBeInTheDocument();
+  expect(document.querySelector('.drop-preview')).toHaveTextContent('待排 Task');
+  fireEvent.pointerUp(timeline,{clientX:102,clientY:102,pointerId:1});
+ });
+
  it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
   render(<App/>);
