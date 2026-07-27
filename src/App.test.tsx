@@ -47,4 +47,26 @@ describe('Project arrangement',()=>{
   expect(screen.getByRole('button',{name:'展開 Alpha Project'})).toHaveAttribute('aria-expanded','false');
   expect(screen.getByRole('button',{name:'展開 Beta Project'})).toHaveAttribute('aria-expanded','false');
  });
+
+ it('changes the Gantt timeline scale for day, week, and month views',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const timeline=document.querySelector('.timeline-grid') as HTMLElement;
+  expect(timeline.style.getPropertyValue('--scale')).toBe('64px');
+
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('96px'));
+  const dayLabels=Array.from(document.querySelectorAll('.capacity-date b')).map(item=>item.textContent);
+
+  fireEvent.click(screen.getByRole('button',{name:'週'}));
+  await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('64px'));
+  const weekLabels=Array.from(document.querySelectorAll('.capacity-date b')).map(item=>item.textContent);
+  expect(weekLabels).not.toEqual(dayLabels);
+
+  fireEvent.click(screen.getByRole('button',{name:'月'}));
+  await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('40px'));
+  const monthLabels=Array.from(document.querySelectorAll('.capacity-date b')).map(item=>item.textContent);
+  expect(monthLabels).not.toEqual(weekLabels);
+ });
 });
