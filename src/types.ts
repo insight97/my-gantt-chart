@@ -1,3 +1,8 @@
+// Schema version of WorkspaceData/ExportFile. The one place a future field addition
+// that isn't safely defaultable bumps — db.ts's migrateWorkspace and data.ts's
+// validation import it instead of each holding their own copy of the number.
+export const CURRENT_WORKSPACE_VERSION = 2;
+
 export type ViewMode = 'day' | 'week' | 'month';
 export type AllocationMode = 'general' | 'allocate';
 export type AllocationStrategy = 'fastest' | 'balanced';
@@ -48,7 +53,7 @@ export interface Allocation {
 }
 
 export interface WorkspaceData {
-  version: 2;
+  version: typeof CURRENT_WORKSPACE_VERSION;
   projects: Project[];
   dailyCapacities: DailyCapacity[];
   allocations: Allocation[];

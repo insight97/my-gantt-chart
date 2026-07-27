@@ -1,6 +1,7 @@
 import type {
   Allocation,
   AllocationStrategy,
+  DailyCapacity,
   ExportFile,
   Project,
   Task,
@@ -8,6 +9,7 @@ import type {
   ViewMode,
   WorkspaceData,
 } from './types';
+import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, datesBetween, defaultDailyCapacity, today } from './capacity';
 import { priorityOrder } from './formatters';
 
@@ -65,7 +67,7 @@ export function sampleWorkspace(): WorkspaceData {
   const start = offsetDate(-2);
   const project = sampleProject();
   return {
-    version: 2,
+    version: CURRENT_WORKSPACE_VERSION,
     projects: [project],
     dailyCapacities: datesBetween(start, offsetDate(45)).map(date => defaultDailyCapacity(date)),
     allocations: [],
@@ -85,6 +87,9 @@ const isPriority = (value: unknown): value is TaskPriority =>
 const isAllocationStrategy = (value: unknown): value is AllocationStrategy =>
   typeof value === 'string' && allocationStrategies.has(value);
 
+// Assumes `value` has already gone through db.ts's migrateWorkspace, which is the
+// only place that fills in fields added since the schema was first shaped — so every
+// field here is required, not optionally undefined.
 function validTask(value: unknown): value is Task {
   if (!value || typeof value !== 'object') return false;
   const task = value as Partial<Task>;
@@ -93,13 +98,12 @@ function validTask(value: unknown): value is Task {
     typeof task.name === 'string' &&
     isNullableDate(task.start) &&
     isNullableDate(task.end) &&
-    (typeof task.deadline === 'undefined' || isNullableDate(task.deadline)) &&
+    isNullableDate(task.deadline) &&
     typeof task.estimatedHours === 'number' &&
     Number.isFinite(task.estimatedHours) &&
-    (typeof task.allocationStrategy === 'undefined' ||
-      isAllocationStrategy(task.allocationStrategy)) &&
-    (typeof task.priority === 'undefined' || isPriority(task.priority)) &&
     task.estimatedHours >= 0 &&
+    isAllocationStrategy(task.allocationStrategy) &&
+    isPriority(task.priority) &&
     typeof task.status === 'string' &&
     statuses.has(task.status) &&
     typeof task.createdAt === 'string' &&
@@ -121,50 +125,73 @@ function validProject(value: unknown): value is Project {
   );
 }
 
+function validCapacity(value: unknown): value is DailyCapacity {
+  if (!value || typeof value !== 'object') return false;
+  const capacity = value as Record<string, unknown>;
+  return (
+    isDate(capacity.date) &&
+    typeof capacity.totalCapacityHours === 'number' &&
+    capacity.totalCapacityHours >= 0 &&
+    typeof capacity.unavailableHours === 'number' &&
+    capacity.unavailableHours >= 0 &&
+    typeof capacity.availableHours === 'number'
+  );
+}
+
+function validAllocation(value: unknown): value is Allocation {
+  if (!value || typeof value !== 'object') return false;
+  const allocation = value as Record<string, unknown>;
+  return (
+    typeof allocation.id === 'string' &&
+    typeof allocation.taskId === 'string' &&
+    isDate(allocation.date) &&
+    typeof allocation.allocatedHours === 'number' &&
+    Number.isFinite(allocation.allocatedHours) &&
+    allocation.allocatedHours >= 0 &&
+    typeof allocation.source === 'string' &&
+    sources.has(allocation.source) &&
+    typeof allocation.locked === 'boolean' &&
+    (allocation.source !== 'automatic' || allocation.allocatedHours > 0)
+  );
+}
+
+/** Strict structural check of the current shape — call after db.ts's migrateWorkspace. */
+export function validWorkspaceData(value: unknown): value is WorkspaceData {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Partial<WorkspaceData>;
+  return (
+    data.version === CURRENT_WORKSPACE_VERSION &&
+    Array.isArray(data.projects) &&
+    data.projects.every(validProject) &&
+    Array.isArray(data.dailyCapacities) &&
+    data.dailyCapacities.every(validCapacity) &&
+    Array.isArray(data.allocations) &&
+    data.allocations.every(validAllocation)
+  );
+}
+
+/**
+ * Gates whether a raw imported file is worth migrating at all: the export envelope
+ * (schema tag, current version, timestamp) plus enough shape to migrate safely
+ * without throwing. Field-level strictness is `validWorkspaceData`'s job, run after
+ * migrateWorkspace has had a chance to fill in defaults for older exports.
+ */
 export function validateImport(value: unknown): value is ExportFile {
   if (!value || typeof value !== 'object') return false;
-  const file = value as Partial<ExportFile>;
-  if (
-    file.schema !== 'gantt-capacity-local' ||
-    file.version !== 2 ||
-    typeof file.exportedAt !== 'string'
-  )
-    return false;
-  if (!Array.isArray(file.projects) || !file.projects.every(validProject)) return false;
-  if (
-    !Array.isArray(file.dailyCapacities) ||
-    !file.dailyCapacities.every(capacity => {
-      if (!capacity || typeof capacity !== 'object') return false;
-      const value = capacity as unknown as Record<string, unknown>;
-      return (
-        isDate(value.date) &&
-        typeof value.totalCapacityHours === 'number' &&
-        value.totalCapacityHours >= 0 &&
-        typeof value.unavailableHours === 'number' &&
-        value.unavailableHours >= 0 &&
-        typeof value.availableHours === 'number'
-      );
-    })
-  )
-    return false;
+  const file = value as Record<string, unknown>;
   return (
-    Array.isArray(file.allocations) &&
-    file.allocations.every(allocation => {
-      if (!allocation || typeof allocation !== 'object') return false;
-      const value = allocation as unknown as Record<string, unknown>;
-      return (
-        typeof value.id === 'string' &&
-        typeof value.taskId === 'string' &&
-        isDate(value.date) &&
-        typeof value.allocatedHours === 'number' &&
-        Number.isFinite(value.allocatedHours) &&
-        value.allocatedHours >= 0 &&
-        typeof value.source === 'string' &&
-        sources.has(value.source) &&
-        typeof value.locked === 'boolean' &&
-        (value.source !== 'automatic' || value.allocatedHours > 0)
-      );
-    })
+    file.schema === 'gantt-capacity-local' &&
+    file.version === CURRENT_WORKSPACE_VERSION &&
+    typeof file.exportedAt === 'string' &&
+    Array.isArray(file.projects) &&
+    file.projects.every(
+      project =>
+        Boolean(project) &&
+        typeof project === 'object' &&
+        Array.isArray((project as Record<string, unknown>).tasks),
+    ) &&
+    Array.isArray(file.dailyCapacities) &&
+    Array.isArray(file.allocations)
   );
 }
 
