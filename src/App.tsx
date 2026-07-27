@@ -160,9 +160,11 @@ export default function App(){
   });
  };
 
- const addTask=(projectId:string)=>{
+ const addTask=(projectId:string,entryPoint:'backlog'|'gantt'='backlog')=>{
   if(!workspace||!workspace.projects.some(project=>project.id===projectId))return;
-  setEditingTask({projectId,task:emptyTask()});
+  const task=emptyTask();
+  if(entryPoint==='gantt')task.status='scheduled';
+  setEditingTask({projectId,task});
  };
 
  const saveTask=(projectId:string,draft:Task):string|null=>{
@@ -349,7 +351,7 @@ export default function App(){
     </div>
     {workspace.projects.length===0?<div className="empty-projects"><p>目前還沒有 Project。</p><button className="primary" onClick={addProject}>＋ 建立第一個 Project</button></div>:<div className="project-panels">{workspace.projects.map(project=>{
      const projectAllocations=workspace.allocations.filter(allocation=>project.tasks.some(task=>task.id===allocation.taskId));
-     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} timelineZoom={timelineZoom} allocationMode={allocationMode} timelineScrollLeft={timelineScrollLeft} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id)} onEditTask={task=>editTask(project.id,task)} onReorderTasks={(sourceTaskId,targetTaskId)=>reorderTasks(project.id,sourceTaskId,targetTaskId)} onAdjustAllocation={(taskId,date,delta)=>{const error=adjustAllocationDay(project.id,taskId,date,delta);if(error)setNotice(error);}} onScheduleAtDate={(taskId,date)=>scheduleTaskAtDate(project.id,taskId,date)} onMoveToBacklog={taskId=>moveTaskToBacklog(project.id,taskId)} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={value=>setTimelineZoom(timelineZoomPreset(value))} onZoomChange={setTimelineZoom} onTimelineScroll={setTimelineScrollLeft} onChangeDates={next=>{
+     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} timelineZoom={timelineZoom} allocationMode={allocationMode} timelineScrollLeft={timelineScrollLeft} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id,'backlog')} onAddGanttTask={()=>addTask(project.id,'gantt')} onEditTask={task=>editTask(project.id,task)} onReorderTasks={(sourceTaskId,targetTaskId)=>reorderTasks(project.id,sourceTaskId,targetTaskId)} onAdjustAllocation={(taskId,date,delta)=>{const error=adjustAllocationDay(project.id,taskId,date,delta);if(error)setNotice(error);}} onScheduleAtDate={(taskId,date)=>scheduleTaskAtDate(project.id,taskId,date)} onMoveToBacklog={taskId=>moveTaskToBacklog(project.id,taskId)} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={value=>setTimelineZoom(timelineZoomPreset(value))} onZoomChange={setTimelineZoom} onTimelineScroll={setTimelineScrollLeft} onChangeDates={next=>{
       const error=rescheduleTask(project.id,next);
       if(error)setNotice(error);
      }}/>
@@ -376,6 +378,7 @@ type ProjectPanelProps={
  onChange:(fn:(value:Project)=>Project)=>void;
  onDelete:()=>void;
  onAddTask:()=>void;
+ onAddGanttTask:()=>void;
  onEditTask:(task:Task)=>void;
  onReorderTasks:(sourceTaskId:string,targetTaskId:string)=>void;
  onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;
@@ -389,7 +392,7 @@ type ProjectPanelProps={
  onChangeDates:(task:Task)=>void;
 };
 
-function ProjectPanel({project,allocations,allAllocations,capacities,view,timelineZoom,allocationMode,timelineScrollLeft,expanded,onToggle,onChange,onDelete,onAddTask,onEditTask,onReorderTasks,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDeleteTask,onEditCapacity,onViewChange,onZoomChange,onTimelineScroll,onChangeDates}:ProjectPanelProps){
+function ProjectPanel({project,allocations,allAllocations,capacities,view,timelineZoom,allocationMode,timelineScrollLeft,expanded,onToggle,onChange,onDelete,onAddTask,onAddGanttTask,onEditTask,onReorderTasks,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDeleteTask,onEditCapacity,onViewChange,onZoomChange,onTimelineScroll,onChangeDates}:ProjectPanelProps){
  const allocatedHours=allocations.reduce((sum,item)=>sum+item.allocatedHours,0);
  const backlogTasks=project.tasks.filter(task=>task.status==='backlog').sort((a,b)=>({high:0,medium:1,low:2}[a.priority]-({high:0,medium:1,low:2}[b.priority]))||a.createdAt.localeCompare(b.createdAt));
  const hasPositiveAllocation=(task:Task)=>allocations.some(item=>item.taskId===task.id&&item.allocatedHours>0);
@@ -408,8 +411,8 @@ function ProjectPanel({project,allocations,allAllocations,capacities,view,timeli
   {expanded&&<div className="project-card-content">
    <div className="workspace-title"><div><h2>{project.name}</h2><p>{project.tasks.length} 個 Task · 預估 {getProjectEstimatedHours(project)} 小時</p></div><div className="view-switch" aria-label={`${project.name} 時間檢視`}>{(['day','week','month'] as const).map(value=><button key={value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{value==='day'?'日':value==='week'?'週':'月'}</button>)}</div></div>
    <div className="planning-layout">
-    <Backlog projectId={project.id} tasks={backlogTasks} pendingTasks={pendingTasks} onEdit={onEditTask} onAddTask={onAddTask} onDropToBacklog={onMoveToBacklog}/>
-    <CapacityGantt projectId={project.id} tasks={scheduledTasks} backlogTasks={[...backlogTasks,...pendingTasks]} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} allocationMode={allocationMode} scrollLeft={timelineScrollLeft} onZoomChange={onZoomChange} onEdit={onEditTask} onAddTask={onAddTask} onReorder={onReorderTasks} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate} onMoveToBacklog={onMoveToBacklog} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onTimelineScroll={onTimelineScroll} onChangeDates={onChangeDates}/>
+    <Backlog projectId={project.id} tasks={backlogTasks} pendingTasks={pendingTasks} onEdit={onEditTask} onAddTask={onAddTask} onDelete={onDeleteTask} onDropToBacklog={onMoveToBacklog}/>
+    <CapacityGantt projectId={project.id} tasks={scheduledTasks} backlogTasks={[...backlogTasks,...pendingTasks]} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} allocationMode={allocationMode} scrollLeft={timelineScrollLeft} onZoomChange={onZoomChange} onEdit={onEditTask} onAddTask={onAddGanttTask} onReorder={onReorderTasks} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate} onMoveToBacklog={onMoveToBacklog} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onTimelineScroll={onTimelineScroll} onChangeDates={onChangeDates}/>
    </div>
   </div>}
  </article>;
@@ -419,13 +422,13 @@ function taskTransferData(projectId:string,taskId:string){
  return JSON.stringify({projectId,taskId});
 }
 
-function TaskCard({projectId,task,onEdit,onDragStart}:{projectId:string;task:Task;onEdit:(task:Task)=>void;onDragStart:(task:Task)=>void}){
+function TaskCard({projectId,task,onEdit,onDelete,onDragStart}:{projectId:string;task:Task;onEdit:(task:Task)=>void;onDelete:(taskId:string)=>void;onDragStart:(task:Task)=>void}){
  return <article className="backlog-item task-card" draggable onDragStart={event=>{event.dataTransfer.setData('application/x-gantt-task',taskTransferData(projectId,task.id));event.dataTransfer.effectAllowed='move';onDragStart(task);}} onClick={()=>onEdit(task)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onEdit(task);}}} tabIndex={0}>
-  <div><b>{task.name}</b><span><em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> · 預估 {task.estimatedHours}h</span></div>
+  <div><b>{task.name}</b><span><em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> · 預估 {task.estimatedHours}h</span></div><button className="task-card-delete" type="button" aria-label={`刪除 ${task.name}`} onClick={event=>{event.stopPropagation();onDelete(task.id);}}>×</button>
  </article>;
 }
 
-function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDropToBacklog}:{projectId:string;tasks:Task[];pendingTasks:Task[];onEdit:(task:Task)=>void;onAddTask:()=>void;onDropToBacklog:(taskId:string)=>void}){
+function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDelete,onDropToBacklog}:{projectId:string;tasks:Task[];pendingTasks:Task[];onEdit:(task:Task)=>void;onAddTask:()=>void;onDelete:(taskId:string)=>void;onDropToBacklog:(taskId:string)=>void}){
  const readTransfer=(event:DragEvent<HTMLElement>)=>{
   try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};}catch{return null;}
  };
@@ -438,8 +441,8 @@ function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDropToBacklog}
  return <aside className="backlog" onDragOver={handleDragOver} onDrop={handleDrop}>
   <div className="section-heading"><div><h2>Backlog</h2><small>{tasks.length} 個待排程 Task</small></div></div>
   {tasks.length===0&&<div className="empty">把 Gantt Task 拖回這裡，或從下方新增 Task。</div>}
-  <div className="backlog-list">{tasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDragStart={()=>undefined}/>)}<button className="add-task-row" type="button" aria-label="Backlog 新增 Task" onClick={onAddTask}>＋ 新增 Task</button></div>
-  {pendingTasks.length>0&&<div className="pending-tray"><div className="section-heading"><div><h3>待處理</h3><small>尚未安排工時的 Gantt Task</small></div></div><div className="backlog-list">{pendingTasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDragStart={()=>undefined}/>)}</div></div>}
+  <div className="backlog-list">{tasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDelete={onDelete} onDragStart={()=>undefined}/>)}<button className="add-task-row" type="button" aria-label="Backlog 新增 Task" onClick={onAddTask}>＋ 新增 Task</button></div>
+  {pendingTasks.length>0&&<div className="pending-tray"><div className="section-heading"><div><h3>待處理</h3><small>尚未安排工時的 Gantt Task</small></div></div><div className="backlog-list">{pendingTasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDelete={onDelete} onDragStart={()=>undefined}/>)}</div></div>}
  </aside>;
 }
 
