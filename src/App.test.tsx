@@ -58,7 +58,8 @@ orderedWorkspace.projects[0].tasks=[
 const reorderWorkspace:WorkspaceData=structuredClone(workspace);
 reorderWorkspace.projects[0].tasks=[
  {...emptyTask(),id:'first-task',name:'第一個 Task',status:'scheduled',start:'2026-01-01',end:'2026-01-02'},
- {...emptyTask(),id:'second-task',name:'第二個 Task',status:'scheduled',start:'2026-01-03',end:'2026-01-04'},
+ {...emptyTask(),id:'middle-task',name:'中間 Task',status:'scheduled',start:'2026-01-03',end:'2026-01-04'},
+ {...emptyTask(),id:'last-task',name:'最後 Task',status:'scheduled',start:'2026-01-05',end:'2026-01-06'},
 ];
 
 const zeroHourWorkspace:WorkspaceData=structuredClone(workspace);
@@ -70,6 +71,16 @@ allocateWorkspace.projects[0].tasks[0].estimatedHours=16;
 allocateWorkspace.allocations=[
  {id:'allocation-a',taskId:'task-a',date:'2026-01-05',allocatedHours:8,source:'automatic',locked:false},
  {id:'allocation-b',taskId:'task-a',date:'2026-01-06',allocatedHours:8,source:'automatic',locked:false},
+];
+
+const multiAllocateWorkspace:WorkspaceData=structuredClone(workspace);
+multiAllocateWorkspace.projects[0].tasks=[
+ {...emptyTask(),id:'allocate-a',name:'第一個 Allocate Task',estimatedHours:8,status:'scheduled',start:'2026-01-05',end:'2026-01-05'},
+ {...emptyTask(),id:'allocate-b',name:'第二個 Allocate Task',estimatedHours:8,status:'scheduled',start:'2026-01-05',end:'2026-01-05'},
+];
+multiAllocateWorkspace.allocations=[
+ {id:'allocation-a',taskId:'allocate-a',date:'2026-01-05',allocatedHours:8,source:'automatic',locked:false},
+ {id:'allocation-b',taskId:'allocate-b',date:'2026-01-05',allocatedHours:8,source:'automatic',locked:false},
 ];
 
 describe('Project arrangement',()=>{
@@ -125,11 +136,21 @@ describe('Project arrangement',()=>{
   expect(document.querySelector('.timeline-today-marker')).toBeInTheDocument();
  });
 
+ it('opens the timeline at today by default',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  expect((document.querySelector('.timeline') as HTMLElement).scrollLeft).toBeGreaterThan(0);
+ });
+
  it('opens the editor immediately when adding a Task and discards it on cancel',async()=>{
   render(<App/>);
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-  fireEvent.click(screen.getByRole('button',{name:'＋ 新增 Task'}));
+  expect(screen.queryByRole('button',{name:'＋ 新增 Task'})).not.toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Backlog 新增 Task'})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Gantt 新增 Task'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Backlog 新增 Task'}));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'取消'}));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -310,6 +331,14 @@ describe('Project arrangement',()=>{
   expect(document.querySelector('.task-range')).toBeInTheDocument();
  });
 
+ it('does not render an extra empty Gantt row',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  expect((document.querySelector('.timeline-grid') as HTMLElement).style.minHeight).toBe('70px');
+ });
+
  it('keeps a zero-hour scheduled Task visible in Gantt',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(zeroHourWorkspace));
   render(<App/>);
@@ -379,23 +408,23 @@ describe('Project arrangement',()=>{
   expect(document.querySelector('.task-range')).toBeInTheDocument();
  });
 
- it('swaps Gantt Task positions by dragging one row onto another',async()=>{
+ it('inserts a Gantt Task at the dropped row instead of swapping',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(reorderWorkspace));
   render(<App/>);
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
   const rows=document.querySelectorAll('.gantt-side-row');
-  const first=rows[0].querySelector('.task-link') as HTMLElement;
-  const second=rows[1] as HTMLElement;
+  const last=rows[2].querySelector('.task-link') as HTMLElement;
+  const first=rows[0] as HTMLElement;
   const dataTransfer={
    effectAllowed:'',
    dropEffect:'',
    setData:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-reorder'?JSON.stringify({projectId:'project-a',taskId:'first-task'}):''),
+   getData:vi.fn((type:string)=>type==='application/x-gantt-reorder'?JSON.stringify({projectId:'project-a',taskId:'last-task'}):''),
   };
-  fireEvent.dragStart(first,{dataTransfer});
-  fireEvent.drop(second,{dataTransfer});
-  await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['第二個 Task','第一個 Task']));
+  fireEvent.dragStart(last,{dataTransfer});
+  fireEvent.drop(first,{dataTransfer});
+  await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['最後 Task','第一個 Task','中間 Task']));
  });
 
  it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{
@@ -438,6 +467,42 @@ describe('Project arrangement',()=>{
   fireEvent.drop(timeline,{dataTransfer,clientX:20});
   await waitFor(()=>expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument());
   expect(document.querySelector('.gantt-side-row')).toBeInTheDocument();
+ });
+
+ it('drops a Backlog Task onto a Gantt row and appends it with a default interval',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(orderedWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('新加入 Task')).toBeInTheDocument());
+
+  const card=document.querySelector('.backlog .task-card') as HTMLElement;
+  const row=document.querySelector('.gantt-side-row') as HTMLElement;
+  const dataTransfer={
+   effectAllowed:'',
+   dropEffect:'',
+   setData:vi.fn(),
+   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
+  };
+  fireEvent.dragStart(card,{dataTransfer});
+  fireEvent.drop(row,{dataTransfer});
+  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument());
+  expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['既有 Task','新加入 Task']);
+ });
+
+ it('changes allocation hours only for the clicked Task',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(multiAllocateWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole('button',{name:'Allocate 模式'}));
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  const rows=document.querySelectorAll('.timeline-row');
+  const firstCell=rows[0].querySelector('.allocation-cell.has-hours') as HTMLElement;
+  expect(firstCell).toHaveTextContent('8h');
+  expect(rows[1].querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h');
+
+  fireEvent.click(firstCell);
+  await waitFor(()=>expect(rows[0].querySelector('.allocation-cell.has-hours')).toHaveTextContent('9h'));
+  expect(rows[1].querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h');
  });
 
  it('shows a ghost preview while dragging a Backlog Task over Gantt',async()=>{
