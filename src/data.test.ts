@@ -7,7 +7,7 @@ import {
  recalculateAutomaticAllocations,
  validateTaskDateRange,
 } from './capacity';
-import {addDays,datesBetween,emptyTask,validateImport} from './data';
+import {addDays,applyTaskDrag,datesBetween,emptyTask,validateImport} from './data';
 import type {Allocation,DailyCapacity,Project,Task} from './types';
 
 const capacity=(date:string,total=8,unavailable=0):DailyCapacity=>({
@@ -107,6 +107,12 @@ describe('資料工具',()=>{
  it('新 Task 預設為沒有日期的 backlog',()=>{
   const value=emptyTask();
   expect(value).toMatchObject({start:null,end:null,estimatedHours:8,status:'backlog'});
+ });
+
+ it('週／月拖曳會依目前時間軸層級移動',()=>{
+  const value=task({id:'drag',start:'2026-01-31',end:'2026-02-15'});
+  expect(applyTaskDrag(value,'move',1,'week')).toMatchObject({start:'2026-02-07',end:'2026-02-22'});
+  expect(applyTaskDrag(value,'move',1,'month')).toMatchObject({start:'2026-02-28',end:'2026-03-15'});
  });
 
  it('拒絕舊版格式並接受完整的新空備份',()=>{

@@ -65,7 +65,7 @@ describe('Project arrangement',()=>{
   expect(screen.getByRole('button',{name:'展開 Beta Project'})).toHaveAttribute('aria-expanded','false');
  });
 
- it('changes the Gantt timeline scale for day, week, and month views',async()=>{
+ it('uses day, week, and month as semantic zoom presets',async()=>{
   render(<App/>);
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
@@ -127,13 +127,15 @@ describe('Project arrangement',()=>{
   expect(wheelEvent.defaultPrevented).toBe(true);
   await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeGreaterThan(64));
   const weekZoomedScale=Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10);
+  expect(timeline.getAttribute('data-view')).toBe('week');
 
   fireEvent.click(screen.getByRole('button',{name:'月'}));
   await waitFor(()=>expect(timelineGrid.style.getPropertyValue('--scale')).toBe('40px'));
   fireEvent.click(screen.getByRole('button',{name:'日'}));
   await waitFor(()=>expect(timelineGrid.style.getPropertyValue('--scale')).toBe('96px'));
   fireEvent.click(screen.getByRole('button',{name:'週'}));
-  await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBe(weekZoomedScale));
+  await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBe(64));
+  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).not.toBe(weekZoomedScale);
 
   timeline.scrollLeft=0;
   fireEvent.pointerDown(timeline,{button:0,clientX:200,pointerId:1});
@@ -151,18 +153,38 @@ describe('Project arrangement',()=>{
   fireEvent.click(screen.getByRole('button',{name:'日'}));
   const timeline=document.querySelector('.timeline') as HTMLElement;
   const timelineGrid=document.querySelector('.timeline-grid') as HTMLElement;
-  for(let index=0;index<24;index+=1){
+  for(let index=0;index<20;index+=1){
+   const currentView=timeline.getAttribute('data-view');
+   const currentScale=Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10);
+   if(currentView!=='day'||currentScale<24)break;
    const event=createEvent.wheel(timeline,{deltaY:100,clientX:120,bubbles:true,cancelable:true});
    timeline.dispatchEvent(event);
    await waitFor(()=>expect(event.defaultPrevented).toBe(true));
+   await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeLessThan(currentScale));
   }
 
-  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBe(24);
+  expect(timeline.getAttribute('data-view')).toBe('day');
+  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeLessThan(24);
+  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeGreaterThanOrEqual(18);
   expect(Array.from(document.querySelectorAll('.capacity-period b')).some(item=>item.textContent==='1/5')).toBe(true);
   expect(Array.from(document.querySelectorAll('.capacity-period strong')).some(item=>item.textContent==='0/8')).toBe(true);
   const taskLabel=document.querySelector('.range-label') as HTMLElement;
   expect(getComputedStyle(taskLabel).overflow).toBe('hidden');
   expect(getComputedStyle(taskLabel).textOverflow).toBe('ellipsis');
+ });
+
+ it('shares semantic zoom across expanded Projects',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button',{name:'展開 Beta Project'}));
+  const timelines=Array.from(document.querySelectorAll('.timeline')) as HTMLElement[];
+  expect(timelines).toHaveLength(2);
+
+  fireEvent.click(screen.getAllByRole('button',{name:'日'})[0]);
+  await waitFor(()=>expect(timelines.every(timeline=>timeline.dataset.view==='day')).toBe(true));
+  const wheelEvent=createEvent.wheel(timelines[0],{deltaY:100,clientX:120,bubbles:true,cancelable:true});
+  timelines[0].dispatchEvent(wheelEvent);
+  await waitFor(()=>expect(timelines[0].dataset.pixelsPerDay).toBe(timelines[1].dataset.pixelsPerDay));
  });
 
  it('aggregates capacity into non-editable week and month summaries',async()=>{
