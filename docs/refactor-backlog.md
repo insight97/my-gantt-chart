@@ -27,7 +27,9 @@ editing — they drift.
 
 ## 1. Scheduling rules are re-derived at seven call sites
 
-**Highest value. Do this one first.**
+**Highest value. Do this one first.** **Done in PR #31** — `scheduleTaskAt`,
+`setTaskDateRange`, `returnTaskToBacklog`, and `recalculateTaskSchedule` now own this
+in `capacity.ts`; the drop-preview divergence described below is fixed.
 
 `recalculateAutomaticAllocations` (`src/capacity.ts:269`) returns only
 `{allocations, start, end}`. It does not say what the Task becomes. So every caller
@@ -113,7 +115,14 @@ error? Ask the repo owner. Then implement it once:
 
 ## 3. Schema versioning is case-by-case
 
-Three unrelated notions of "version" coexist, and none of them dispatches:
+**Done in PR #32.** `db.ts` now exports `migrateWorkspace(raw: unknown): WorkspaceData`,
+the one place that derives the current shape from stored/imported data; `validTask`
+validates it strictly (no more `typeof x === 'undefined'` bypasses); `types.ts` exports
+`CURRENT_WORKSPACE_VERSION` as the single version literal. IDB's own store-schema
+version (`db.ts`'s `IDB_VERSION`) is left as a genuinely separate concept — it wasn't
+part of the actual problem, just adjacent to it.
+
+Three unrelated notions of "version" coexisted, and none of them dispatched:
 
 - `src/db.ts:6` IDB `VERSION=2`, whose `onupgradeneeded` (`src/db.ts:20-23`) is
   version-agnostic (`if (!contains) create`).

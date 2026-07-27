@@ -2,11 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   emptyTask,
-  normalizeWorkspaceData,
   now,
   partitionProjectTasks,
   uid,
   validateImport,
+  validWorkspaceData,
 } from './data';
 import {
   adjustManualAllocationDay,
@@ -23,7 +23,7 @@ import {
   trimManualAllocationsToEstimate,
   today,
 } from './capacity';
-import { createEmptyWorkspace, loadWorkspace, saveWorkspace } from './db';
+import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } from './db';
 import CapacityGantt from './CapacityGantt';
 import { hourValueLabel, hoursLabel, priorityLabels, weekdayDateLabel } from './formatters';
 import TaskCard from './TaskCard';
@@ -35,6 +35,7 @@ import type {
   TaskDropTargetHandler,
 } from './task-drag';
 import { timelineZoomPreset } from './timeline';
+import { CURRENT_WORKSPACE_VERSION } from './types';
 import type {
   Allocation,
   AllocationMode,
@@ -640,7 +641,7 @@ export default function App() {
     if (!workspace) return;
     const file: ExportFile = {
       schema: 'gantt-capacity-local',
-      version: 2,
+      version: CURRENT_WORKSPACE_VERSION,
       exportedAt: now(),
       projects: workspace.projects,
       dailyCapacities: workspace.dailyCapacities,
@@ -655,11 +656,13 @@ export default function App() {
     event.target.value = '';
     if (!file) return;
     try {
-      const value: unknown = JSON.parse(await file.text());
-      if (!validateImport(value)) throw new Error('檔案格式或版本不正確。');
+      const raw: unknown = JSON.parse(await file.text());
+      if (!validateImport(raw)) throw new Error('檔案格式或版本不正確。');
+      const migrated = migrateWorkspace(raw);
+      if (!validWorkspaceData(migrated)) throw new Error('檔案格式或版本不正確。');
       if (!confirm('匯入會取代目前工作區。請先確認已建立備份。')) return;
-      commit(normalizeWorkspaceData(value));
-      setExpandedProjectIds(new Set(value.projects.slice(0, 1).map(item => item.id)));
+      commit(migrated);
+      setExpandedProjectIds(new Set(migrated.projects.slice(0, 1).map(item => item.id)));
       setNotice('匯入完成。');
     } catch (error) {
       setNotice(error instanceof Error ? `匯入失敗：${error.message}` : '匯入失敗。');

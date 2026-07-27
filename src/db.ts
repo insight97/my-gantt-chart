@@ -1,9 +1,12 @@
 import { normalizeWorkspaceData, now, sampleWorkspace, uid } from './data';
 import { addDays, datesBetween, defaultDailyCapacity, normalizeCapacity, today } from './capacity';
 import type { DailyCapacity, Project, Task, WorkspaceData } from './types';
+import { CURRENT_WORKSPACE_VERSION } from './types';
 
 const DB = 'gantt-local-db';
-const VERSION = 2;
+// IndexedDB's own store-schema version — bumps only when object stores are added or
+// removed. Unrelated to CURRENT_WORKSPACE_VERSION, which versions the JSON payload.
+const IDB_VERSION = 2;
 const WORKSPACE_STORE = 'workspace';
 const LEGACY_STORE = 'projects';
 const WORKSPACE_ID = 'workspace';
@@ -18,7 +21,7 @@ function open() {
   // Saves are debounced on every workspace edit; reuse one connection instead of opening per write.
   if (!connection) {
     connection = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB, VERSION);
+      const request = indexedDB.open(DB, IDB_VERSION);
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains(WORKSPACE_STORE))
           request.result.createObjectStore(WORKSPACE_STORE, { keyPath: 'id' });
@@ -106,25 +109,43 @@ function migrateLegacyProjects(value: unknown): WorkspaceData {
         .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
         .map(migrateProject)
     : [];
-  return { version: 2, projects, dailyCapacities: migrationCapacities(projects), allocations: [] };
+  return {
+    version: CURRENT_WORKSPACE_VERSION,
+    projects,
+    dailyCapacities: migrationCapacities(projects),
+    allocations: [],
+  };
 }
 
-function normalizeWorkspace(value: WorkspaceData): WorkspaceData {
+/**
+ * Brings any stored or imported payload up to the current WorkspaceData shape: the
+ * unversioned pre-workspace project list (the `LEGACY_STORE` format), or a workspace
+ * object that may be missing fields added since it was written. The only place that
+ * derives the next Task/Project shape from raw data, so a future schema version adds
+ * one branch here instead of touching the IDB upgrade, the version literal, and the
+ * validator independently. Never trusts an incoming `version` field — always
+ * re-derives and re-stamps the current one.
+ */
+export function migrateWorkspace(raw: unknown): WorkspaceData {
+  if (Array.isArray(raw)) return migrateLegacyProjects(raw);
+  const value = (raw && typeof raw === 'object' ? raw : {}) as Partial<WorkspaceData>;
   return normalizeWorkspaceData({
-    version: 2,
-    projects: value.projects,
-    dailyCapacities: value.dailyCapacities.map(normalizeCapacity),
-    allocations: value.allocations,
+    version: CURRENT_WORKSPACE_VERSION,
+    projects: Array.isArray(value.projects) ? value.projects : [],
+    dailyCapacities: Array.isArray(value.dailyCapacities)
+      ? value.dailyCapacities.map(normalizeCapacity)
+      : [],
+    allocations: Array.isArray(value.allocations) ? value.allocations : [],
   });
 }
 
 export async function loadWorkspace() {
   const db = await open();
   const stored = await readOne<WorkspaceRecord>(db, WORKSPACE_STORE, WORKSPACE_ID);
-  if (stored) return normalizeWorkspace(stored);
+  if (stored) return migrateWorkspace(stored);
   if (db.objectStoreNames.contains(LEGACY_STORE)) {
     const legacy = await readAll<unknown>(db, LEGACY_STORE);
-    if (legacy.length) return migrateLegacyProjects(legacy);
+    if (legacy.length) return migrateWorkspace(legacy);
   }
   return null;
 }
@@ -135,7 +156,7 @@ export async function saveWorkspace(value: WorkspaceData) {
     const transaction = db.transaction(WORKSPACE_STORE, 'readwrite');
     transaction
       .objectStore(WORKSPACE_STORE)
-      .put({ id: WORKSPACE_ID, ...normalizeWorkspace(value) } satisfies WorkspaceRecord);
+      .put({ id: WORKSPACE_ID, ...migrateWorkspace(value) } satisfies WorkspaceRecord);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
   });
