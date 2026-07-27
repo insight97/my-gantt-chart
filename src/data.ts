@@ -1,19 +1,124 @@
-import type { ExportFile, Project, Task } from './types';
+import type {ExportFile, Project, Task, WorkspaceData} from './types';
+import {addDays as addCapacityDays, datesBetween} from './capacity';
+
 export const uid=()=>crypto.randomUUID();
-const iso=(offset:number)=>{const d=new Date();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)};
-export const emptyTask=():Task=>({id:uid(),name:'新工作',start:iso(0),end:iso(3),progress:0,owner:'',color:'#2f75bb',notes:'',milestone:false,dependencies:[]});
-export const sampleProject=():Project=>{const tasks:Task[]=[
- { ...emptyTask(),id:'sample-discovery',name:'需求探索與訪談',start:iso(-2),end:iso(2),progress:100,owner:'怡君',color:'#2f75bb',notes:'整理利害關係人需求' },
- { ...emptyTask(),id:'sample-design',name:'介面設計',start:iso(1),end:iso(7),progress:65,owner:'子晴',color:'#7456a6',dependencies:['sample-discovery'],notes:'完成桌面與行動版流程' },
- { ...emptyTask(),id:'sample-build',name:'第一版開發',start:iso(6),end:iso(15),progress:30,owner:'家豪',color:'#16866b',dependencies:['sample-design'],notes:'功能開發與整合' },
- { ...emptyTask(),id:'sample-launch',name:'正式上線',start:iso(17),end:iso(17),progress:0,owner:'全員',color:'#d76535',dependencies:['sample-build'],milestone:true,notes:'發佈與檢核' }];
- return {id:uid(),name:'網站改版計畫',description:'可自由編輯的範例專案',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),tasks};};
-export function validateImport(value:unknown): value is ExportFile { if(!value||typeof value!=='object')return false;const v=value as Partial<ExportFile>;if(v.schema!=='gantt-local'||v.version!==1||!Array.isArray(v.projects))return false;return v.projects.every(p=>typeof p?.id==='string'&&typeof p.name==='string'&&Array.isArray(p.tasks)&&p.tasks.every(t=>typeof t?.id==='string'&&typeof t.name==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(t.start)&&/^\d{4}-\d{2}-\d{2}$/.test(t.end)&&typeof t.progress==='number'&&t.progress>=0&&t.progress<=100&&Array.isArray(t.dependencies)));}
-export const daysBetween=(a:string,b:string)=>Math.round((new Date(`${b}T00:00:00Z`).getTime()-new Date(`${a}T00:00:00Z`).getTime())/86400000);
-export const addDays=(date:string,n:number)=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
-export type TaskDragMode='move'|'start'|'end';
-export const applyTaskDrag=(task:Task,mode:TaskDragMode,delta:number)=>{
- if(mode==='move')return {...task,start:addDays(task.start,delta),end:addDays(task.end,delta)};
- if(mode==='start')return {...task,start:delta<=daysBetween(task.start,task.end)?addDays(task.start,delta):task.end};
- return {...task,end:delta>=-daysBetween(task.start,task.end)?addDays(task.end,delta):task.start};
+export const addDays=addCapacityDays;
+export {datesBetween};
+
+const iso=(offset:number)=>addDays(new Date().toISOString().slice(0,10),offset);
+const now=()=>new Date().toISOString();
+
+export const emptyTask=():Task=>({
+ id:uid(),
+ name:'新工作',
+ start:null,
+ end:null,
+ estimatedHours:8,
+ status:'backlog',
+ notes:'',
+ owner:'',
+ color:'#2f75bb',
+ createdAt:now(),
+ updatedAt:now(),
+});
+
+export const sampleProject=():Project=>{
+ const createdAt=now();
+ return {
+  id:uid(),
+  name:'網站改版計畫',
+  description:'Capacity Gantt 範例工作群組',
+  createdAt,
+  updatedAt:createdAt,
+  tasks:[
+   {...emptyTask(),name:'整理需求與訪談',estimatedHours:12},
+   {...emptyTask(),name:'介面設計',start:iso(1),end:iso(4),estimatedHours:20},
+   {...emptyTask(),name:'第一版開發',start:iso(5),end:iso(10),estimatedHours:32},
+  ],
+ };
 };
+
+export function sampleWorkspace():WorkspaceData{
+ const start=iso(-2);
+ const project=sampleProject();
+ return {
+  version:2,
+  projects:[project],
+  dailyCapacities:datesBetween(start,iso(45)).map(date=>({date,totalCapacityHours:8,unavailableHours:0,availableHours:8})),
+  allocations:[],
+ };
+}
+
+const statuses=new Set(['backlog','scheduled','in_progress','completed']);
+const sources=new Set(['automatic','manual']);
+const datePattern=/^\d{4}-\d{2}-\d{2}$/;
+const isDate=(value:unknown):value is string=>typeof value==='string'&&datePattern.test(value);
+const isNullableDate=(value:unknown):value is string|null=>value===null||isDate(value);
+
+function validTask(value:unknown):value is Task{
+ if(!value||typeof value!=='object')return false;
+ const task=value as Partial<Task>;
+ return typeof task.id==='string'
+  &&typeof task.name==='string'
+  &&isNullableDate(task.start)
+  &&isNullableDate(task.end)
+  &&typeof task.estimatedHours==='number'
+  &&Number.isFinite(task.estimatedHours)
+  &&task.estimatedHours>=0
+  &&typeof task.status==='string'
+  &&statuses.has(task.status)
+  &&typeof task.createdAt==='string'
+  &&typeof task.updatedAt==='string';
+}
+
+function validProject(value:unknown):value is Project{
+ if(!value||typeof value!=='object')return false;
+ const project=value as Partial<Project>;
+ return typeof project.id==='string'
+  &&typeof project.name==='string'
+  &&typeof project.description==='string'
+  &&typeof project.createdAt==='string'
+  &&typeof project.updatedAt==='string'
+  &&Array.isArray(project.tasks)
+  &&project.tasks.every(validTask);
+}
+
+export function validateImport(value:unknown):value is ExportFile{
+ if(!value||typeof value!=='object')return false;
+ const file=value as Partial<ExportFile>;
+ if(file.schema!=='gantt-capacity-local'||file.version!==2||typeof file.exportedAt!=='string')return false;
+ if(!Array.isArray(file.projects)||!file.projects.every(validProject))return false;
+ if(!Array.isArray(file.dailyCapacities)||!file.dailyCapacities.every(capacity=>{
+  if(!capacity||typeof capacity!=='object')return false;
+  const value=capacity as unknown as Record<string,unknown>;
+  return isDate(value.date)
+   &&typeof value.totalCapacityHours==='number'
+   &&value.totalCapacityHours>=0
+   &&typeof value.unavailableHours==='number'
+   &&value.unavailableHours>=0
+   &&typeof value.availableHours==='number';
+ }))return false;
+ return Array.isArray(file.allocations)&&file.allocations.every(allocation=>{
+  if(!allocation||typeof allocation!=='object')return false;
+  const value=allocation as unknown as Record<string,unknown>;
+  return typeof value.id==='string'
+   &&typeof value.taskId==='string'
+   &&isDate(value.date)
+   &&typeof value.allocatedHours==='number'
+   &&Number.isFinite(value.allocatedHours)
+   &&value.allocatedHours>0
+   &&typeof value.source==='string'
+   &&sources.has(value.source)
+   &&typeof value.locked==='boolean';
+ });
+}
+
+export type TaskDragMode='move'|'start'|'end';
+
+export function applyTaskDrag(task:Task,mode:TaskDragMode,delta:number){
+ if(!task.start||!task.end)return task;
+ if(mode==='move')return {...task,start:addDays(task.start,delta),end:addDays(task.end,delta)};
+ const duration=Math.round((new Date(`${task.end}T00:00:00Z`).getTime()-new Date(`${task.start}T00:00:00Z`).getTime())/86400000);
+ if(mode==='start')return {...task,start:delta<=duration?addDays(task.start,delta):task.end};
+ return {...task,end:delta>=-duration?addDays(task.end,delta):task.start};
+}

@@ -1,16 +1,26 @@
-# 時序 Gantt
+# Capacity Gantt
 
-一套以 React、TypeScript 與 Vite 製作的純前端甘特圖工具。第一個畫面即是工作表與可水平捲動的時間軸，適合在不建立帳號、不傳送資料到伺服器的情況下管理多個專案。
+一套以 React、TypeScript 與 Vite 製作的本機容量規劃工具。它不是以傳統專案進度為中心，而是協助使用者回答：
 
-線上使用：[GitHub Pages](https://insight97.github.io/my-gantt-chart/)
+> 目前的可用容量，是否足以承擔這些 Task？
 
-## 功能
+## 核心概念
 
-- 多專案與完整工作欄位（日期、進度、負責人、顏色、備註、里程碑、相依關係）
-- 新增、編輯、刪除、複製、排序，以及直接拖曳時間軸工作以平移日期
-- 日／週／月顯示、PNG、SVG、CSV 與列印／PDF 輸出
-- Undo／Redo（亦支援 `Ctrl/⌘ + Z`）、手動 JSON 快照與刪除前備份提醒
-- 響應式繁體中文介面、鍵盤焦點與語意化標籤
+- **Project**：一組需要被追蹤的承諾或工作群組。
+- **Task**：Project 底下可估時、可分配與可完成的工作項目。
+- **Backlog**：尚未產生 Allocation 的 Task；可以沒有日期。
+- **Daily Capacity**：每天的總容量、不可用時間與可用容量。
+- **Allocation**：Task 在特定日期上的工時，可由使用者指定或系統自動產生。
+- **Capacity Gantt**：同時呈現 Task 日期範圍、每日 Allocation 與每日剩餘容量。
+
+## Allocation 規則
+
+- 新增 Task 預設為 Backlog，預估工時預設為 8 小時，日期可留空。
+- 有完整日期範圍時，Automatic Allocation 會平均分配到仍有剩餘容量的日期。
+- 沒有完整日期範圍時，Automatic Allocation 從今天往後逐日分配，並自動推導 Task 日期。
+- Manual Allocation 必須被保留；Task 日期範圍不可排除既有 Manual Allocation。
+- 容量不足時仍允許分配，但會顯示超載警告。
+- 本階段不做跨 Task 的自動排程、相依關係推理或全域重新排序。
 
 ## 本機開發
 
@@ -32,14 +42,8 @@ npm run preview
 
 ## 資料保存與備份
 
-專案會自動寫入目前瀏覽器的 **IndexedDB**；日／週／月偏好存於 **localStorage**。資料不會同步至雲端，無痕模式、清除網站資料、重設瀏覽器或更換裝置都可能造成遺失，請定期按「建立快照」下載 JSON。
+工作區會自動保存到目前瀏覽器的 **IndexedDB**；日／週／月檢視偏好存於 **localStorage**。資料不會同步到雲端，清除網站資料、無痕模式或更換裝置都可能造成遺失，請定期建立 JSON 備份。
 
-匯出的 JSON 使用 `gantt-local` schema 與版本號。匯入會驗證必要欄位、日期、進度與版本，驗證成功後仍要求確認；採取**合併**而非覆蓋策略，ID 重複的專案會以「（匯入）」副本加入。CSV 與圖片用於分享或報表，不可作為可還原的完整備份。
+資料存取集中在 [`src/db.ts`](./src/db.ts)，容量與 Allocation 規則集中在 [`src/capacity.ts`](./src/capacity.ts)，React UI 不直接操作 IndexedDB。
 
-## GitHub Pages 部署
-
-Vite 的 `base` 已設為 `/my-gantt-chart/`。`.github/workflows/deploy.yml` 會在 `main` 更新時依序執行 lint、測試、建置並部署 `dist`。請在 GitHub repository 的 **Settings → Pages → Build and deployment** 將 Source 設為 **GitHub Actions**。
-
-網站網址：[https://insight97.github.io/my-gantt-chart/](https://insight97.github.io/my-gantt-chart/)
-
-若 fork 後更改 repository 名稱，請同步修改 `vite.config.ts` 的 `base`。
+目前使用 `gantt-capacity-local` schema version 2。舊版傳統 Gantt 資料會由 IndexedDB 升級流程轉成 Project／Task；舊 Task 沒有預估工時，因此會以 0 小時 Backlog 保留，待使用者補填。
