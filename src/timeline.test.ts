@@ -1,7 +1,9 @@
 import {describe,expect,it} from 'vitest';
+import {daysBetween} from './capacity';
 import {
  buildTimelinePeriods,
  taskRangeGeometry,
+ timelineRange,
  timelinePositionForDate,
  timelineScale,
  timelineZoomPreset,
@@ -42,6 +44,11 @@ describe('語意時間軸',()=>{
   const months=buildTimelinePeriods('2026-07-08','2026-08-20','month');
   expect(weeks[0]).toMatchObject({start:'2026-07-06',end:'2026-07-12'});
   expect(months[0]).toMatchObject({start:'2026-07-01',end:'2026-07-31'});
+ });
+
+ it('keeps a six-month planning horizon even for short task ranges',()=>{
+  const range=timelineRange([task],'day');
+  expect(daysBetween(range.start,range.end)).toBeGreaterThanOrEqual(180);
  });
 
  it('keeps task positions at actual dates inside aggregated periods',()=>{

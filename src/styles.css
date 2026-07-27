@@ -11,3 +11,4 @@
 .timeline-row{background:transparent;border-bottom:1px solid #edf0f2}
 .timeline-row{z-index:1}
 .task-range{z-index:2}
+.timeline-row-separators{position:absolute;inset:0;z-index:3;pointer-events:none;background:repeating-linear-gradient(to bottom,transparent 0,transparent 69px,#dce3e8 69px,#dce3e8 70px)}

@@ -6,6 +6,7 @@ export const TIMELINE_CONTEXT_ROW_HEIGHT=20;
 export const TIMELINE_CAPACITY_ROW_HEIGHT=60;
 export const TIMELINE_MIN_PIXELS_PER_DAY=1.25;
 export const TIMELINE_MAX_PIXELS_PER_DAY=288;
+const MIN_TIMELINE_DAYS=180;
 
 const DAY_TO_WEEK_ENTER=16;
 const DAY_TO_WEEK_EXIT=20;
@@ -152,7 +153,7 @@ export function timelineRange(tasks:Task[],view:ViewMode){
  const max=dated.at(-1)||addDays(min,21);
  const baseStart=addDays(min,-2);
  const requestedEnd=addDays(max,5);
- const minimumEnd=addDays(baseStart,34);
+ const minimumEnd=addDays(baseStart,MIN_TIMELINE_DAYS);
  const end=requestedEnd>minimumEnd?requestedEnd:minimumEnd;
  return {start:periodStart(baseStart,view),end:periodEnd(end,view)};
 }
