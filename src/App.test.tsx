@@ -84,7 +84,7 @@ multiAllocateWorkspace.allocations=[
 ];
 
 describe('Project arrangement',()=>{
- afterEach(()=>cleanup());
+ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
  beforeEach(()=>{
   localStorage.clear();
@@ -154,6 +154,27 @@ describe('Project arrangement',()=>{
   fireEvent.click(screen.getByRole('button',{name:'取消'}));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
+ });
+
+ it('adds a Task from the Gantt list directly into Gantt',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.gantt-sidebar .gantt-add-row') as HTMLElement);
+  fireEvent.change(screen.getByLabelText('Task 名稱'),{target:{value:'Gantt 新增 Task'}});
+  fireEvent.click(screen.getByRole('button',{name:'儲存'}));
+  await waitFor(()=>expect(document.querySelector('.gantt-sidebar .task-link b')).toHaveTextContent('Gantt 新增 Task'));
+  expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
+ });
+
+ it('can delete a Task from the Backlog list',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
+  vi.stubGlobal('confirm',vi.fn(()=>true));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.task-card-delete') as HTMLElement);
+  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument());
  });
 
  it('focuses the Task name field as soon as the editor opens',async()=>{
@@ -435,6 +456,17 @@ describe('Project arrangement',()=>{
   expect(dataTransfer.setDragImage).toHaveBeenCalledWith(last,12,12);
   fireEvent.drop(first,{dataTransfer});
   await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['最後 Task','第一個 Task','中間 Task']));
+ });
+
+ it('keeps the reorder drop cursor in move mode while entering Gantt',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(reorderWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const gantt=document.querySelector('.gantt') as HTMLElement;
+  const dataTransfer={dropEffect:'none',types:['application/x-gantt-reorder']};
+  fireEvent.dragEnter(gantt,{dataTransfer});
+  expect(dataTransfer.dropEffect).toBe('move');
  });
 
  it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{
