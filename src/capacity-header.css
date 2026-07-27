@@ -3,7 +3,7 @@
  height:60px;
 }
 
-.capacity-date {
+.capacity-period {
  display:grid;
  align-content:center;
  justify-items:center;
@@ -11,54 +11,63 @@
  height:60px !important;
  padding:6px 2px !important;
  color:#71808e;
- cursor:pointer;
  overflow:hidden;
  white-space:normal !important;
  text-align:center;
 }
 
-.capacity-date:hover {
+.capacity-period.editable {
+ cursor:pointer;
+}
+
+.capacity-period.editable:hover {
  background:#edf5fa;
  color:#174f7c;
 }
 
-.capacity-date:focus-visible {
+.capacity-period.editable:focus-visible {
  z-index:1;
  outline:3px solid #99c9f2;
  outline-offset:-3px;
 }
 
-.capacity-date b,
-.capacity-date strong {
+.capacity-period b,
+.capacity-period strong,
+.capacity-period small {
  display:block;
  line-height:1.1;
  white-space:nowrap;
 }
 
-.capacity-date b {
+.capacity-period b {
  font-size:10px;
  font-weight:600;
 }
 
-.capacity-date strong {
+.capacity-period strong {
  font-size:10px;
  font-weight:600;
  color:#426074;
 }
 
-.capacity-date.available strong {
+.capacity-period small {
+ font-size:9px;
+ color:var(--muted);
+}
+
+.capacity-period.available strong {
  color:var(--green);
 }
 
-.capacity-date.full {
+.capacity-period.full {
  background:#f3f5f6;
 }
 
-.capacity-date.overloaded {
+.capacity-period.overloaded {
  background:#fff1ec;
  color:#a33d36;
 }
 
-.capacity-date.overloaded strong {
+.capacity-period.overloaded strong {
  color:var(--orange);
 }

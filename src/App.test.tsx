@@ -1,6 +1,6 @@
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {WorkspaceData} from './types';
 
 const {loadWorkspaceMock,saveWorkspaceMock}=vi.hoisted(()=>({
@@ -26,7 +26,19 @@ const workspace:WorkspaceData={
  allocations:[],
 };
 
+const aggregationWorkspace:WorkspaceData={
+ version:2,
+ projects:[
+  {id:'project-a',name:'Alpha Project',description:'第一個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[{id:'task-a',name:'跨週 Task',start:'2026-01-05',end:'2026-01-18',estimatedHours:40,status:'scheduled',notes:'',owner:'',color:'#2f75bb',createdAt:'2026-01-01',updatedAt:'2026-01-01'}]},
+  {id:'project-b',name:'Beta Project',description:'第二個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[]},
+ ],
+ dailyCapacities:[],
+ allocations:[],
+};
+
 describe('Project arrangement',()=>{
+ afterEach(()=>cleanup());
+
  beforeEach(()=>{
   localStorage.clear();
   loadWorkspaceMock.mockResolvedValue(structuredClone(workspace));
@@ -57,16 +69,34 @@ describe('Project arrangement',()=>{
 
   fireEvent.click(screen.getByRole('button',{name:'日'}));
   await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('96px'));
-  const dayLabels=Array.from(document.querySelectorAll('.capacity-date b')).map(item=>item.textContent);
+  const dayLabels=Array.from(document.querySelectorAll('.capacity-period b')).map(item=>item.textContent);
 
   fireEvent.click(screen.getByRole('button',{name:'週'}));
   await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('64px'));
-  const weekLabels=Array.from(document.querySelectorAll('.capacity-date b')).map(item=>item.textContent);
+  const weekLabels=Array.from(document.querySelectorAll('.capacity-period b')).map(item=>item.textContent);
   expect(weekLabels).not.toEqual(dayLabels);
 
   fireEvent.click(screen.getByRole('button',{name:'月'}));
   await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('40px'));
-  const monthLabels=Array.from(document.querySelectorAll('.capacity-date b')).map(item=>item.textContent);
+  const monthLabels=Array.from(document.querySelectorAll('.capacity-period b')).map(item=>item.textContent);
   expect(monthLabels).not.toEqual(weekLabels);
+ });
+
+ it('aggregates capacity into non-editable week and month summaries',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole('button',{name:'週'}));
+  await waitFor(()=>expect(document.querySelectorAll('.capacity-period').length).toBeGreaterThan(0));
+  const weekPeriods=document.querySelectorAll('.capacity-period');
+  expect(weekPeriods.length).toBeLessThan(10);
+  expect(document.querySelectorAll('.capacity-period[role="button"]')).toHaveLength(0);
+  expect(Array.from(weekPeriods).some(period=>period.textContent?.includes('56h'))).toBe(true);
+
+  fireEvent.click(screen.getByRole('button',{name:'月'}));
+  await waitFor(()=>expect(document.querySelectorAll('.capacity-period').length).toBeGreaterThan(0));
+  expect(document.querySelectorAll('.capacity-period[role="button"]')).toHaveLength(0);
+  expect(Array.from(document.querySelectorAll('.capacity-period')).some(period=>period.textContent?.includes('248h'))).toBe(true);
  });
 });
