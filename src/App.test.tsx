@@ -82,6 +82,29 @@ describe('Project arrangement',()=>{
   expect(monthLabels).not.toEqual(weekLabels);
  });
 
+ it('zooms the timeline with the wheel and pans it by dragging',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const timeline=document.querySelector('.timeline') as HTMLElement;
+  const timelineGrid=document.querySelector('.timeline-grid') as HTMLElement;
+  expect(timelineGrid.style.getPropertyValue('--scale')).toBe('64px');
+
+  fireEvent.wheel(timeline,{deltaY:-100,clientX:120});
+  await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeGreaterThan(64));
+  const zoomedScale=Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10);
+
+  fireEvent.wheel(timeline,{deltaY:100,clientX:120});
+  await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeLessThan(zoomedScale));
+
+  timeline.scrollLeft=0;
+  fireEvent.pointerDown(timeline,{button:0,clientX:200,pointerId:1});
+  fireEvent.pointerMove(timeline,{clientX:120,pointerId:1});
+  expect(timeline.scrollLeft).toBe(80);
+  fireEvent.pointerUp(timeline,{clientX:120,pointerId:1});
+  expect(timeline).not.toHaveClass('panning');
+ });
+
  it('aggregates capacity into non-editable week and month summaries',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
   render(<App/>);
