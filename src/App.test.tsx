@@ -55,6 +55,12 @@ orderedWorkspace.projects[0].tasks=[
  {...emptyTask(),id:'existing-task',name:'既有 Task',status:'scheduled',start:'2026-01-01',end:'2026-01-01'},
 ];
 
+const reorderWorkspace:WorkspaceData=structuredClone(workspace);
+reorderWorkspace.projects[0].tasks=[
+ {...emptyTask(),id:'first-task',name:'第一個 Task',status:'scheduled',start:'2026-01-01',end:'2026-01-02'},
+ {...emptyTask(),id:'second-task',name:'第二個 Task',status:'scheduled',start:'2026-01-03',end:'2026-01-04'},
+];
+
 const zeroHourWorkspace:WorkspaceData=structuredClone(workspace);
 zeroHourWorkspace.projects[0].tasks=[{...emptyTask(),id:'zero-hour-task',name:'零工時 Task',estimatedHours:0,status:'scheduled'}];
 
@@ -110,6 +116,51 @@ describe('Project arrangement',()=>{
   await waitFor(()=>expect(timeline.style.getPropertyValue('--scale')).toBe('40px'));
   const monthLabels=Array.from(document.querySelectorAll('.capacity-period b')).map(item=>item.textContent);
   expect(monthLabels).not.toEqual(weekLabels);
+ });
+
+ it('marks today on the timeline',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  expect(document.querySelector('.timeline-today-marker')).toBeInTheDocument();
+ });
+
+ it('opens the editor immediately when adding a Task and discards it on cancel',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole('button',{name:'＋ 新增 Task'}));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'取消'}));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
+ });
+
+ it('saves editor changes when clicking outside the dialog',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.gantt-sidebar .task-link') as HTMLElement);
+  fireEvent.change(screen.getByLabelText('Task 名稱'),{target:{value:'背景儲存 Task'}});
+  fireEvent.mouseDown(document.querySelector('.modal') as HTMLElement);
+  await waitFor(()=>expect(document.querySelector('.gantt-sidebar .task-link b')).toHaveTextContent('背景儲存 Task'));
+ });
+
+ it('does not save editor changes when clicking close or cancel',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.gantt-sidebar .task-link') as HTMLElement);
+  fireEvent.change(screen.getByLabelText('Task 名稱'),{target:{value:'不應儲存'}});
+  fireEvent.click(screen.getByRole('button',{name:'關閉'}));
+  expect(document.querySelector('.gantt-sidebar .task-link b')).toHaveTextContent('跨週 Task');
+
+  fireEvent.click(document.querySelector('.gantt-sidebar .task-link') as HTMLElement);
+  fireEvent.change(screen.getByLabelText('Task 名稱'),{target:{value:'也不應儲存'}});
+  fireEvent.click(screen.getByRole('button',{name:'取消'}));
+  expect(document.querySelector('.gantt-sidebar .task-link b')).toHaveTextContent('跨週 Task');
  });
 
  it('shows a compact year and month context row with subtle week markers',async()=>{
@@ -302,6 +353,49 @@ describe('Project arrangement',()=>{
   fireEvent.click(document.querySelector('.gantt-sidebar .task-link') as HTMLElement);
   expect(screen.getByLabelText('開始日期')).toHaveValue('2026-01-05');
   expect(screen.getByLabelText('結束日期')).toHaveValue('2026-01-18');
+ });
+
+ it('moves a Task to Backlog when its status is changed to backlog',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.gantt-sidebar .task-link') as HTMLElement);
+  fireEvent.change(screen.getByLabelText('狀態'),{target:{value:'backlog'}});
+  fireEvent.click(screen.getByRole('button',{name:'儲存'}));
+  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).toHaveTextContent('跨週 Task'));
+  expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
+ });
+
+ it('schedules a backlog Task when its status is changed to scheduled',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
+
+  fireEvent.click(document.querySelector('.backlog .task-card') as HTMLElement);
+  fireEvent.change(screen.getByLabelText('狀態'),{target:{value:'scheduled'}});
+  fireEvent.click(screen.getByRole('button',{name:'儲存'}));
+  await waitFor(()=>expect(document.querySelector('.gantt-sidebar .task-link')).toHaveTextContent('待排 Task'));
+  expect(document.querySelector('.task-range')).toBeInTheDocument();
+ });
+
+ it('swaps Gantt Task positions by dragging one row onto another',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(reorderWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const rows=document.querySelectorAll('.gantt-side-row');
+  const first=rows[0].querySelector('.task-link') as HTMLElement;
+  const second=rows[1] as HTMLElement;
+  const dataTransfer={
+   effectAllowed:'',
+   dropEffect:'',
+   setData:vi.fn(),
+   getData:vi.fn((type:string)=>type==='application/x-gantt-reorder'?JSON.stringify({projectId:'project-a',taskId:'first-task'}):''),
+  };
+  fireEvent.dragStart(first,{dataTransfer});
+  fireEvent.drop(second,{dataTransfer});
+  await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['第二個 Task','第一個 Task']));
  });
 
  it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{

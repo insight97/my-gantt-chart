@@ -1,7 +1,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {CSSProperties,DragEvent,PointerEvent} from 'react';
 import {applyTaskDrag} from './data';
-import {getTaskPendingHours,recalculateAutomaticAllocations} from './capacity';
+import {getTaskPendingHours,recalculateAutomaticAllocations,today} from './capacity';
 import {formatRange,hoursLabel} from './formatters';
 import type {Allocation,AllocationMode,DailyCapacity,Task,ViewMode} from './types';
 import {
@@ -41,6 +41,7 @@ export type CapacityGanttProps={
  scrollLeft:number;
  onZoomChange:(next:TimelineZoom)=>void;
  onEdit:(task:Task)=>void;
+ onReorder:(sourceTaskId:string,targetTaskId:string)=>void;
  onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;
  onScheduleAtDate:(taskId:string,date:string)=>void;
  onMoveToBacklog:(taskId:string)=>void;
@@ -95,6 +96,12 @@ function TimelineHeader({periods,context,capacities,allocations,view,scale,onEdi
   <TimelineContext cells={context} scale={scale}/>
   <CapacityPeriods periods={periods} capacities={capacities} allocations={allocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
  </div>;
+}
+
+function TodayMarker({periods,scale}:{periods:TimelinePeriod[];scale:number}){
+ const date=today();
+ const left=timelinePositionForDate(date,periods,scale);
+ return <span className="timeline-today-marker" style={{left}} title={`今天 ${date}`} aria-label={`今天 ${date}`}><i>今天</i></span>;
 }
 
 function WeekendColumns({periods,view,scale}:{periods:TimelinePeriod[];view:ViewMode;scale:number}){
@@ -189,15 +196,17 @@ function TimelineGrid({projectId,periods,view,scale,tasks,allocations,allocation
  </div>;
 }
 
-function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onDelete,onDragStart,onMoveToBacklog}:{projectId:string;tasks:Task[];allocations:Allocation[];headerHeight:number;onEdit:(task:Task)=>void;onDelete:(taskId:string)=>void;onDragStart:(event:DragEvent<HTMLButtonElement>,task:Task)=>void;onMoveToBacklog:(taskId:string)=>void}){
+function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onDelete,onDragStart,onMoveToBacklog,onReorder}:{projectId:string;tasks:Task[];allocations:Allocation[];headerHeight:number;onEdit:(task:Task)=>void;onDelete:(taskId:string)=>void;onDragStart:(event:DragEvent<HTMLButtonElement>,task:Task)=>void;onMoveToBacklog:(taskId:string)=>void;onReorder:(sourceTaskId:string,targetTaskId:string)=>void}){
  const handleDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();try{const value=JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};if(value.projectId===projectId)onMoveToBacklog(value.taskId);}catch{/* ignore unrelated drags */}};
+ const readReorder=(event:DragEvent<HTMLDivElement>)=>{try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-reorder')) as {projectId:string;taskId:string};}catch{return null;}};
  return <div className="gantt-sidebar" onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect='move';}} onDrop={handleDrop}>
   <div className="gantt-head capacity-gantt-head" style={{height:headerHeight,paddingTop:TIMELINE_CONTEXT_ROW_HEIGHT}}><span>Task</span><span>工時</span><span>操作</span></div>
   {tasks.map(task=>{
    const allocated=allocations.filter(item=>item.taskId===task.id).reduce((sum,item)=>sum+item.allocatedHours,0);
    const pending=getTaskPendingHours(task,allocations);
    const overdue=Boolean(task.deadline&&task.end&&task.end>task.deadline);
-   return <div className={`gantt-side-row${pending!==0?' has-pending':''}${overdue?' has-deadline-warning':''}`} key={task.id}>
+   const handleRowDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();event.stopPropagation();const value=readReorder(event);if(value?.projectId===projectId&&value.taskId!==task.id)onReorder(value.taskId,task.id);};
+   return <div className={`gantt-side-row${pending!==0?' has-pending':''}${overdue?' has-deadline-warning':''}`} key={task.id} onDragOver={event=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='move';}} onDrop={handleRowDrop}>
     <button className="task-link" draggable={task.status!=='completed'} onDragStart={event=>onDragStart(event,task)} onClick={()=>onEdit(task)}><b>{task.name}</b><small>{task.deadline?`截止 ${task.deadline} · `:''}{formatRange(task)}</small></button>
     <span className="hours"><b>{hoursLabel(allocated)}</b> / {hoursLabel(task.estimatedHours)}{pending!==0&&<em>{pending>0?`待安排 ${hoursLabel(pending)}`:`需釋放 ${hoursLabel(Math.abs(pending))}`}</em>}</span>
     <div className="row-actions">{task.status!=='completed'&&<button title="刪除 Task" onClick={()=>onDelete(task.id)}>×</button>}</div>
@@ -206,7 +215,7 @@ function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onDelete,
  </div>;
 }
 
-export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,capacityAllocations,capacities,timelineZoom,allocationMode,scrollLeft,onZoomChange,onEdit,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDelete,onEditCapacity,onTimelineScroll,onChangeDates}:CapacityGanttProps){
+export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,capacityAllocations,capacities,timelineZoom,allocationMode,scrollLeft,onZoomChange,onEdit,onReorder,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDelete,onEditCapacity,onTimelineScroll,onChangeDates}:CapacityGanttProps){
  const timelineRef=useRef<HTMLDivElement>(null);
  const dragRef=useRef<DragState|null>(null);
  const panRef=useRef<PanState|null>(null);
@@ -280,14 +289,18 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
  const movePan=(event:PointerEvent<HTMLDivElement>)=>{const current=panRef.current;if(!current)return;event.preventDefault();event.currentTarget.scrollLeft=current.startScrollLeft-(event.clientX-current.startX);};
  const endPan=(event:PointerEvent<HTMLDivElement>)=>{if(!panRef.current)return;if(typeof event.currentTarget.hasPointerCapture==='function'&&event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);panRef.current=null;setPanning(false);};
  const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta,view):task;
- const handleTaskDragStart=(event:DragEvent<HTMLDivElement>|DragEvent<HTMLButtonElement>,task:Task)=>{event.dataTransfer.setData('application/x-gantt-task',JSON.stringify({projectId,taskId:task.id}));event.dataTransfer.effectAllowed='move';};
+ const handleTaskDragStart=(event:DragEvent<HTMLDivElement>|DragEvent<HTMLButtonElement>,task:Task)=>{const value=JSON.stringify({projectId,taskId:task.id});event.dataTransfer.setData('application/x-gantt-task',value);event.dataTransfer.setData('application/x-gantt-reorder',value);event.dataTransfer.effectAllowed='move';};
+ const canvasHeight=headerHeight+Math.max(70,(tasks.length+1)*70);
  return <section className="gantt-section">
   <div className="section-heading"><div><h2>Capacity Gantt</h2><small>{allocationMode==='allocate'?'Allocate 模式：日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。':'一般模式：拖曳 Task bar 調整排程；可將 Task 拖回 Backlog。'} 滾輪縮放、拖曳平移時間軸</small></div></div>
   <div className="gantt">
-   <GanttSidebar projectId={projectId} tasks={tasks} allocations={allocations} headerHeight={headerHeight} onEdit={onEdit} onDelete={onDelete} onDragStart={handleTaskDragStart} onMoveToBacklog={onMoveToBacklog}/>
+   <GanttSidebar projectId={projectId} tasks={tasks} allocations={allocations} headerHeight={headerHeight} onEdit={onEdit} onDelete={onDelete} onDragStart={handleTaskDragStart} onMoveToBacklog={onMoveToBacklog} onReorder={onReorder}/>
    <div className={`timeline${panning?' panning':''}`} data-view={view} data-pixels-per-day={timelineZoom.pixelsPerDay} ref={timelineRef} onScroll={event=>onTimelineScroll(event.currentTarget.scrollLeft)} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
-    <TimelineHeader periods={periods} context={context} capacities={capacities} allocations={capacityAllocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
-    <TimelineGrid projectId={projectId} periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} allocationMode={allocationMode} dragging={dragging} preview={preview} dropPreview={dropPreview} onDropPreview={(taskId,date)=>setDropTarget(taskId&&date?{taskId,date}:null)} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onDragStart={handleTaskDragStart} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate}/>
+    <div className="timeline-canvas" style={{width:periods.length*scale,minHeight:canvasHeight}}>
+     <TimelineHeader periods={periods} context={context} capacities={capacities} allocations={capacityAllocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
+     <TimelineGrid projectId={projectId} periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} allocationMode={allocationMode} dragging={dragging} preview={preview} dropPreview={dropPreview} onDropPreview={(taskId,date)=>setDropTarget(taskId&&date?{taskId,date}:null)} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onDragStart={handleTaskDragStart} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate}/>
+     <TodayMarker periods={periods} scale={scale}/>
+    </div>
    </div>
   </div>
  </section>;

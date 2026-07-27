@@ -58,8 +58,14 @@
 
 **Timeline Semantic Level**：日、週、月是同一條連續時間軸的不同縮放語意。Allocate Mode 不改變目前縮放；只有日層級可編輯每日工時。
 
+**Timeline History and Today Marker**：時間軸至少保留今天前 90 天的可捲動歷史，並以垂直線標記今天；若任務更早，則延伸到最早任務之前。
+
+**Task Editor Close Semantics**：點擊編輯視窗外側代表儲存目前草稿；標題列叉叉與「取消」代表放棄草稿。新增 Task 在儲存前不寫入 Workspace，因此取消新增不會留下空白 Task。
+
 ## 排程範圍
 
 **Project-Local Scheduling**：Backlog 與 Gantt 的拖曳只在同一個 Project 內生效；跨 Project 移動是另一個明確的資料操作，不由排程拖曳隱含完成。
 
 本階段不處理跨 Task 相依關係、全域自動排序或多 Task 一次重排。
+
+Gantt 內的 Task row 可以透過拖曳互換 Project 內的顯示順序；這是明確的手動排序，不會依優先順序或日期自動重排。
