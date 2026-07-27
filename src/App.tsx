@@ -371,9 +371,11 @@ function ProjectPanel({project,allocations,allAllocations,capacities,view,timeli
  const allocatedHours=allocations.reduce((sum,item)=>sum+item.allocatedHours,0);
  const backlogTasks=project.tasks.filter(task=>task.status==='backlog').sort((a,b)=>({high:0,medium:1,low:2}[a.priority]-({high:0,medium:1,low:2}[b.priority]))||a.createdAt.localeCompare(b.createdAt));
  const hasPositiveAllocation=(task:Task)=>allocations.some(item=>item.taskId===task.id&&item.allocatedHours>0);
+ const hasAllocationRecord=(task:Task)=>allocations.some(item=>item.taskId===task.id);
  const hasDatedSchedule=(task:Task)=>Boolean(task.start&&task.end);
- const scheduledTasks=project.tasks.filter(task=>task.status!=='backlog'&&(hasPositiveAllocation(task)||hasDatedSchedule(task)));
- const pendingTasks=project.tasks.filter(task=>task.status!=='backlog'&&!hasPositiveAllocation(task)&&!hasDatedSchedule(task));
+ const isZeroHourTask=(task:Task)=>task.estimatedHours===0;
+ const scheduledTasks=project.tasks.filter(task=>task.status!=='backlog'&&(hasPositiveAllocation(task)||hasAllocationRecord(task)||hasDatedSchedule(task)||isZeroHourTask(task)));
+ const pendingTasks=project.tasks.filter(task=>task.status!=='backlog'&&!hasPositiveAllocation(task)&&!hasAllocationRecord(task)&&!hasDatedSchedule(task)&&!isZeroHourTask(task));
  return <article className={`project-card${expanded?' expanded':' collapsed'}`}>
   <div className="project-card-header">
    <button className="project-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded?'收合':'展開'} ${project.name}`} onClick={onToggle}><span aria-hidden="true">{expanded?'⌄':'›'}</span><small>Project</small></button>
@@ -385,7 +387,7 @@ function ProjectPanel({project,allocations,allAllocations,capacities,view,timeli
    <div className="workspace-title"><div><h2>{project.name}</h2><p>{project.tasks.length} 個 Task · 預估 {getProjectEstimatedHours(project)} 小時</p></div><div className="view-switch" aria-label={`${project.name} 時間檢視`}>{(['day','week','month'] as const).map(value=><button key={value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{value==='day'?'日':value==='week'?'週':'月'}</button>)}</div><button className="primary" onClick={onAddTask}>＋ 新增 Task</button></div>
    <div className="planning-layout">
     <Backlog projectId={project.id} tasks={backlogTasks} pendingTasks={pendingExpanded?pendingTasks:[]} onEdit={onEditTask} onDropToBacklog={onMoveToBacklog}/>
-    <CapacityGantt projectId={project.id} tasks={scheduledTasks} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} allocationMode={allocationMode} scrollLeft={timelineScrollLeft} onZoomChange={onZoomChange} onEdit={onEditTask} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate} onMoveToBacklog={onMoveToBacklog} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onTimelineScroll={onTimelineScroll} onChangeDates={onChangeDates}/>
+    <CapacityGantt projectId={project.id} tasks={scheduledTasks} backlogTasks={[...backlogTasks,...pendingTasks]} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} allocationMode={allocationMode} scrollLeft={timelineScrollLeft} onZoomChange={onZoomChange} onEdit={onEditTask} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate} onMoveToBacklog={onMoveToBacklog} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onTimelineScroll={onTimelineScroll} onChangeDates={onChangeDates}/>
    </div>
   </div>}
  </article>;

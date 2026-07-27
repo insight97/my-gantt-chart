@@ -1,7 +1,7 @@
-import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import type {CSSProperties,DragEvent,PointerEvent} from 'react';
 import {applyTaskDrag} from './data';
-import {getTaskPendingHours} from './capacity';
+import {getTaskPendingHours,recalculateAutomaticAllocations} from './capacity';
 import {formatRange,hoursLabel} from './formatters';
 import type {Allocation,AllocationMode,DailyCapacity,Task,ViewMode} from './types';
 import {
@@ -32,6 +32,7 @@ type PanState={startX:number;startScrollLeft:number};
 export type CapacityGanttProps={
  projectId:string;
  tasks:Task[];
+ backlogTasks:Task[];
  allocations:Allocation[];
  capacityAllocations:Allocation[];
  capacities:DailyCapacity[];
@@ -167,12 +168,23 @@ function TimelineRowSeparators(){
  return <div className="timeline-row-separators" style={{position:'absolute',top:0,right:0,bottom:0,left:0,zIndex:3,pointerEvents:'none'}} aria-hidden="true"/>;
 }
 
-function TimelineGrid({projectId,periods,view,scale,tasks,allocations,allocationMode,dragging,preview,onBeginDrag,onMoveDrag,onEndDrag,onDragStart,onAdjustAllocation,onScheduleAtDate}:{projectId:string;periods:TimelinePeriod[];view:ViewMode;scale:number;tasks:Task[];allocations:Allocation[];allocationMode:AllocationMode;dragging:DragState|null;preview:(task:Task)=>Task;onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:DragMode)=>void;onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;onDragStart:(event:DragEvent<HTMLDivElement>,task:Task)=>void;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;onScheduleAtDate:(taskId:string,date:string)=>void}){
- const style={width:periods.length*scale,'--scale':`${scale}px`} as CSSProperties;
+function DropPreview({task,periods,scale,rowIndex}:{task:Task;periods:TimelinePeriod[];scale:number;rowIndex:number}){
+ const geometry=taskRangeGeometry(task,periods,scale);
+ if(!geometry)return null;
+ return <div className="drop-preview task-range" style={{left:geometry.left,width:geometry.width,top:rowIndex*70+19,backgroundColor:task.color}} title={`${task.name} · 預覽排程`}><span className="range-label">{task.name}</span></div>;
+}
+
+function TimelineGrid({projectId,periods,view,scale,tasks,allocations,allocationMode,dragging,preview,dropPreview,onDropPreview,onBeginDrag,onMoveDrag,onEndDrag,onDragStart,onAdjustAllocation,onScheduleAtDate}:{projectId:string;periods:TimelinePeriod[];view:ViewMode;scale:number;tasks:Task[];allocations:Allocation[];allocationMode:AllocationMode;dragging:DragState|null;preview:(task:Task)=>Task;dropPreview:Task|null;onDropPreview:(taskId:string,date:string|null)=>void;onBeginDrag:(event:PointerEvent<HTMLElement>,task:Task,mode:DragMode)=>void;onMoveDrag:(event:PointerEvent<HTMLDivElement>)=>void;onEndDrag:(event:PointerEvent<HTMLDivElement>)=>void;onDragStart:(event:DragEvent<HTMLDivElement>,task:Task)=>void;onAdjustAllocation:(taskId:string,date:string,delta:number)=>void;onScheduleAtDate:(taskId:string,date:string)=>void}){
+ const style={width:periods.length*scale,minHeight:Math.max(70,(tasks.length+1)*70),'--scale':`${scale}px`} as CSSProperties;
  const readTransfer=(event:DragEvent<HTMLDivElement>)=>{try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};}catch{return null;}};
- return <div className="timeline-grid" style={style} onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect='move';}} onDrop={event=>{event.preventDefault();const value=readTransfer(event);if(!value||value.projectId!==projectId)return;const bounds=event.currentTarget.getBoundingClientRect();const date=timelineDateAtPosition(event.clientX-bounds.left+(event.currentTarget.parentElement?.scrollLeft||0),periods,scale);if(date)onScheduleAtDate(value.taskId,date);}}>
+ const dropDate=(event:DragEvent<HTMLDivElement>)=>{const value=readTransfer(event);if(!value||value.projectId!==projectId)return null;const bounds=event.currentTarget.getBoundingClientRect();return timelineDateAtPosition(event.clientX-bounds.left+(event.currentTarget.parentElement?.scrollLeft||0),periods,scale)||null;};
+ const handleDragOver=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();event.dataTransfer.dropEffect='move';const value=readTransfer(event);const date=dropDate(event);if(value?.projectId===projectId&&date)onDropPreview(value.taskId,date);};
+ const handleDragLeave=(event:DragEvent<HTMLDivElement>)=>{const related=event.relatedTarget; if(!(related instanceof Node)||!event.currentTarget.contains(related))onDropPreview('',null);};
+ const handleDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();const value=readTransfer(event);const date=dropDate(event);onDropPreview('',null);if(value?.projectId===projectId&&date)onScheduleAtDate(value.taskId,date);};
+ return <div className="timeline-grid" style={style} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
   <WeekendColumns periods={periods} view={view} scale={scale}/>
   <TimelineTaskRows tasks={tasks} allocations={allocations} periods={periods} scale={scale} view={view} allocationMode={allocationMode} dragging={dragging} preview={preview} onBeginDrag={onBeginDrag} onMoveDrag={onMoveDrag} onEndDrag={onEndDrag} onDragStart={onDragStart} onAdjustAllocation={onAdjustAllocation}/>
+  {dropPreview&&<DropPreview task={dropPreview} periods={periods} scale={scale} rowIndex={tasks.length}/>}
   <TimelineRowSeparators/>
  </div>;
 }
@@ -194,13 +206,14 @@ function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onDelete,
  </div>;
 }
 
-export default function CapacityGantt({projectId,tasks,allocations,capacityAllocations,capacities,timelineZoom,allocationMode,scrollLeft,onZoomChange,onEdit,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDelete,onEditCapacity,onTimelineScroll,onChangeDates}:CapacityGanttProps){
+export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,capacityAllocations,capacities,timelineZoom,allocationMode,scrollLeft,onZoomChange,onEdit,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDelete,onEditCapacity,onTimelineScroll,onChangeDates}:CapacityGanttProps){
  const timelineRef=useRef<HTMLDivElement>(null);
  const dragRef=useRef<DragState|null>(null);
  const panRef=useRef<PanState|null>(null);
  const zoomAnchorRef=useRef<{date:string;pointerOffset:number}|null>(null);
  const layoutRef=useRef<{key:string;periods:TimelinePeriod[];scale:number}|null>(null);
  const [dragging,setDragging]=useState<DragState|null>(null);
+ const [dropTarget,setDropTarget]=useState<{taskId:string;date:string}|null>(null);
  const [panning,setPanning]=useState(false);
  const view=timelineZoom.view;
  const scale=timelineScale(view,timelineZoom.pixelsPerDay);
@@ -213,6 +226,15 @@ export default function CapacityGantt({projectId,tasks,allocations,capacityAlloc
  const periodsRef=useRef(periods);
  const scaleRef=useRef(scale);
  const onZoomChangeRef=useRef(onZoomChange);
+ const dropPreview=useMemo(()=>{
+  if(!dropTarget)return null;
+  const task=backlogTasks.find(item=>item.id===dropTarget.taskId);
+  if(!task)return null;
+  try{
+   const result=recalculateAutomaticAllocations(task,capacityAllocations,capacities,dropTarget.date,{fillPending:true});
+   return {...task,start:result.start||dropTarget.date,end:result.end||dropTarget.date,status:'scheduled' as const};
+  }catch{return {...task,start:dropTarget.date,end:dropTarget.date,status:'scheduled' as const};}
+ },[backlogTasks,capacityAllocations,capacities,dropTarget]);
 
  useEffect(()=>{
   timelineZoomRef.current=timelineZoom;periodsRef.current=periods;scaleRef.current=scale;onZoomChangeRef.current=onZoomChange;
@@ -248,7 +270,7 @@ export default function CapacityGantt({projectId,tasks,allocations,capacityAlloc
   event.preventDefault();event.stopPropagation();const next={task,mode,startX:event.clientX,delta:0};dragRef.current=next;if(typeof event.currentTarget.setPointerCapture==='function')event.currentTarget.setPointerCapture(event.pointerId);setDragging(next);
  };
  const moveDrag=(event:PointerEvent<HTMLDivElement>)=>{const current=dragRef.current;if(!current)return;const delta=Math.round((event.clientX-current.startX)/scale);if(delta===current.delta)return;const next={...current,delta};dragRef.current=next;setDragging(next);};
- const endDrag=(event:PointerEvent<HTMLDivElement>)=>{const current=dragRef.current;if(!current)return;const next=applyTaskDrag(current.task,current.mode,current.delta,view);if(next.start!==current.task.start||next.end!==current.task.end)onChangeDates(next);if(typeof event.currentTarget.hasPointerCapture==='function'&&event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);dragRef.current=null;setDragging(null);};
+ const endDrag=(event:PointerEvent<HTMLDivElement>)=>{const current=dragRef.current;if(!current)return;const target=typeof document.elementFromPoint==='function'?document.elementFromPoint(event.clientX,event.clientY):null;const droppedOnBacklog=target instanceof Element&&Boolean(target.closest('.backlog'));if(droppedOnBacklog)onMoveToBacklog(current.task.id);else{const next=applyTaskDrag(current.task,current.mode,current.delta,view);if(next.start!==current.task.start||next.end!==current.task.end)onChangeDates(next);}if(typeof event.currentTarget.hasPointerCapture==='function'&&event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);dragRef.current=null;setDragging(null);};
  const beginPan=(event:PointerEvent<HTMLDivElement>)=>{
   if(event.button!==0)return;
   const target=event.target;const targetElement=target instanceof Element?target:null;
@@ -265,7 +287,7 @@ export default function CapacityGantt({projectId,tasks,allocations,capacityAlloc
    <GanttSidebar projectId={projectId} tasks={tasks} allocations={allocations} headerHeight={headerHeight} onEdit={onEdit} onDelete={onDelete} onDragStart={handleTaskDragStart} onMoveToBacklog={onMoveToBacklog}/>
    <div className={`timeline${panning?' panning':''}`} data-view={view} data-pixels-per-day={timelineZoom.pixelsPerDay} ref={timelineRef} onScroll={event=>onTimelineScroll(event.currentTarget.scrollLeft)} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
     <TimelineHeader periods={periods} context={context} capacities={capacities} allocations={capacityAllocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
-    <TimelineGrid projectId={projectId} periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} allocationMode={allocationMode} dragging={dragging} preview={preview} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onDragStart={handleTaskDragStart} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate}/>
+    <TimelineGrid projectId={projectId} periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} allocationMode={allocationMode} dragging={dragging} preview={preview} dropPreview={dropPreview} onDropPreview={(taskId,date)=>setDropTarget(taskId&&date?{taskId,date}:null)} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onDragStart={handleTaskDragStart} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate}/>
    </div>
   </div>
  </section>;
