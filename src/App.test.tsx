@@ -1,6 +1,7 @@
 import {cleanup,createEvent,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {emptyTask} from './data';
 import type {WorkspaceData} from './types';
 import './styles.css';
 import './capacity-header.css';
@@ -31,7 +32,7 @@ const workspace:WorkspaceData={
 const aggregationWorkspace:WorkspaceData={
  version:2,
  projects:[
-  {id:'project-a',name:'Alpha Project',description:'第一個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[{id:'task-a',name:'跨週 Task',start:'2026-01-05',end:'2026-01-18',estimatedHours:40,status:'scheduled',notes:'',owner:'',color:'#2f75bb',createdAt:'2026-01-01',updatedAt:'2026-01-01'}]},
+  {id:'project-a',name:'Alpha Project',description:'第一個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[{id:'task-a',name:'跨週 Task',start:'2026-01-05',end:'2026-01-18',deadline:null,priority:'medium',estimatedHours:40,status:'scheduled',notes:'',owner:'',color:'#2f75bb',createdAt:'2026-01-01',updatedAt:'2026-01-01'}]},
   {id:'project-b',name:'Beta Project',description:'第二個 Project',createdAt:'2026-01-01',updatedAt:'2026-01-01',tasks:[]},
  ],
  dailyCapacities:[],
@@ -40,6 +41,18 @@ const aggregationWorkspace:WorkspaceData={
 
 const denseWorkspace:WorkspaceData=structuredClone(aggregationWorkspace);
 denseWorkspace.projects[0].tasks[0].name='這是一個很長的任務標題需要在窄欄位省略';
+denseWorkspace.allocations=[{id:'allocation-a',taskId:'task-a',date:'2026-01-05',allocatedHours:8,source:'automatic',locked:false}];
+
+const backlogWorkspace:WorkspaceData=structuredClone(workspace);
+backlogWorkspace.projects[0].tasks=[{...emptyTask(),id:'backlog-task',name:'待排 Task',estimatedHours:16}];
+
+const allocateWorkspace:WorkspaceData=structuredClone(aggregationWorkspace);
+allocateWorkspace.projects[0].tasks[0].deadline='2026-01-10';
+allocateWorkspace.projects[0].tasks[0].estimatedHours=16;
+allocateWorkspace.allocations=[
+ {id:'allocation-a',taskId:'task-a',date:'2026-01-05',allocatedHours:8,source:'automatic',locked:false},
+ {id:'allocation-b',taskId:'task-a',date:'2026-01-06',allocatedHours:8,source:'automatic',locked:false},
+];
 
 describe('Project arrangement',()=>{
  afterEach(()=>cleanup());
@@ -201,6 +214,10 @@ describe('Project arrangement',()=>{
   const wheelEvent=createEvent.wheel(timelines[0],{deltaY:100,clientX:120,bubbles:true,cancelable:true});
   timelines[0].dispatchEvent(wheelEvent);
   await waitFor(()=>expect(timelines[0].dataset.pixelsPerDay).toBe(timelines[1].dataset.pixelsPerDay));
+
+  timelines[0].scrollLeft=120;
+  fireEvent.scroll(timelines[0]);
+  await waitFor(()=>expect(timelines[1].scrollLeft).toBe(120));
  });
 
  it('aggregates capacity into non-editable week and month summaries',async()=>{
@@ -219,5 +236,66 @@ describe('Project arrangement',()=>{
   await waitFor(()=>expect(document.querySelectorAll('.capacity-period').length).toBeGreaterThan(0));
   expect(document.querySelectorAll('.capacity-period[role="button"]')).toHaveLength(0);
   expect(Array.from(document.querySelectorAll('.capacity-period')).some(period=>period.textContent?.includes('0/248'))).toBe(true);
+ });
+
+ it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  expect(document.querySelector('.allocation-summaries')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Allocate 模式'}));
+  expect(document.querySelector('.allocation-summaries')).toBeInTheDocument();
+  expect(document.querySelector('.deadline-marker')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  const allocationCell=document.querySelector('.allocation-cell.has-hours') as HTMLElement;
+  expect(allocationCell).toBeInTheDocument();
+  fireEvent.click(allocationCell);
+  await waitFor(()=>expect(document.querySelector('.hours b')).toHaveTextContent('16h'));
+  fireEvent.contextMenu(document.querySelector('.allocation-cell.has-hours') as HTMLElement);
+  await waitFor(()=>expect(document.querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h'));
+
+  fireEvent.click(screen.getByRole('button',{name:'週'}));
+  expect(document.querySelectorAll('.allocation-summary.has-hours').length).toBeGreaterThan(0);
+  expect(document.querySelectorAll('.allocation-cell')).toHaveLength(0);
+ });
+
+ it('drops a Backlog Task into Gantt and schedules the same record',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
+
+  const card=document.querySelector('.backlog .task-card') as HTMLElement;
+  const timeline=document.querySelector('.timeline-grid') as HTMLElement;
+  const dataTransfer={
+   effectAllowed:'',
+   dropEffect:'',
+   setData:vi.fn(),
+   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
+  };
+  fireEvent.dragStart(card,{dataTransfer});
+  fireEvent.drop(timeline,{dataTransfer,clientX:20});
+  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument());
+  expect(document.querySelector('.gantt-side-row')).toBeInTheDocument();
+ });
+
+ it('drops a scheduled Task back to Backlog and clears its allocations',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const taskLink=document.querySelector('.gantt-sidebar .task-link') as HTMLElement;
+  const backlog=document.querySelector('.backlog') as HTMLElement;
+  const dataTransfer={
+   effectAllowed:'',
+   dropEffect:'',
+   setData:vi.fn(),
+   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'task-a'}):''),
+  };
+  fireEvent.dragStart(taskLink,{dataTransfer});
+  fireEvent.drop(backlog,{dataTransfer});
+  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).toHaveTextContent('這是一個很長的任務標題需要在窄欄位省略'));
+  expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
  });
 });

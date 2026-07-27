@@ -1,39 +1,63 @@
 # Capacity Gantt Domain Context
 
-這個 context 描述 Capacity Gantt 中 Project、Task、容量與工時分配的共同語言。產品保留既有的 Project／Task 命名，但其核心用途是檢查工作負載與可用容量是否相符。
+這個 context 定義 Capacity Gantt 中 Project、Task、Allocation、容量與排程狀態的共同語言。產品的核心不是單純追蹤日期，而是讓使用者看見工作需求與可用容量之間的關係。
 
 ## 工作結構
 
-**Project**：一組需要被追蹤的承諾或工作群組。產品中以 Project 作為正式名稱；spec 中的 Commitment 指的是同一個概念，不是另一層資料。
+**Project**：一組需要被追蹤的工作群組；Task 只屬於一個 Project。
 
-**Task**：Project 底下可估算、可安排與可完成的工作項目。Backlog Task 的開始日期與結束日期可以不填；產生 Allocation 後，Task 應形成包含所有 Allocation 日期的日期範圍，缺少的日期邊界可由系統推導。日期範圍本身不代表已占用容量。
+**Task**：Project 底下可估算、可排程與可完成的工作項目。Task 有建立日期與可選的截止日期；排程日期則由 Allocation 推導。
 
-**Backlog Task**：尚未被分配工時的 Task。它可以沒有日期；有完整日期時可以在時間軸上被拖曳調整，但不占用任何每日容量。沒有完整日期的 Backlog Task 可以由 Allocation Completion 從今天開始建立日期與工時分配。
+**Task Status**：Task 的生命週期狀態，包含 `backlog`、`scheduled`、`in_progress` 與 `completed`。`completed` Task 不可修改；`in_progress` Task 仍可調整排程。
 
-**Scheduled Task**：已有一筆或多筆 Allocation 的 Task。它的工作期間仍由 Task 日期決定，實際每日負載則由 Allocation 決定。
+**Backlog Task**：尚未被使用者放入 Gantt 的 Task。它通常沒有 Allocation 與排程日期，但仍可保留建立日期、截止日期、優先順序與估計工時。
 
-## 容量與分配
+**Scheduled Task**：已被使用者放入 Gantt 的 Task。它可以是完整分配、部分分配，或因使用者清除所有 Allocation 而暫時沒有分配；只要沒有被明確拖回 Backlog，就仍屬於 Gantt。
 
-**Daily Capacity**：某一天可投入工作的時間。可用容量是總容量扣除不可用時間。
+**Created Date**：Task 建立時由系統記錄的唯讀日期，用於歷史與排序，不是排程邊界。
 
-**Remaining Capacity**：某一天的可用容量扣除當日所有 Task Allocation 後的剩餘時間。小於零表示超載，超載是可被允許但必須被清楚警告的狀態。
+**Deadline**：Task 必須完成的日期。Deadline 是獨立限制，不會隨 Allocation 改寫；排程超過 Deadline 時保留排程並顯示逾期警告。
 
-**Allocation**：把某個 Task 的若干工時放到特定日期。Allocation 可以由使用者指定，也可以由系統在 Task 的日期範圍內補足。
+## 容量與工時
 
-**Manual Allocation**：使用者明確指定的 Allocation。系統重新補足工時時必須保留它。
+**Daily Capacity**：某一天可投入工作的總時間。可用容量是總容量扣除不可用時間。
 
-**Capacity-Available Day**：Task 日期範圍內，扣除當日既有分配後仍有剩餘容量的日期。只要剩餘容量大於零，就算是可用日期。
+**Remaining Capacity**：某一天的可用容量扣除所有 Project 的 Allocation 後的剩餘時間；小於零表示超載。
 
-**Automatic Allocation**：系統為了補足 Task 尚未分配的估時而產生的 Allocation。有完整日期範圍時，系統會在範圍內的 Capacity-Available Day 平均分配；沒有完整日期範圍時，系統從今天起依序使用每日可用時間往後分配，並由分配結果推導日期。若容量不足，仍繼續分配並顯示超載。系統可以在重新計算時調整它。
+**Capacity-Available Day**：Remaining Capacity 大於零的日期。Automatic Allocation 只把一般工時放到這類日期；週末與假日沒有額外規則，完全依該日可用容量判斷。
 
-**Estimated Hours**：Task 預計需要完成的總工時。Task 的所有 Allocation 工時總和應等於 Estimated Hours；若容量不足，仍可分配並顯示超載警告。
+**Allocation**：把 Task 的若干工時放到特定日期。每日畫面可操作單日總量；週與月畫面只顯示期間加總，不拆分來源。
 
-**Allocation Completion**：對單一 Task，先保留 Manual Allocation，再由系統補足尚未分配的估時。若有完整日期範圍，就平均分配到 Capacity-Available Day；若日期不完整，就從今天開始逐日分配並推導開始／結束日期，直到所有 Allocation 工時總和達到 Estimated Hours。
+**Manual Allocation Day**：使用者在 Allocate 模式點擊調整過的日期。該日期的最終工時是使用者決定的，包括明確調整成 `0h` 的日期；Automatic Allocation 不得覆蓋或補回它。手動分配可以造成超載，但必須清楚警告。
 
-**Manual Allocation Boundary**：Task 已填寫的日期邊界不能排除任何 Manual Allocation 的日期。任何會讓開始日期晚於、或結束日期早於既有 Manual Allocation 的操作都必須被阻止；未填寫的邊界可以由 Manual 或 Automatic Allocation 推導，先移除或調整 Manual Allocation 後才可縮短既有範圍。
+**Automatic Allocation**：系統依使用者指定的起始日期與每日可用容量產生的 Allocation。系統從起始日期往後尋找有空間的日期，不會在一般日期故意超載；使用者可重新自動安排，但必須保留所有 Manual Allocation Day。
 
-## 排程邊界
+**Automatic Overflow**：Automatic Allocation 到達本次 Gantt 規劃範圍的最後一天仍有剩餘工時時，仍將剩餘工時記在最後一天的特殊例外。這不是一般自動排程行為，必須顯示警告。
 
-**Task Date Range**：Task 的開始日期至結束日期，包含兩端。Phase 0 允許使用者拖曳 Task 來改變此範圍。
+**Estimated Hours**：Task 預計需要完成的總工時。
 
-**Allocation Completion** 屬於單一 Task 期間內的工時補足，不等同於替多個 Task 選擇日期、處理相依關係或重新安排整個 Project 的排程。後者屬於未來的排程引擎。
+**Pending Hours**：`Estimated Hours - 所有 Allocation 工時總和` 的有號差額。正值表示尚有未安排工時；負值表示目前已分配超過估計工時，必須從其他日期減少工時；零表示分配平衡。
+
+## 日期與排程邊界
+
+**Task Date Range**：由 Task 的 Allocation 日期推導出的開始日至結束日，包含兩端。Allocation 增減時，Task 日期自動拉長或縮短；若存在 Manual Allocation Day，日期範圍不能排除它。沒有 Allocation 的 Scheduled Task 沒有日期 bar，會出現在 Project 的條件式待處理清單。
+
+**Backlog to Gantt**：同一份 Task 資料在兩個位置之間移動，不建立副本。拖曳 Backlog 卡片到 Project 的 Gantt 時，放下的日／週／月週期是最早起始位置，系統隨後自動分配工時；不需要確認按鈕。
+
+**Gantt to Backlog**：使用者明確把 Task 拖回 Backlog 時，清除所有 Allocation 與 Allocation 推導日期，但保留建立日期、Deadline、估計工時與其他 Task 資訊。這代表重新開始安排。
+
+**Allocation Rebalancing**：使用者在 Allocate 模式增加某日工時時，先消耗 Pending Hours，再從 Task 尾端的 Automatic Allocation 移動工時；若兩者都不足，仍允許增加並讓 Pending Hours 變成負值。減少某日工時時，差額通常補回尾端的 Automatic Allocation；Pending Hours 為負值時，減少其他日期的工時優先抵銷負值。
+
+## 視圖與操作模式
+
+**General Mode**：只呈現 Task 日期 bar、期間容量摘要與排程結果；不顯示每日 Allocation 細節。Pending Hours 非零時，Task bar 與工時摘要要有警示。
+
+**Allocate Mode**：全域切換，所有展開的 Project 一起進入此模式。日層級可用左鍵增加 1 小時、右鍵減少 1 小時；週與月層級只顯示各期間 Allocation 加總並唯讀。各 Project 的水平滾動位置同步，方便比較同一日期的跨 Project 負載。
+
+**Timeline Semantic Level**：日、週、月是同一條連續時間軸的不同縮放語意。Allocate Mode 不改變目前縮放；只有日層級可編輯每日工時。
+
+## 排程範圍
+
+**Project-Local Scheduling**：Backlog 與 Gantt 的拖曳只在同一個 Project 內生效；跨 Project 移動是另一個明確的資料操作，不由排程拖曳隱含完成。
+
+本階段不處理跨 Task 相依關係、全域自動排序或多 Task 一次重排。
