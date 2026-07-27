@@ -5,7 +5,7 @@ export const uid=()=>crypto.randomUUID();
 export const addDays=addCapacityDays;
 export {datesBetween};
 
-const iso=(offset:number)=>addDays(new Date().toISOString().slice(0,10),offset);
+const offsetDate=(offset:number)=>addDays(new Date().toISOString().slice(0,10),offset);
 const now=()=>new Date().toISOString();
 
 export const emptyTask=():Task=>({
@@ -32,19 +32,19 @@ export const sampleProject=():Project=>{
   updatedAt:createdAt,
   tasks:[
    {...emptyTask(),name:'整理需求與訪談',estimatedHours:12},
-   {...emptyTask(),name:'介面設計',start:iso(1),end:iso(4),estimatedHours:20},
-   {...emptyTask(),name:'第一版開發',start:iso(5),end:iso(10),estimatedHours:32},
+   {...emptyTask(),name:'介面設計',start:offsetDate(1),end:offsetDate(4),estimatedHours:20},
+   {...emptyTask(),name:'第一版開發',start:offsetDate(5),end:offsetDate(10),estimatedHours:32},
   ],
  };
 };
 
 export function sampleWorkspace():WorkspaceData{
- const start=iso(-2);
+ const start=offsetDate(-2);
  const project=sampleProject();
  return {
   version:2,
   projects:[project],
-  dailyCapacities:datesBetween(start,iso(45)).map(date=>({date,totalCapacityHours:8,unavailableHours:0,availableHours:8})),
+  dailyCapacities:datesBetween(start,offsetDate(45)).map(date=>({date,totalCapacityHours:8,unavailableHours:0,availableHours:8})),
   allocations:[],
  };
 }

@@ -20,6 +20,18 @@ const statusLabels:Record<TaskStatus,string>={backlog:'Backlog',scheduled:'已�
 type EditingTask={projectId:string;task:Task};
 type AllocationTarget={projectId:string;taskId:string};
 
+function replaceTaskAndAllocations(workspace:WorkspaceData,projectId:string,task:Task,taskAllocations?:Allocation[]):WorkspaceData{
+ return {
+  ...workspace,
+  projects:workspace.projects.map(project=>project.id===projectId
+   ? {...project,tasks:project.tasks.map(value=>value.id===task.id?task:value),updatedAt:now()}
+   : project),
+  allocations:taskAllocations
+   ? [...workspace.allocations.filter(item=>item.taskId!==task.id),...taskAllocations]
+   : workspace.allocations,
+ };
+}
+
 function download(data:string,name:string,type:string){
  const link=document.createElement('a');
  link.href=URL.createObjectURL(new Blob([data],{type}));
@@ -127,15 +139,15 @@ export default function App(){
   if(!rangeValidation.valid)return rangeValidation.message||'日期範圍不可排除人工分配。';
   if(getTaskAllocatedHours(draft.id,taskAllocations,'manual')>draft.estimatedHours)return '預估工時不可小於人工分配工時。';
   let nextTask={...draft,name:draft.name.trim(),updatedAt:now()};
-  let nextAllocations=workspace.allocations;
+  let recalculatedAllocations:Allocation[]|undefined;
   try{
    if(taskAllocations.length){
     const result=recalculateAutomaticAllocations(nextTask,workspace.allocations,workspace.dailyCapacities);
     nextTask={...nextTask,start:result.start,end:result.end,status:nextTask.status==='backlog'?'scheduled':nextTask.status};
-    nextAllocations=[...workspace.allocations.filter(allocation=>allocation.taskId!==draft.id),...result.allocations];
+    recalculatedAllocations=result.allocations;
    }
   }catch(error){return error instanceof Error?error.message:'Task 更新失敗。';}
-  commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...item,tasks:item.tasks.map(task=>task.id===draft.id?nextTask:task),updatedAt:now()}:item),allocations:nextAllocations});
+  commit(replaceTaskAndAllocations(workspace,project.id,nextTask,recalculatedAllocations));
   setEditingTask(null);
   return null;
  };
@@ -149,7 +161,7 @@ export default function App(){
   try{
    const result=recalculateAutomaticAllocations(task,workspace.allocations,workspace.dailyCapacities);
    const nextTask:Task={...task,start:result.start,end:result.end,status:(task.status==='completed'?'completed':'scheduled') as TaskStatus,updatedAt:now()};
-   commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...item,tasks:item.tasks.map(value=>value.id===task.id?nextTask:value),updatedAt:now()}:item),allocations:[...workspace.allocations.filter(allocation=>allocation.taskId!==task.id),...result.allocations]});
+   commit(replaceTaskAndAllocations(workspace,project.id,nextTask,result.allocations));
   }catch(error){setNotice(error instanceof Error?error.message:'自動分配失敗。');}
  };
 
@@ -173,7 +185,7 @@ export default function App(){
   try{
    const result=recalculateAutomaticAllocations(nextTask,nextAllocations,workspace.dailyCapacities);
    const savedTask:Task={...nextTask,start:result.start,end:result.end,status:(task.status==='completed'?'completed':'scheduled') as TaskStatus,updatedAt:now()};
-   commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...item,tasks:item.tasks.map(value=>value.id===taskId?savedTask:value),updatedAt:now()}:item),allocations:[...workspace.allocations.filter(allocation=>allocation.taskId!==taskId),...result.allocations]});
+   commit(replaceTaskAndAllocations(workspace,project.id,savedTask,result.allocations));
    setAllocationTarget(null);
    return null;
   }catch(error){return error instanceof Error?error.message:'人工分配失敗。';}
@@ -191,7 +203,7 @@ export default function App(){
   try{
    const result=recalculateAutomaticAllocations(task,remaining,workspace.dailyCapacities);
    const nextTask:Task={...task,start:result.start,end:result.end,status:(result.allocations.length?(task.status==='completed'?'completed':'scheduled'):'backlog') as TaskStatus,updatedAt:now()};
-   commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...item,tasks:item.tasks.map(value=>value.id===task.id?nextTask:value),updatedAt:now()}:item),allocations:[...remaining.filter(item=>item.taskId!==task.id),...result.allocations]});
+   commit(replaceTaskAndAllocations(workspace,project.id,nextTask,result.allocations));
    return null;
   }catch(error){return error instanceof Error?error.message:'刪除人工分配失敗。';}
  };
