@@ -31,10 +31,6 @@ export function getTaskAllocatedHours(taskId:string,allocations:Allocation[],sou
   .reduce((sum,allocation)=>sum+allocation.allocatedHours,0);
 }
 
-export function getTaskRemainingHours(task:Task,allocations:Allocation[]){
- return Math.max(0,task.estimatedHours-getTaskAllocatedHours(task.id,allocations));
-}
-
 export function getDailyAllocatedHours(date:string,allocations:Allocation[],excludeTaskId?:string){
  return allocations
   .filter(allocation=>allocation.date===date&&allocation.taskId!==excludeTaskId)
@@ -92,11 +88,9 @@ function createAutomaticAllocation(taskId:string,date:string,hours:number):Alloc
  return {id:crypto.randomUUID(),taskId,date,allocatedHours:hours,source:'automatic',locked:false};
 }
 
-function distributeEvenly(taskId:string,dates:string,hours:number,allocations:Allocation[],capacities:DailyCapacity[]):Allocation[];
-function distributeEvenly(taskId:string,dates:string[],hours:number,allocations:Allocation[],capacities:DailyCapacity[]):Allocation[];
-function distributeEvenly(taskId:string,dates:string|string[],hours:number,allocations:Allocation[],capacities:DailyCapacity[]):Allocation[]{
- const candidates=(Array.isArray(dates)?dates:[dates]).filter(date=>getRemainingCapacity(date,capacities,allocations)>0);
- const targetDates=candidates.length?candidates:(Array.isArray(dates)?dates:[dates]);
+function distributeEvenly(taskId:string,dates:string[],hours:number,allocations:Allocation[],capacities:DailyCapacity[]):Allocation[]{
+ const candidates=dates.filter(date=>getRemainingCapacity(date,capacities,allocations)>0);
+ const targetDates=candidates.length?candidates:dates;
  if(!targetDates.length||hours<=0)return [];
  const share=hours/targetDates.length;
  return targetDates.map(date=>createAutomaticAllocation(taskId,date,share));
