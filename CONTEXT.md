@@ -6,7 +6,7 @@
 
 **Project**：一組需要被追蹤的工作群組；Task 只屬於一個 Project。
 
-**Task**：Project 底下可估算、可排程與可完成的工作項目。Task 有建立日期與可選的截止日期；排程日期則由 Allocation 推導。
+**Task**：Project 底下可估算、可排程與可完成的工作項目。Task 有建立日期、可選的開始／結束日期與截止日期；日期可由最快完成排程推導，也可由使用者指定為平均分配的範圍。
 
 **Task Status**：Task 的生命週期狀態，包含 `backlog`、`scheduled`、`in_progress` 與 `completed`。`completed` Task 不可修改；`in_progress` Task 仍可調整排程。
 
@@ -36,13 +36,15 @@
 
 **Estimated Hours**：Task 預計需要完成的總工時。
 
+**Allocation Strategy**：Task 自動分配工時的方式。`fastest` 從指定起始日往後優先填滿最近的可用容量；`balanced` 在 Task 明確的開始／結束日期內，避開 Manual Allocation Day，盡可能平均分配每日自動工時。
+
 **Pending Hours**：`Estimated Hours - 所有 Allocation 工時總和` 的有號差額。正值表示尚有未安排工時；負值表示目前已分配超過估計工時，必須從其他日期減少工時；零表示分配平衡。
 
 ## 日期與排程邊界
 
-**Task Date Range**：由 Task 的 Allocation 日期推導出的開始日至結束日，包含兩端。Allocation 增減時，Task 日期自動拉長或縮短；若存在 Manual Allocation Day，日期範圍不能排除它。保留完整既有日期但尚未有 Allocation 的 Scheduled Task 仍顯示日期 bar，並標示待安排；預估工時為 `0h` 或保留 `0h` Allocation 紀錄的 Scheduled Task 也仍保留在 Gantt 任務列；沒有 Allocation 且沒有完整日期的 Scheduled Task，才會出現在 Project 的條件式待處理清單。
+**Task Date Range**：Task 的開始日至結束日，包含兩端。`fastest` 模式會依 Allocation 日期自動拉長或縮短；使用者修改日期欄位或拖曳 Task bar 後切換為 `balanced`，保留明確日期範圍，並在範圍內重新平均分配自動工時。若存在 Manual Allocation Day，日期範圍不能排除它。保留完整既有日期但尚未有 Allocation 的 Scheduled Task 仍顯示日期 bar，並標示待安排；預估工時為 `0h` 或保留 `0h` Allocation 紀錄的 Scheduled Task 也仍保留在 Gantt 任務列；沒有 Allocation 且沒有完整日期的 Scheduled Task，才會出現在 Project 的條件式待處理清單。
 
-**Backlog to Gantt**：同一份 Task 資料在兩個位置之間移動，不建立副本。拖曳 Backlog 卡片到 Project 的 Gantt 時，放下的日／週／月週期是最早起始位置，系統隨後自動分配工時；不需要確認按鈕。
+**Backlog to Gantt**：同一份 Task 資料在兩個位置之間移動，不建立副本。拖曳 Backlog 卡片到 Project 的 Gantt 時，放下的日／週／月週期是最早起始位置，系統以 `fastest` 策略自動分配工時，並把新加入的 Task 放在 Gantt 清單最下方；不需要確認按鈕。
 
 **Gantt to Backlog**：使用者明確把 Task 拖回 Backlog 時，清除所有 Allocation 與 Allocation 推導日期，但保留建立日期、Deadline、估計工時與其他 Task 資訊。這代表重新開始安排。
 
@@ -50,7 +52,7 @@
 
 ## 視圖與操作模式
 
-**General Mode**：只呈現 Task 日期 bar、期間容量摘要與排程結果；不顯示每日 Allocation 細節。Pending Hours 非零時，Task bar 與工時摘要要有警示。
+**General Mode**：只呈現 Task 日期 bar、期間容量摘要與排程結果；不顯示每日 Allocation 細節。Pending Hours 非零時，Task bar 與工時摘要要有警示。沒有完整日期與 Allocation 的 Scheduled Task 會直接顯示在 Backlog 下方的待處理區；沒有待處理 Task 時隱藏該區。
 
 **Allocate Mode**：全域切換，所有展開的 Project 一起進入此模式。日層級可用左鍵增加 1 小時、右鍵減少 1 小時；週與月層級只顯示各期間 Allocation 加總並唯讀。各 Project 的水平滾動位置同步，方便比較同一日期的跨 Project 負載。
 

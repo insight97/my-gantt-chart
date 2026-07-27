@@ -25,17 +25,17 @@ Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`�
 - Backlog 卡片只需顯示名稱、優先順序與估計工時；點擊卡片開啟編輯，按住並移動可拖曳。
 - 拖曳 Backlog 卡片到 Gantt 後立即自動排程，不需要確認按鈕；放下位置是最早開始位置。
 - 拖回 Backlog 會清除所有 Allocation 與推導日期，但保留建立日期、Deadline、估計工時與 Task 資訊。
-- 沒有 Allocation、也沒有可用日期範圍但尚未拖回 Backlog 的 Task，會在 Project 標題列以待處理徽章表示；點擊後才展開清單。保留既有日期、`0h` Task 或 `0h` Allocation 紀錄的 Task 仍會顯示在 Gantt，並標示待安排。
+- 沒有 Allocation、也沒有完整日期範圍但尚未拖回 Backlog 的 Task，會直接顯示在 Backlog 下方的待處理區；沒有待處理 Task 時隱藏。保留既有日期、`0h` Task 或 `0h` Allocation 紀錄的 Task 仍會顯示在 Gantt，並標示待安排。
 
 ## Allocation 規則
 
 - 新增 Task 預設為 Backlog，預估工時預設為 8 小時，建立日期由系統記錄。
-- Automatic Allocation 從使用者指定的起始日期往後尋找有剩餘容量的日期；週末與假日不特殊處理，只看每日可用容量。
+- Automatic Allocation 預設採最快完成模式，從使用者指定的起始日期往後尋找有剩餘容量的日期；使用者修改 Task 起訖日或拖曳 Task bar 後改採平均分配模式，在日期範圍內盡可能平均使用每日容量。週末與假日不特殊處理，只看每日可用容量。
 - 搜尋範圍使用 Gantt 的預設規劃長度；範圍最後一天仍無法容納的工時會形成 Automatic Overflow，並顯示警告。
 - Allocate 模式中，被點擊調整過的整天都視為 Manual Allocation Day，包括 `0h`；Automatic Allocation 不會補回這些日期。
 - 左鍵增加 1 小時，右鍵減少 1 小時。正值 Pending Hours 會先被消耗；沒有可調整的 Automatic Allocation 時仍可增加，Pending Hours 會變成負值。
 - 減少工時時，差額通常補回 Task 尾端的 Automatic Allocation；Pending Hours 為負值時，減少其他日期會優先抵銷負值。
-- Task 的日期範圍根據 Allocation 自動拉長或縮短；Deadline 不會被改寫，超過時只顯示警告。
+- 最快完成模式的 Task 日期範圍根據 Allocation 自動拉長或縮短；平均分配模式保留使用者指定的開始／結束日期。Deadline 不會被改寫，超過時只顯示警告。
 - Manual Allocation 可以超過剩餘容量，但必須清楚顯示超載；Automatic Allocation 一般不主動造成超載。
 - 修改 Daily Capacity 後，只重新安排 Automatic Allocation，保留 Manual Allocation Day；有 Pending Hours 的 Task 不會因容量增加而偷偷補排。
 - 本階段不做跨 Task 的自動排程、相依關係推理或全域重新排序。
@@ -45,6 +45,7 @@ Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`�
 - **General Mode**：隱藏每日 Allocation 細節，只顯示 Task bar、期間 capacity summary 與 Pending Hours 警示。
 - **Allocate Mode**：全域切換所有展開的 Project。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。
 - Allocate Mode 不會改變縮放層級；所有 Project 的水平滾動位置同步。
+- Gantt 會保留既有 Task 順序，新拖入的 Task 放在最下方，不會自動依優先順序重排。
 
 ## 本機開發
 

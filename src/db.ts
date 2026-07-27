@@ -48,6 +48,7 @@ function migrateTask(value:Partial<Task>&Record<string,unknown>):Task{
   end:typeof value.end==='string'?value.end:null,
   deadline:typeof value.deadline==='string'?value.deadline:null,
   estimatedHours:0,
+  allocationStrategy:value.allocationStrategy==='balanced'?'balanced':'fastest',
   priority:value.priority==='low'||value.priority==='high'||value.priority==='medium'?value.priority:'medium',
   status:'backlog',
   notes:typeof value.notes==='string'?value.notes:'',
