@@ -1,6 +1,6 @@
 .capacity-gantt-head,
 .capacity-dates {
- height:60px;
+ height:80px;
 }
 
 .capacity-period {
@@ -17,29 +17,30 @@
  z-index:2;
 }
 
-.timeline-ruler-row {
+.timeline-context-row {
  position:absolute;
  left:0;
  right:0;
+ top:0;
  pointer-events:none;
  z-index:1;
 }
 
-.timeline-ruler-segment {
+.timeline-context-cell {
  position:absolute !important;
  top:0 !important;
- height:100% !important;
+ height:20px !important;
  display:flex;
  align-items:center;
  padding:0 4px !important;
- border-left:1px solid #d5e0e7;
- border-bottom:1px solid #dfe7ec;
+ border-left:1px solid transparent;
+ border-bottom:1px solid #e2e8ec;
  overflow:hidden;
  white-space:nowrap !important;
  text-overflow:ellipsis;
 }
 
-.timeline-ruler-segment b {
+.timeline-context-cell b {
  overflow:hidden;
  text-overflow:ellipsis;
  white-space:nowrap;
@@ -47,22 +48,55 @@
  font-weight:600;
 }
 
-.timeline-ruler-segment.year {
- background:#edf3f7;
+.timeline-context-cell.year-start {
  border-left:2px solid #66859b;
  color:#29465a;
 }
 
-.timeline-ruler-segment.month {
- background:#f6f9fb;
- border-left:2px solid #b4c8d5;
+.timeline-context-cell.month-start {
+ border-left:1px solid #b4c8d5;
  color:#496578;
 }
 
-.timeline-ruler-segment.week {
- background:#fff;
- border-left:1px dashed #cbd9e1;
- color:#71808e;
+.timeline-context-cell.week-start::after {
+ content:'';
+ position:absolute;
+ left:-1px;
+ bottom:0;
+ width:1px;
+ height:7px;
+ background:#9fb2bf;
+}
+
+.timeline-weekend-column {
+ position:absolute;
+ top:0;
+ bottom:0;
+ pointer-events:none;
+ z-index:0;
+}
+
+.timeline-weekend-column.weekend-saturday,
+.capacity-period.weekend-saturday {
+ background:#f3f7fb;
+}
+
+.timeline-weekend-column.weekend-sunday,
+.capacity-period.weekend-sunday {
+ background:#fff7f2;
+}
+
+.capacity-period.weekend-saturday.full {
+ background:#edf2f6;
+}
+
+.capacity-period.weekend-sunday.full {
+ background:#fff0e8;
+}
+
+.capacity-period.weekend-saturday.overloaded,
+.capacity-period.weekend-sunday.overloaded {
+ background:#fff1ec;
 }
 
 .capacity-period.editable {
@@ -89,7 +123,7 @@
 }
 
 .capacity-period b {
- font-size:10px;
+ font-size:12px;
  font-weight:600;
 }
 
@@ -111,7 +145,7 @@
 
 .capacity-period.compact b,
 .capacity-period.compact strong {
- font-size:8px;
+ font-size:10px;
 }
 
 .capacity-period.minimal {
@@ -121,7 +155,7 @@
 
 .capacity-period.minimal b,
 .capacity-period.minimal strong {
- font-size:7px;
+ font-size:8px;
 }
 
 .capacity-period.available strong {
