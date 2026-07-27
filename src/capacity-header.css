@@ -14,6 +14,55 @@
  overflow:hidden;
  white-space:normal !important;
  text-align:center;
+ z-index:2;
+}
+
+.timeline-ruler-row {
+ position:absolute;
+ left:0;
+ right:0;
+ pointer-events:none;
+ z-index:1;
+}
+
+.timeline-ruler-segment {
+ position:absolute !important;
+ top:0 !important;
+ height:100% !important;
+ display:flex;
+ align-items:center;
+ padding:0 4px !important;
+ border-left:1px solid #d5e0e7;
+ border-bottom:1px solid #dfe7ec;
+ overflow:hidden;
+ white-space:nowrap !important;
+ text-overflow:ellipsis;
+}
+
+.timeline-ruler-segment b {
+ overflow:hidden;
+ text-overflow:ellipsis;
+ white-space:nowrap;
+ font-size:10px;
+ font-weight:600;
+}
+
+.timeline-ruler-segment.year {
+ background:#edf3f7;
+ border-left:2px solid #66859b;
+ color:#29465a;
+}
+
+.timeline-ruler-segment.month {
+ background:#f6f9fb;
+ border-left:2px solid #b4c8d5;
+ color:#496578;
+}
+
+.timeline-ruler-segment.week {
+ background:#fff;
+ border-left:1px dashed #cbd9e1;
+ color:#71808e;
 }
 
 .capacity-period.editable {

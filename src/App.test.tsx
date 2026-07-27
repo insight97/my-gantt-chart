@@ -87,6 +87,26 @@ describe('Project arrangement',()=>{
   expect(monthLabels).not.toEqual(weekLabels);
  });
 
+ it('shows hierarchical year month and week timeline rulers',async()=>{
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  const timeline=document.querySelector('.timeline') as HTMLElement;
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  await waitFor(()=>expect(timeline.querySelectorAll('.timeline-ruler-segment.week').length).toBeGreaterThan(0));
+  expect(timeline.querySelectorAll('.timeline-ruler-segment.year').length).toBeGreaterThan(0);
+  expect(timeline.querySelectorAll('.timeline-ruler-segment.month').length).toBeGreaterThan(0);
+
+  fireEvent.click(screen.getByRole('button',{name:'週'}));
+  await waitFor(()=>expect(timeline.querySelectorAll('.timeline-ruler-segment.month').length).toBeGreaterThan(0));
+  expect(timeline.querySelectorAll('.timeline-ruler-segment.year').length).toBeGreaterThan(0);
+  expect(timeline.querySelectorAll('.timeline-ruler-segment.week')).toHaveLength(0);
+
+  fireEvent.click(screen.getByRole('button',{name:'月'}));
+  await waitFor(()=>expect(timeline.querySelectorAll('.timeline-ruler-segment.year').length).toBeGreaterThan(0));
+  expect(timeline.querySelectorAll('.timeline-ruler-segment.month')).toHaveLength(0);
+ });
+
  it('zooms the timeline with the wheel and pans it by dragging',async()=>{
   render(<App/>);
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
