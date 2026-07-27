@@ -40,7 +40,7 @@
 
 ## 日期與排程邊界
 
-**Task Date Range**：由 Task 的 Allocation 日期推導出的開始日至結束日，包含兩端。Allocation 增減時，Task 日期自動拉長或縮短；若存在 Manual Allocation Day，日期範圍不能排除它。保留完整既有日期但尚未有 Allocation 的 Scheduled Task 仍顯示日期 bar，並標示待安排；沒有 Allocation 且沒有完整日期的 Scheduled Task，才會出現在 Project 的條件式待處理清單。
+**Task Date Range**：由 Task 的 Allocation 日期推導出的開始日至結束日，包含兩端。Allocation 增減時，Task 日期自動拉長或縮短；若存在 Manual Allocation Day，日期範圍不能排除它。保留完整既有日期但尚未有 Allocation 的 Scheduled Task 仍顯示日期 bar，並標示待安排；預估工時為 `0h` 或保留 `0h` Allocation 紀錄的 Scheduled Task 也仍保留在 Gantt 任務列；沒有 Allocation 且沒有完整日期的 Scheduled Task，才會出現在 Project 的條件式待處理清單。
 
 **Backlog to Gantt**：同一份 Task 資料在兩個位置之間移動，不建立副本。拖曳 Backlog 卡片到 Project 的 Gantt 時，放下的日／週／月週期是最早起始位置，系統隨後自動分配工時；不需要確認按鈕。
 
