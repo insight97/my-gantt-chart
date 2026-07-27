@@ -130,9 +130,9 @@ describe('Project arrangement',()=>{
    await waitFor(()=>expect(event.defaultPrevented).toBe(true));
   }
 
-  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeLessThan(48);
-  expect(Array.from(document.querySelectorAll('.capacity-period b')).some(item=>item.textContent==='5')).toBe(true);
-  expect(Array.from(document.querySelectorAll('.capacity-period strong')).some(item=>item.textContent==='8')).toBe(true);
+  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBe(24);
+  expect(Array.from(document.querySelectorAll('.capacity-period b')).some(item=>item.textContent==='1/5')).toBe(true);
+  expect(Array.from(document.querySelectorAll('.capacity-period strong')).some(item=>item.textContent==='0/8')).toBe(true);
   const taskLabel=document.querySelector('.range-label') as HTMLElement;
   expect(getComputedStyle(taskLabel).overflow).toBe('hidden');
   expect(getComputedStyle(taskLabel).textOverflow).toBe('ellipsis');

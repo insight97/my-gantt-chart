@@ -17,7 +17,7 @@ import type {Allocation,DailyCapacity,ExportFile,Project,Task,TaskStatus,ViewMod
 const clone=<T,>(value:T):T=>structuredClone(value);
 const now=()=>new Date().toISOString();
 const statusLabels:Record<TaskStatus,string>={backlog:'Backlog',scheduled:'已排程',in_progress:'進行中',completed:'已完成'};
-const MIN_TIMELINE_ZOOM=.125;
+const MIN_TIMELINE_SCALE:Record<ViewMode,number>={day:24,week:32,month:40};
 const MAX_TIMELINE_ZOOM=3;
 type EditingTask={projectId:string;task:Task};
 type AllocationTarget={projectId:string;taskId:string};
@@ -470,7 +470,8 @@ function CapacityGantt({tasks,allocations,capacityAllocations,capacities,view,on
    const currentScale=scaleRef.current;
    const currentBaseScale=baseScaleRef.current;
    const currentView=viewRef.current;
-   const nextZoom=Math.min(MAX_TIMELINE_ZOOM,Math.max(MIN_TIMELINE_ZOOM,Number((currentZoom*factor).toFixed(3))));
+   const minZoom=MIN_TIMELINE_SCALE[currentView]/currentBaseScale;
+   const nextZoom=Math.min(MAX_TIMELINE_ZOOM,Math.max(minZoom,Number((currentZoom*factor).toFixed(3))));
    const nextScale=Math.round(currentBaseScale*nextZoom);
    if(nextScale===currentScale)return;
    const pointerOffset=event.clientX-timeline.getBoundingClientRect().left;
