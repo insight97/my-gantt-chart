@@ -159,6 +159,18 @@ describe('容量 domain',()=>{
   expect(validateTaskDateRange(value,[manual])).toMatchObject({valid:false});
   expect(()=>recalculateAutomaticAllocations(value,[manual],[])).toThrow('日期範圍不可排除人工分配日期');
  });
+
+ it('調整一個 Task 的 Allocation 不會改動其他 Task',()=>{
+  const value=task({id:'task-a',start:'2026-01-01',end:'2026-01-01',estimatedHours:8});
+  const other:Allocation={id:'other',taskId:'task-b',date:'2026-01-01',allocatedHours:8,source:'automatic',locked:false};
+  const allocations:Allocation[]=[
+   {id:'auto',taskId:'task-a',date:'2026-01-01',allocatedHours:8,source:'automatic',locked:false},
+   other,
+  ];
+  const result=adjustManualAllocationDay(value,allocations,[capacity('2026-01-01')],'2026-01-01',1);
+  expect(result.allocations.filter(item=>item.taskId==='task-b')).toEqual([other]);
+  expect(result.allocations.filter(item=>item.taskId==='task-a').reduce((sum,item)=>sum+item.allocatedHours,0)).toBe(9);
+ });
 });
 
 describe('資料工具',()=>{
