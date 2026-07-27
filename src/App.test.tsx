@@ -97,8 +97,8 @@ describe('Project arrangement',()=>{
   expect(timeline.querySelectorAll('.timeline-context-cell.year-start').length).toBeGreaterThan(0);
   expect(timeline.querySelectorAll('.timeline-context-cell.month-start').length).toBeGreaterThan(0);
   expect(timeline.querySelectorAll('.timeline-context-cell.week-start').length).toBeGreaterThan(0);
-  expect(timeline.querySelectorAll('.timeline-weekend-column.weekend-saturday').length).toBeGreaterThan(0);
-  expect(timeline.querySelectorAll('.timeline-weekend-column.weekend-sunday').length).toBeGreaterThan(0);
+  expect(timeline.querySelectorAll('.timeline-weekend-column.weekend').length).toBeGreaterThan(0);
+  expect(timeline.querySelectorAll('.capacity-period.weekend').length).toBeGreaterThan(0);
 
   fireEvent.click(screen.getByRole('button',{name:'週'}));
   await waitFor(()=>expect(timeline.querySelectorAll('.timeline-context-row')).toHaveLength(1));
