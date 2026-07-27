@@ -16,7 +16,7 @@ generated.
 It then became self-perpetuating. Matching the surrounding style is normally correct
 behavior, and it is what every agent did, so each pass made the density a little more
 entrenched. Nothing in the repo declared a convention, so there was nothing to match
-*except* the artifact.
+_except_ the artifact.
 
 So: if you open a file and it looks unusually compact, **do not match it**. Run
 Prettier. If you are adding new code, write it normally and let Prettier settle the

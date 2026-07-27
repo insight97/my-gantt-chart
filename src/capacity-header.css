@@ -1,158 +1,158 @@
 .capacity-gantt-head,
 .capacity-dates {
- height:80px;
+  height: 80px;
 }
 
 .capacity-period {
- display:grid;
- align-content:center;
- justify-items:center;
- gap:3px;
- height:60px !important;
- padding:6px 2px !important;
- color:#71808e;
- overflow:hidden;
- white-space:normal !important;
- text-align:center;
- border-bottom:1px solid #e1e7eb;
- z-index:2;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  height: 60px !important;
+  padding: 6px 2px !important;
+  color: #71808e;
+  overflow: hidden;
+  white-space: normal !important;
+  text-align: center;
+  border-bottom: 1px solid #e1e7eb;
+  z-index: 2;
 }
 
 .timeline-context-row {
- position:absolute;
- left:0;
- right:0;
- top:0;
- pointer-events:none;
- z-index:1;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .timeline-context-cell {
- position:absolute !important;
- top:0 !important;
- height:20px !important;
- display:flex;
- align-items:center;
- padding:0 4px !important;
- border-left:1px solid transparent;
- border-bottom:1px solid #e2e8ec;
- overflow:hidden;
- white-space:nowrap !important;
- text-overflow:ellipsis;
+  position: absolute !important;
+  top: 0 !important;
+  height: 20px !important;
+  display: flex;
+  align-items: center;
+  padding: 0 4px !important;
+  border-left: 1px solid transparent;
+  border-bottom: 1px solid #e2e8ec;
+  overflow: hidden;
+  white-space: nowrap !important;
+  text-overflow: ellipsis;
 }
 
 .timeline-context-cell b {
- overflow:hidden;
- text-overflow:ellipsis;
- white-space:nowrap;
- font-size:10px;
- font-weight:600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .timeline-context-cell.year-start {
- border-left:2px solid #66859b;
- color:#29465a;
+  border-left: 2px solid #66859b;
+  color: #29465a;
 }
 
 .timeline-context-cell.month-start {
- border-left:1px solid #b4c8d5;
- color:#496578;
+  border-left: 1px solid #b4c8d5;
+  color: #496578;
 }
 
 .timeline-context-cell.week-start::after {
- content:'';
- position:absolute;
- left:-1px;
- bottom:0;
- width:1px;
- height:7px;
- background:#9fb2bf;
+  content: '';
+  position: absolute;
+  left: -1px;
+  bottom: 0;
+  width: 1px;
+  height: 7px;
+  background: #9fb2bf;
 }
 
 .timeline-weekend-column {
- position:absolute;
- top:0;
- bottom:0;
- pointer-events:none;
- z-index:0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .timeline-weekend-column.weekend {
- background:#eef4f7;
+  background: #eef4f7;
 }
 
 .capacity-period.editable {
- cursor:pointer;
+  cursor: pointer;
 }
 
 .capacity-period.editable:hover {
- background:#edf5fa;
- color:#174f7c;
+  background: #edf5fa;
+  color: #174f7c;
 }
 
 .capacity-period.editable:focus-visible {
- z-index:1;
- outline:3px solid #99c9f2;
- outline-offset:-3px;
+  z-index: 1;
+  outline: 3px solid #99c9f2;
+  outline-offset: -3px;
 }
 
 .capacity-period b,
 .capacity-period strong,
 .capacity-period small {
- display:block;
- line-height:1.1;
- white-space:nowrap;
+  display: block;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .capacity-period b {
- font-size:12px;
- font-weight:600;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .capacity-period strong {
- font-size:10px;
- font-weight:600;
- color:#426074;
+  font-size: 10px;
+  font-weight: 600;
+  color: #426074;
 }
 
 .capacity-period small {
- font-size:9px;
- color:var(--muted);
+  font-size: 9px;
+  color: var(--muted);
 }
 
 .capacity-period.compact {
- gap:1px;
- padding:3px 1px !important;
+  gap: 1px;
+  padding: 3px 1px !important;
 }
 
 .capacity-period.compact b,
 .capacity-period.compact strong {
- font-size:10px;
+  font-size: 10px;
 }
 
 .capacity-period.minimal {
- gap:0;
- padding:1px 0 !important;
+  gap: 0;
+  padding: 1px 0 !important;
 }
 
 .capacity-period.minimal b,
 .capacity-period.minimal strong {
- font-size:8px;
+  font-size: 8px;
 }
 
 .capacity-period.available strong {
- color:var(--green);
+  color: var(--green);
 }
 
 .capacity-period.full {
- background:#f3f5f6;
+  background: #f3f5f6;
 }
 
 .capacity-period.overloaded {
- background:#fff1ec;
- color:#a33d36;
+  background: #fff1ec;
+  color: #a33d36;
 }
 
 .capacity-period.overloaded strong {
- color:var(--orange);
+  color: var(--orange);
 }
