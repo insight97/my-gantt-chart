@@ -99,6 +99,7 @@ describe('Project arrangement',()=>{
   expect(timeline.querySelectorAll('.timeline-context-cell.week-start').length).toBeGreaterThan(0);
   expect(timeline.querySelectorAll('.timeline-weekend-column.weekend').length).toBeGreaterThan(0);
   expect(timeline.querySelectorAll('.capacity-period.weekend')).toHaveLength(0);
+  expect(timeline.querySelector('.timeline-weekend-column.weekend')).toHaveStyle({borderRight:'1px solid #d4e0e7'});
 
   fireEvent.click(screen.getByRole('button',{name:'週'}));
   await waitFor(()=>expect(timeline.querySelectorAll('.timeline-context-row')).toHaveLength(1));

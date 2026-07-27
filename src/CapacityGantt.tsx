@@ -277,7 +277,7 @@ function WeekendColumns({periods,view,scale}:{periods:TimelinePeriod[];view:View
    {periods.map((period,index)=>{
     const weekend=weekendClass(period.start,view);
     if(!weekend)return null;
-    return <span className={`timeline-weekend-column ${weekend}`} key={period.start} style={{left:index*scale,width:scale}} aria-hidden="true"/>;
+    return <span className={`timeline-weekend-column ${weekend}`} key={period.start} style={{left:index*scale,width:scale,borderRight:'1px solid #d4e0e7'}} aria-hidden="true"/>;
    })}
   </>
  );
