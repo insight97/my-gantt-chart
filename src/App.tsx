@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {ChangeEvent,CSSProperties,FormEvent,KeyboardEvent,PointerEvent} from 'react';
-import {addDays,applyTaskDrag,emptyTask,uid,validateImport} from './data';
+import {addDays,applyTaskDrag,datesBetween,emptyTask,uid,validateImport} from './data';
 import {
  getDailyAllocatedHours,
  getDailyCapacity,
@@ -34,12 +34,6 @@ function dateLabel(date:string){
 
 function compactDateLabel(date:string){
  return new Date(`${date}T00:00:00`).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'});
-}
-
-function dateHeaderLabel(date:string,index:number,view:ViewMode){
- if(view==='day')return compactDateLabel(date);
- if(view==='week')return index%7===0?compactDateLabel(date):'';
- return date.endsWith('-01')?new Date(`${date}T00:00:00`).toLocaleDateString('zh-TW',{year:'numeric',month:'numeric'}):'';
 }
 
 function hoursLabel(hours:number){
@@ -338,6 +332,59 @@ function Backlog({tasks,onEdit,onAuto,onAllocate}:{tasks:Task[];onEdit:(task:Tas
 
 type DragState={task:Task;mode:'move'|'start'|'end';startX:number;delta:number};
 
+type TimelinePeriod={start:string;end:string;dates:string[];label:string};
+
+function startOfWeek(date:string){
+ const weekday=new Date(`${date}T00:00:00Z`).getUTCDay();
+ return addDays(date,-((weekday+6)%7));
+}
+
+function startOfMonth(date:string){
+ return `${date.slice(0,7)}-01`;
+}
+
+function startOfNextMonth(date:string){
+ const value=new Date(`${startOfMonth(date)}T00:00:00Z`);
+ value.setUTCMonth(value.getUTCMonth()+1);
+ return value.toISOString().slice(0,10);
+}
+
+function periodStart(date:string,view:ViewMode){
+ return view==='week'?startOfWeek(date):view==='month'?startOfMonth(date):date;
+}
+
+function periodEnd(date:string,view:ViewMode){
+ if(view==='week')return addDays(startOfWeek(date),6);
+ if(view==='month')return addDays(startOfNextMonth(date),-1);
+ return date;
+}
+
+function periodLabel(start:string,end:string,view:ViewMode){
+ if(view==='day')return compactDateLabel(start);
+ if(view==='week')return `${compactDateLabel(start)}–${compactDateLabel(end)}`;
+ return new Date(`${start}T00:00:00Z`).toLocaleDateString('zh-TW',{year:'numeric',month:'long'});
+}
+
+function buildTimelinePeriods(start:string,end:string,view:ViewMode):TimelinePeriod[]{
+ const periods:TimelinePeriod[]=[];
+ let cursor=periodStart(start,view);
+ const final=periodEnd(end,view);
+ while(cursor<=final){
+  const last=periodEnd(cursor,view);
+  periods.push({start:cursor,end:last,dates:datesBetween(cursor,last),label:periodLabel(cursor,last,view)});
+  cursor=addDays(last,1);
+ }
+ return periods;
+}
+
+function periodHours(period:TimelinePeriod,allocations:Allocation[],source?:Allocation['source']){
+ return period.dates.reduce((sum,date)=>sum+getDailyAllocatedHours(date,allocations.filter(item=>!source||item.source===source)),0);
+}
+
+function periodAvailableHours(period:TimelinePeriod,capacities:DailyCapacity[]){
+ return period.dates.reduce((sum,date)=>sum+getDailyCapacity(date,capacities).availableHours,0);
+}
+
 function CapacityGantt({tasks,allocations,capacityAllocations,capacities,view,onEdit,onAllocate,onAuto,onDelete,onEditCapacity,onChangeDates}:{tasks:Task[];allocations:Allocation[];capacityAllocations:Allocation[];capacities:DailyCapacity[];view:ViewMode;onEdit:(task:Task)=>void;onAllocate:(taskId:string)=>void;onAuto:(taskId:string)=>void;onDelete:(taskId:string)=>void;onEditCapacity:(date:string)=>void;onChangeDates:(next:Task)=>void}){
  const timelineRef=useRef<HTMLDivElement>(null);
  const dragRef=useRef<DragState|null>(null);
@@ -346,9 +393,14 @@ function CapacityGantt({tasks,allocations,capacityAllocations,capacities,view,on
  const dated=tasks.flatMap(task=>[task.start,task.end].filter((date):date is string=>Boolean(date)));
  const min=dated.sort()[0]||new Date().toISOString().slice(0,10);
  const max=dated.sort().at(-1)||addDays(min,21);
- const origin=addDays(min,-2);
- const total=Math.max(35,daysBetween(origin,max)+6);
- const ticks=Array.from({length:total},(_,index)=>addDays(origin,index));
+ const timelineStart=view==='day'?addDays(min,-2):periodStart(min,view);
+ const requestedEnd=view==='day'?addDays(max,5):periodEnd(max,view);
+ const timelineEnd=view==='day'&&daysBetween(timelineStart,requestedEnd)<34?addDays(timelineStart,34):requestedEnd;
+ const periods=buildTimelinePeriods(timelineStart,timelineEnd,view);
+ const findPeriodIndex=(date:string)=>{
+  const index=periods.findIndex(period=>date>=period.start&&date<=period.end);
+  return index<0?(date<periods[0].start?0:periods.length-1):index;
+ };
  const beginDrag=(event:PointerEvent<HTMLElement>,task:Task,mode:DragState['mode'])=>{
   if(!task.start||!task.end)return;
   event.preventDefault();
@@ -383,7 +435,8 @@ function CapacityGantt({tasks,allocations,capacityAllocations,capacities,view,on
   }
  };
  const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta):task;
- return <section className="gantt-section"><div className="section-heading"><div><h2>Capacity Gantt</h2><small>日期欄顯示已分配／可用容量；點擊日期可設定容量</small></div></div><div className="gantt"><div className="gantt-sidebar"><div className="gantt-head capacity-gantt-head"><span>Task</span><span>工時</span><span>操作</span></div>{tasks.map(task=>{const allocated=allocations.filter(item=>item.taskId===task.id).reduce((sum,item)=>sum+item.allocatedHours,0);return <div className="gantt-side-row" key={task.id}><button className="task-link" onClick={()=>onEdit(task)}><b>{task.name}</b><small>{formatRange(task)}</small></button><span className="hours"><b>{allocated}</b> / {task.estimatedHours}h</span><div className="row-actions"><button title="人工分配" onClick={()=>onAllocate(task.id)}>＋</button><button title="自動分配" onClick={()=>onAuto(task.id)}>↗</button><button title="刪除" onClick={()=>onDelete(task.id)}>×</button></div></div>})}</div><div className="timeline" ref={timelineRef}><div className="dates capacity-dates" style={{width:total*scale}}>{ticks.map((date,index)=>{const capacity=getDailyCapacity(date,capacities);const allocated=getDailyAllocatedHours(date,capacityAllocations);const remaining=capacity.availableHours-allocated;const state=remaining<0?'overloaded':remaining===0?'full':'available';return <span className={`capacity-date ${state}`} key={date} role="button" tabIndex={0} title={`${compactDateLabel(date)} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(capacity.availableHours)} · 點擊設定容量`} aria-label={`${compactDateLabel(date)}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(capacity.availableHours)}`} onClick={()=>onEditCapacity(date)} onKeyDown={event=>openCapacity(event,date)} style={{left:index*scale,width:scale}}><b>{dateHeaderLabel(date,index,view)}</b><strong>{hoursLabel(allocated)} / {hoursLabel(capacity.availableHours)}</strong></span>})}</div><div className="timeline-grid" style={{width:total*scale,'--scale':`${scale}px`} as CSSProperties}>{tasks.map(task=>{const value=preview(task);const left=value.start?daysBetween(origin,value.start)*scale:0;const width=value.start&&value.end?Math.max(scale*.7,(daysBetween(value.start,value.end)+1)*scale):0;return <div className="timeline-row" key={task.id}>{width>0&&<div className={`task-range ${task.status==='backlog'?'backlog-range':'scheduled-range'}${dragging?.task.id===task.id?' dragging':''}`} style={{left,width,backgroundColor:task.color}} onPointerDown={event=>beginDrag(event,task,'move')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} title="拖曳以調整日期範圍"><span className="range-label">{task.name}</span>{allocations.filter(item=>item.taskId===task.id).map(item=><i className={`allocation ${item.source}`} key={item.id} title={`${item.date} · ${item.allocatedHours} 小時 · ${item.source==='manual'?'人工':'自動'}`} style={{left:(daysBetween(origin,item.date)*scale)-left,width:Math.max(5,scale-4)}}/>)}<button className="resize-handle start" aria-label="調整開始日期" onPointerDown={event=>beginDrag(event,task,'start')}/><button className="resize-handle end" aria-label="調整結束日期" onPointerDown={event=>beginDrag(event,task,'end')}/></div>}</div>})}</div></div></div></section>;
+ const capacityMessage=view==='day'?'每日顯示已分配／可用容量；點擊日期可設定容量':view==='week'?'每週顯示該週每日容量加總':'每月顯示該月每日容量加總';
+ return <section className="gantt-section"><div className="section-heading"><div><h2>Capacity Gantt</h2><small>{capacityMessage}</small></div></div><div className="gantt"><div className="gantt-sidebar"><div className="gantt-head capacity-gantt-head"><span>Task</span><span>工時</span><span>操作</span></div>{tasks.map(task=>{const allocated=allocations.filter(item=>item.taskId===task.id).reduce((sum,item)=>sum+item.allocatedHours,0);return <div className="gantt-side-row" key={task.id}><button className="task-link" onClick={()=>onEdit(task)}><b>{task.name}</b><small>{formatRange(task)}</small></button><span className="hours"><b>{allocated}</b> / {task.estimatedHours}h</span><div className="row-actions"><button title="人工分配" onClick={()=>onAllocate(task.id)}>＋</button><button title="自動分配" onClick={()=>onAuto(task.id)}>↗</button><button title="刪除" onClick={()=>onDelete(task.id)}>×</button></div></div>})}</div><div className="timeline" ref={timelineRef}><div className="dates capacity-dates" style={{width:periods.length*scale}}>{periods.map(period=>{const allocated=periodHours(period,capacityAllocations);const available=periodAvailableHours(period,capacities);const remaining=available-allocated;const state=remaining<0?'overloaded':remaining===0?'full':'available';const editable=view==='day';return <span className={`capacity-period ${state}${editable?' editable':''}`} key={period.start} role={editable?'button':undefined} tabIndex={editable?0:undefined} title={editable?`${period.label} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)} · 點擊設定容量`:`${period.label} · ${period.dates.length} 天容量加總 · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)}`} aria-label={`${period.label}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(available)}`} onClick={editable?()=>onEditCapacity(period.start):undefined} onKeyDown={editable?event=>openCapacity(event,period.start):undefined} style={{left:periods.indexOf(period)*scale,width:scale}}><b>{period.label}</b><strong>{hoursLabel(allocated)} / {hoursLabel(available)}</strong>{!editable&&<small>{period.dates.length} 天合計</small>}</span>})}</div><div className="timeline-grid" style={{width:periods.length*scale,'--scale':`${scale}px`} as CSSProperties}>{tasks.map(task=>{const taskAllocations=allocations.filter(item=>item.taskId===task.id);const value=preview(task);const startIndex=value.start?findPeriodIndex(value.start):0;const endIndex=value.end?findPeriodIndex(value.end):startIndex;const left=value.start?startIndex*scale:0;const width=value.start&&value.end?Math.max(scale*.7,(endIndex-startIndex+1)*scale):0;return <div className="timeline-row" key={task.id}>{width>0&&<div className={`task-range ${task.status==='backlog'?'backlog-range':'scheduled-range'}${dragging?.task.id===task.id?' dragging':''}`} style={{left,width,backgroundColor:task.color}} onPointerDown={event=>beginDrag(event,task,'move')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} title="拖曳以調整日期範圍"><span className="range-label">{task.name}</span>{periods.flatMap((period,index)=>(['automatic','manual'] as const).map(source=>{const hours=periodHours(period,taskAllocations,source);if(!hours)return null;return <i className={`allocation ${source}`} key={`${period.start}-${source}`} title={`${period.label} · ${hoursLabel(hours)} · ${source==='manual'?'人工':'自動'}`} style={{left:index*scale-left,width:Math.max(5,scale-4)}}/>}))}<button className="resize-handle start" aria-label="調整開始日期" onPointerDown={event=>beginDrag(event,task,'start')}/><button className="resize-handle end" aria-label="調整結束日期" onPointerDown={event=>beginDrag(event,task,'end')}/></div>}</div>})}</div></div></div></section>;
 }
 
 function TaskDialog({task,allocations,onClose,onSave}:{task:Task;allocations:Allocation[];onClose:()=>void;onSave:(task:Task)=>string|null}){
