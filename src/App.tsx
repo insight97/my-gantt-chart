@@ -17,6 +17,8 @@ import type {Allocation,DailyCapacity,ExportFile,Project,Task,TaskStatus,ViewMod
 const clone=<T,>(value:T):T=>structuredClone(value);
 const now=()=>new Date().toISOString();
 const statusLabels:Record<TaskStatus,string>={backlog:'Backlog',scheduled:'已排程',in_progress:'進行中',completed:'已完成'};
+type EditingTask={projectId:string;task:Task};
+type AllocationTarget={projectId:string;taskId:string};
 
 function download(data:string,name:string,type:string){
  const link=document.createElement('a');
@@ -48,11 +50,11 @@ function formatRange(task:Task){
 
 export default function App(){
  const [workspace,setWorkspace]=useState<WorkspaceData|null>(null);
- const [activeProjectId,setActiveProjectId]=useState('');
+ const [expandedProjectIds,setExpandedProjectIds]=useState<Set<string>>(()=>new Set());
  const [view,setView]=useState<ViewMode>(()=>(localStorage.getItem('gantt-view') as ViewMode)||'week');
  const [ready,setReady]=useState(false);
- const [editingTask,setEditingTask]=useState<Task|null>(null);
- const [allocationTaskId,setAllocationTaskId]=useState<string|null>(null);
+ const [editingTask,setEditingTask]=useState<EditingTask|null>(null);
+ const [allocationTarget,setAllocationTarget]=useState<AllocationTarget|null>(null);
  const [capacityDate,setCapacityDate]=useState<string|null>(null);
  const [notice,setNotice]=useState('');
  const [history,setHistory]=useState<WorkspaceData[]>([]);
@@ -65,7 +67,7 @@ export default function App(){
    if(!mounted)return;
    const next=value||createEmptyWorkspace();
    setWorkspace(next);
-   setActiveProjectId(next.projects[0]?.id||'');
+   setExpandedProjectIds(new Set(next.projects.slice(0,1).map(item=>item.id)));
    setReady(true);
   }).catch(()=>setNotice('無法開啟瀏覽器本機資料庫。'));
   return()=>{mounted=false};
@@ -79,16 +81,15 @@ export default function App(){
 
  useEffect(()=>localStorage.setItem('gantt-view',view),[view]);
 
- const project=workspace?.projects.find(item=>item.id===activeProjectId)||workspace?.projects[0];
  const commit=(next:WorkspaceData)=>{
   if(!workspace)return;
   setHistory(items=>[...items.slice(-39),clone(workspace)]);
   setFuture([]);
   setWorkspace(next);
  };
- const patchProject=(fn:(value:Project)=>Project)=>{
-  if(!workspace||!project)return;
-  commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...fn(item),updatedAt:now()}:item)});
+ const patchProject=(projectId:string,fn:(value:Project)=>Project)=>{
+  if(!workspace)return;
+  commit({...workspace,projects:workspace.projects.map(item=>item.id===projectId?{...fn(item),updatedAt:now()}:item)});
  };
  const undo=()=>{
   if(!workspace||!history.length)return;
@@ -110,23 +111,31 @@ export default function App(){
   const timestamp=now();
   const next:Project={id:uid(),name:'未命名專案',description:'',createdAt:timestamp,updatedAt:timestamp,tasks:[]};
   commit({...workspace,projects:[...workspace.projects,next]});
-  setActiveProjectId(next.id);
+  setExpandedProjectIds(ids=>new Set([...ids,next.id]));
  };
 
- const deleteProject=()=>{
-  if(!workspace||!project)return;
+ const deleteProject=(projectId:string)=>{
+  if(!workspace)return;
+  const project=workspace.projects.find(item=>item.id===projectId);
+  if(!project)return;
   if(workspace.projects.length===1)return setNotice('至少需要保留一個專案。');
   if(!confirm(`確定刪除「${project.name}」及其所有 Task？`))return;
   const taskIds=new Set(project.tasks.map(task=>task.id));
   const nextProjects=workspace.projects.filter(item=>item.id!==project.id);
   commit({...workspace,projects:nextProjects,allocations:workspace.allocations.filter(allocation=>!taskIds.has(allocation.taskId))});
-  setActiveProjectId(nextProjects[0].id);
+  setExpandedProjectIds(ids=>{
+   const next=new Set(ids);
+   next.delete(projectId);
+   return next;
+  });
  };
 
- const addTask=()=>patchProject(projectValue=>({...projectValue,tasks:[...projectValue.tasks,emptyTask()]}));
+ const addTask=(projectId:string)=>patchProject(projectId,projectValue=>({...projectValue,tasks:[...projectValue.tasks,emptyTask()]}));
 
- const saveTask=(draft:Task):string|null=>{
-  if(!workspace||!project)return '目前沒有可編輯的專案。';
+ const saveTask=(projectId:string,draft:Task):string|null=>{
+  if(!workspace)return '目前沒有可編輯的工作區。';
+  const project=workspace.projects.find(item=>item.id===projectId);
+  if(!project)return '找不到 Project。';
   if(!draft.name.trim())return '請輸入 Task 名稱。';
   if(draft.start&&draft.end&&draft.start>draft.end)return '結束日期不可早於開始日期。';
   const taskAllocations=workspace.allocations.filter(allocation=>allocation.taskId===draft.id);
@@ -147,8 +156,10 @@ export default function App(){
   return null;
  };
 
- const autoScheduleTask=(taskId:string)=>{
-  if(!workspace||!project)return;
+ const autoScheduleTask=(projectId:string,taskId:string)=>{
+  if(!workspace)return;
+  const project=workspace.projects.find(item=>item.id===projectId);
+  if(!project)return;
   const task=project.tasks.find(item=>item.id===taskId);
   if(!task)return;
   try{
@@ -158,8 +169,10 @@ export default function App(){
   }catch(error){setNotice(error instanceof Error?error.message:'自動分配失敗。');}
  };
 
- const saveManualAllocation=(taskId:string,date:string,hours:number):string|null=>{
-  if(!workspace||!project)return '目前沒有可編輯的專案。';
+ const saveManualAllocation=(projectId:string,taskId:string,date:string,hours:number):string|null=>{
+  if(!workspace)return '目前沒有可編輯的工作區。';
+  const project=workspace.projects.find(item=>item.id===projectId);
+  if(!project)return '找不到 Project。';
   if(!date||!Number.isFinite(hours)||hours<=0)return '請輸入有效的日期與工時。';
   const task=project.tasks.find(item=>item.id===taskId);
   if(!task)return '找不到 Task。';
@@ -177,13 +190,15 @@ export default function App(){
    const result=recalculateAutomaticAllocations(nextTask,nextAllocations,workspace.dailyCapacities);
    const savedTask:Task={...nextTask,start:result.start,end:result.end,status:(task.status==='completed'?'completed':'scheduled') as TaskStatus,updatedAt:now()};
    commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...item,tasks:item.tasks.map(value=>value.id===taskId?savedTask:value),updatedAt:now()}:item),allocations:[...workspace.allocations.filter(allocation=>allocation.taskId!==taskId),...result.allocations]});
-   setAllocationTaskId(null);
+   setAllocationTarget(null);
    return null;
   }catch(error){return error instanceof Error?error.message:'人工分配失敗。';}
  };
 
- const deleteManualAllocation=(allocationId:string):string|null=>{
-  if(!workspace||!project)return '目前沒有可編輯的專案。';
+ const deleteManualAllocation=(projectId:string,allocationId:string):string|null=>{
+  if(!workspace)return '目前沒有可編輯的工作區。';
+  const project=workspace.projects.find(item=>item.id===projectId);
+  if(!project)return '找不到 Project。';
   const allocation=workspace.allocations.find(item=>item.id===allocationId);
   if(!allocation||allocation.source!=='manual')return '只能刪除人工分配。';
   const task=project.tasks.find(item=>item.id===allocation.taskId);
@@ -211,8 +226,10 @@ export default function App(){
   }catch(error){return error instanceof Error?error.message:'容量更新失敗。';}
  };
 
- const deleteTask=(taskId:string)=>{
-  if(!workspace||!project||!confirm('確定刪除這個 Task 及其 Allocation？'))return;
+ const deleteTask=(projectId:string,taskId:string)=>{
+  if(!workspace||!confirm('確定刪除這個 Task 及其 Allocation？'))return;
+  const project=workspace.projects.find(item=>item.id===projectId);
+  if(!project)return;
   commit({...workspace,projects:workspace.projects.map(item=>item.id===project.id?{...item,tasks:item.tasks.filter(task=>task.id!==taskId),updatedAt:now()}:item),allocations:workspace.allocations.filter(allocation=>allocation.taskId!==taskId)});
  };
 
@@ -232,14 +249,24 @@ export default function App(){
    if(!validateImport(value))throw new Error('檔案格式或版本不正確。');
    if(!confirm('匯入會取代目前工作區。請先確認已建立備份。'))return;
    commit(value);
-   setActiveProjectId(value.projects[0]?.id||'');
+   setExpandedProjectIds(new Set(value.projects.slice(0,1).map(item=>item.id)));
    setNotice('匯入完成。');
   }catch(error){setNotice(error instanceof Error?`匯入失敗：${error.message}`:'匯入失敗。');}
  };
 
- if(!ready||!workspace||!project)return <main className="loading">正在開啟本機工作區…</main>;
+ if(!ready||!workspace)return <main className="loading">正在開啟本機工作區…</main>;
 
- const projectAllocations=workspace.allocations.filter(allocation=>project.tasks.some(task=>task.id===allocation.taskId));
+ const allExpanded=workspace.projects.length>0&&workspace.projects.every(project=>expandedProjectIds.has(project.id));
+ const toggleProject=(projectId:string)=>setExpandedProjectIds(ids=>{
+  const next=new Set(ids);
+  if(next.has(projectId))next.delete(projectId);else next.add(projectId);
+  return next;
+ });
+ const expandAll=()=>setExpandedProjectIds(new Set(workspace.projects.map(project=>project.id)));
+ const collapseAll=()=>setExpandedProjectIds(new Set());
+ const editingProject=editingTask&&workspace.projects.find(project=>project.id===editingTask.projectId);
+ const allocationProject=allocationTarget&&workspace.projects.find(project=>project.id===allocationTarget.projectId);
+ const allocationTask=allocationProject&&allocationTarget&&allocationProject.tasks.find(task=>task.id===allocationTarget.taskId);
 
  return <div className="app">
   <header>
@@ -255,30 +282,47 @@ export default function App(){
   <div className="local-note"><b>資料只儲存在這台裝置</b><span>請定期建立 JSON 備份。</span></div>
   {notice&&<div className="toast" role="status">{notice}<button aria-label="關閉通知" onClick={()=>setNotice('')}>×</button></div>}
   <main>
-   <section className="projectbar">
-    <label>目前 Project<select value={project.id} onChange={event=>setActiveProjectId(event.target.value)}>{workspace.projects.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-    <button onClick={addProject}>＋ 新增 Project</button>
-    <button onClick={deleteProject} className="danger">刪除 Project</button>
-    <div className="project-meta"><input aria-label="Project 名稱" value={project.name} onChange={event=>patchProject(value=>({...value,name:event.target.value}))}/><input aria-label="Project 說明" value={project.description} placeholder="Project 說明…" onChange={event=>patchProject(value=>({...value,description:event.target.value}))}/></div>
-   </section>
-   <section className="workspace">
-    <div className="workspace-title"><div><h1>{project.name}</h1><p>{project.tasks.length} 個 Task · 預估 {getProjectEstimatedHours(project)} 小時</p></div><div className="view-switch" aria-label="時間檢視">{(['day','week','month'] as const).map(value=><button key={value} className={view===value?'active':''} onClick={()=>setView(value)}>{value==='day'?'日':value==='week'?'週':'月'}</button>)}</div><button className="primary" onClick={addTask}>＋ 新增 Task</button></div>
-    <div className="planning-layout">
-     <Backlog tasks={project.tasks.filter(task=>!projectAllocations.some(allocation=>allocation.taskId===task.id))} onEdit={setEditingTask} onAuto={autoScheduleTask} onAllocate={setAllocationTaskId}/>
-     <CapacityGantt tasks={project.tasks} allocations={projectAllocations} capacities={workspace.dailyCapacities} view={view} onEdit={setEditingTask} onAllocate={setAllocationTaskId} onAuto={autoScheduleTask} onDelete={deleteTask} onEditCapacity={setCapacityDate} onChangeDates={next=>{
+   <section className="project-list">
+    <div className="project-list-toolbar">
+     <div><h1>Projects</h1><p>{workspace.projects.length} 個 Project · 可在同一頁檢視、編輯與安排工作</p></div>
+     <div className="project-list-actions"><button onClick={allExpanded?collapseAll:expandAll} disabled={!workspace.projects.length}>{allExpanded?'全部收合':'全部展開'}</button><button className="primary" onClick={addProject}>＋ 新增 Project</button></div>
+    </div>
+    {workspace.projects.length===0?<div className="empty-projects"><p>目前還沒有 Project。</p><button className="primary" onClick={addProject}>＋ 建立第一個 Project</button></div>:<div className="project-panels">{workspace.projects.map(project=>{
+     const projectAllocations=workspace.allocations.filter(allocation=>project.tasks.some(task=>task.id===allocation.taskId));
+     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id)} onEditTask={task=>setEditingTask({projectId:project.id,task})} onAutoTask={taskId=>autoScheduleTask(project.id,taskId)} onAllocateTask={taskId=>setAllocationTarget({projectId:project.id,taskId})} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={setView} onChangeDates={next=>{
       const validation=validateTaskDateRange(next,workspace.allocations);
       if(!validation.valid){setNotice(validation.message||'日期範圍不可排除人工分配。');return;}
-      const error=saveTask(next);
+      const error=saveTask(project.id,next);
       if(error)setNotice(error);
      }}/>
-    </div>
+    })}</div>}
    </section>
   </main>
-  {editingTask&&<TaskDialog task={editingTask} allocations={projectAllocations.filter(allocation=>allocation.taskId===editingTask.id)} onClose={()=>setEditingTask(null)} onSave={saveTask}/>}
-  {allocationTaskId&&<AllocationDialog task={project.tasks.find(task=>task.id===allocationTaskId)!} allocations={projectAllocations.filter(allocation=>allocation.taskId===allocationTaskId)} onClose={()=>setAllocationTaskId(null)} onSave={saveManualAllocation} onDelete={deleteManualAllocation}/>}
+  {editingTask&&editingProject&&<TaskDialog task={editingTask.task} allocations={workspace.allocations.filter(allocation=>allocation.taskId===editingTask.task.id)} onClose={()=>setEditingTask(null)} onSave={task=>saveTask(editingTask.projectId,task)}/>}
+  {allocationTarget&&allocationProject&&allocationTask&&<AllocationDialog task={allocationTask} allocations={workspace.allocations.filter(allocation=>allocation.taskId===allocationTask.id)} onClose={()=>setAllocationTarget(null)} onSave={(taskId,date,hours)=>saveManualAllocation(allocationTarget.projectId,taskId,date,hours)} onDelete={allocationId=>deleteManualAllocation(allocationTarget.projectId,allocationId)}/>}
   {capacityDate&&<CapacityDialog date={capacityDate} capacity={getDailyCapacity(capacityDate,workspace.dailyCapacities)} onClose={()=>setCapacityDate(null)} onSave={saveCapacity}/>}
   <footer>Capacity Gantt · 所有資料皆留在您的瀏覽器 · <button onClick={exportJson}>立即備份</button></footer>
  </div>;
+}
+
+function ProjectPanel({project,allocations,allAllocations,capacities,view,expanded,onToggle,onChange,onDelete,onAddTask,onEditTask,onAutoTask,onAllocateTask,onDeleteTask,onEditCapacity,onViewChange,onChangeDates}:{project:Project;allocations:Allocation[];allAllocations:Allocation[];capacities:DailyCapacity[];view:ViewMode;expanded:boolean;onToggle:()=>void;onChange:(fn:(value:Project)=>Project)=>void;onDelete:()=>void;onAddTask:()=>void;onEditTask:(task:Task)=>void;onAutoTask:(taskId:string)=>void;onAllocateTask:(taskId:string)=>void;onDeleteTask:(taskId:string)=>void;onEditCapacity:(date:string)=>void;onViewChange:(view:ViewMode)=>void;onChangeDates:(task:Task)=>void}){
+ const allocatedHours=allocations.reduce((sum,item)=>sum+item.allocatedHours,0);
+ const backlogCount=project.tasks.filter(task=>!allocations.some(item=>item.taskId===task.id)).length;
+ return <article className={`project-card${expanded?' expanded':' collapsed'}`}>
+  <div className="project-card-header">
+   <button className="project-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded?'收合':'展開'} ${project.name}`} onClick={onToggle}><span aria-hidden="true">{expanded?'⌄':'›'}</span><small>Project</small></button>
+   <div className="project-identity"><input aria-label={`${project.name} Project 名稱`} value={project.name} onChange={event=>onChange(value=>({...value,name:event.target.value}))}/><input aria-label={`${project.name} Project 說明`} value={project.description} placeholder="Project 說明…" onChange={event=>onChange(value=>({...value,description:event.target.value}))}/></div>
+   <div className="project-summary"><span>{project.tasks.length} 個 Task</span><span>Backlog {backlogCount}</span><span>已分配 {hoursLabel(allocatedHours)} / {hoursLabel(getProjectEstimatedHours(project))}</span></div>
+   <button className="danger project-delete" type="button" onClick={onDelete}>刪除</button>
+  </div>
+  {expanded&&<div className="project-card-content">
+   <div className="workspace-title"><div><h2>{project.name}</h2><p>{project.tasks.length} 個 Task · 預估 {getProjectEstimatedHours(project)} 小時</p></div><div className="view-switch" aria-label={`${project.name} 時間檢視`}>{(['day','week','month'] as const).map(value=><button key={value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{value==='day'?'日':value==='week'?'週':'月'}</button>)}</div><button className="primary" onClick={onAddTask}>＋ 新增 Task</button></div>
+   <div className="planning-layout">
+    <Backlog tasks={project.tasks.filter(task=>!allocations.some(allocation=>allocation.taskId===task.id))} onEdit={onEditTask} onAuto={onAutoTask} onAllocate={onAllocateTask}/>
+    <CapacityGantt tasks={project.tasks} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} view={view} onEdit={onEditTask} onAllocate={onAllocateTask} onAuto={onAutoTask} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onChangeDates={onChangeDates}/>
+   </div>
+  </div>}
+ </article>;
 }
 
 function Backlog({tasks,onEdit,onAuto,onAllocate}:{tasks:Task[];onEdit:(task:Task)=>void;onAuto:(taskId:string)=>void;onAllocate:(taskId:string)=>void}){
@@ -288,7 +332,7 @@ function Backlog({tasks,onEdit,onAuto,onAllocate}:{tasks:Task[];onEdit:(task:Tas
 
 type DragState={task:Task;mode:'move'|'start'|'end';startX:number;delta:number};
 
-function CapacityGantt({tasks,allocations,capacities,view,onEdit,onAllocate,onAuto,onDelete,onEditCapacity,onChangeDates}:{tasks:Task[];allocations:Allocation[];capacities:DailyCapacity[];view:ViewMode;onEdit:(task:Task)=>void;onAllocate:(taskId:string)=>void;onAuto:(taskId:string)=>void;onDelete:(taskId:string)=>void;onEditCapacity:(date:string)=>void;onChangeDates:(next:Task)=>void}){
+function CapacityGantt({tasks,allocations,capacityAllocations,capacities,view,onEdit,onAllocate,onAuto,onDelete,onEditCapacity,onChangeDates}:{tasks:Task[];allocations:Allocation[];capacityAllocations:Allocation[];capacities:DailyCapacity[];view:ViewMode;onEdit:(task:Task)=>void;onAllocate:(taskId:string)=>void;onAuto:(taskId:string)=>void;onDelete:(taskId:string)=>void;onEditCapacity:(date:string)=>void;onChangeDates:(next:Task)=>void}){
  const timelineRef=useRef<HTMLDivElement>(null);
  const dragRef=useRef<DragState|null>(null);
  const [dragging,setDragging]=useState<DragState|null>(null);
@@ -333,7 +377,7 @@ function CapacityGantt({tasks,allocations,capacities,view,onEdit,onAllocate,onAu
   }
  };
  const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta):task;
- return <section className="gantt-section"><div className="section-heading"><div><h2>Capacity Gantt</h2><small>日期欄顯示已分配／可用容量；點擊日期可設定容量</small></div></div><div className="gantt"><div className="gantt-sidebar"><div className="gantt-head capacity-gantt-head"><span>Task</span><span>工時</span><span>操作</span></div>{tasks.map(task=>{const allocated=allocations.filter(item=>item.taskId===task.id).reduce((sum,item)=>sum+item.allocatedHours,0);return <div className="gantt-side-row" key={task.id}><button className="task-link" onClick={()=>onEdit(task)}><b>{task.name}</b><small>{formatRange(task)}</small></button><span className="hours"><b>{allocated}</b> / {task.estimatedHours}h</span><div className="row-actions"><button title="人工分配" onClick={()=>onAllocate(task.id)}>＋</button><button title="自動分配" onClick={()=>onAuto(task.id)}>↗</button><button title="刪除" onClick={()=>onDelete(task.id)}>×</button></div></div>})}</div><div className="timeline" ref={timelineRef}><div className="dates capacity-dates" style={{width:total*scale}}>{ticks.map((date,index)=>{const capacity=getDailyCapacity(date,capacities);const allocated=getDailyAllocatedHours(date,allocations);const remaining=capacity.availableHours-allocated;const state=remaining<0?'overloaded':remaining===0?'full':'available';return <span className={`capacity-date ${state}`} key={date} role="button" tabIndex={0} title={`${compactDateLabel(date)} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(capacity.availableHours)} · 點擊設定容量`} aria-label={`${compactDateLabel(date)}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(capacity.availableHours)}`} onClick={()=>onEditCapacity(date)} onKeyDown={event=>openCapacity(event,date)} style={{left:index*scale,width:scale}}><b>{compactDateLabel(date)}</b><strong>{hoursLabel(allocated)} / {hoursLabel(capacity.availableHours)}</strong></span>})}</div><div className="timeline-grid" style={{width:total*scale,'--scale':`${scale}px`} as CSSProperties}>{tasks.map(task=>{const value=preview(task);const left=value.start?daysBetween(origin,value.start)*scale:0;const width=value.start&&value.end?Math.max(scale*.7,(daysBetween(value.start,value.end)+1)*scale):0;return <div className="timeline-row" key={task.id}>{width>0&&<div className={`task-range ${task.status==='backlog'?'backlog-range':'scheduled-range'}${dragging?.task.id===task.id?' dragging':''}`} style={{left,width,backgroundColor:task.color}} onPointerDown={event=>beginDrag(event,task,'move')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} title="拖曳以調整日期範圍"><span className="range-label">{task.name}</span>{allocations.filter(item=>item.taskId===task.id).map(item=><i className={`allocation ${item.source}`} key={item.id} title={`${item.date} · ${item.allocatedHours} 小時 · ${item.source==='manual'?'人工':'自動'}`} style={{left:(daysBetween(origin,item.date)*scale)-left,width:Math.max(5,scale-4)}}/>)}<button className="resize-handle start" aria-label="調整開始日期" onPointerDown={event=>beginDrag(event,task,'start')}/><button className="resize-handle end" aria-label="調整結束日期" onPointerDown={event=>beginDrag(event,task,'end')}/></div>}</div>})}</div></div></div></section>;
+ return <section className="gantt-section"><div className="section-heading"><div><h2>Capacity Gantt</h2><small>日期欄顯示已分配／可用容量；點擊日期可設定容量</small></div></div><div className="gantt"><div className="gantt-sidebar"><div className="gantt-head capacity-gantt-head"><span>Task</span><span>工時</span><span>操作</span></div>{tasks.map(task=>{const allocated=allocations.filter(item=>item.taskId===task.id).reduce((sum,item)=>sum+item.allocatedHours,0);return <div className="gantt-side-row" key={task.id}><button className="task-link" onClick={()=>onEdit(task)}><b>{task.name}</b><small>{formatRange(task)}</small></button><span className="hours"><b>{allocated}</b> / {task.estimatedHours}h</span><div className="row-actions"><button title="人工分配" onClick={()=>onAllocate(task.id)}>＋</button><button title="自動分配" onClick={()=>onAuto(task.id)}>↗</button><button title="刪除" onClick={()=>onDelete(task.id)}>×</button></div></div>})}</div><div className="timeline" ref={timelineRef}><div className="dates capacity-dates" style={{width:total*scale}}>{ticks.map((date,index)=>{const capacity=getDailyCapacity(date,capacities);const allocated=getDailyAllocatedHours(date,capacityAllocations);const remaining=capacity.availableHours-allocated;const state=remaining<0?'overloaded':remaining===0?'full':'available';return <span className={`capacity-date ${state}`} key={date} role="button" tabIndex={0} title={`${compactDateLabel(date)} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(capacity.availableHours)} · 點擊設定容量`} aria-label={`${compactDateLabel(date)}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(capacity.availableHours)}`} onClick={()=>onEditCapacity(date)} onKeyDown={event=>openCapacity(event,date)} style={{left:index*scale,width:scale}}><b>{compactDateLabel(date)}</b><strong>{hoursLabel(allocated)} / {hoursLabel(capacity.availableHours)}</strong></span>})}</div><div className="timeline-grid" style={{width:total*scale,'--scale':`${scale}px`} as CSSProperties}>{tasks.map(task=>{const value=preview(task);const left=value.start?daysBetween(origin,value.start)*scale:0;const width=value.start&&value.end?Math.max(scale*.7,(daysBetween(value.start,value.end)+1)*scale):0;return <div className="timeline-row" key={task.id}>{width>0&&<div className={`task-range ${task.status==='backlog'?'backlog-range':'scheduled-range'}${dragging?.task.id===task.id?' dragging':''}`} style={{left,width,backgroundColor:task.color}} onPointerDown={event=>beginDrag(event,task,'move')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} title="拖曳以調整日期範圍"><span className="range-label">{task.name}</span>{allocations.filter(item=>item.taskId===task.id).map(item=><i className={`allocation ${item.source}`} key={item.id} title={`${item.date} · ${item.allocatedHours} 小時 · ${item.source==='manual'?'人工':'自動'}`} style={{left:(daysBetween(origin,item.date)*scale)-left,width:Math.max(5,scale-4)}}/>)}<button className="resize-handle start" aria-label="調整開始日期" onPointerDown={event=>beginDrag(event,task,'start')}/><button className="resize-handle end" aria-label="調整結束日期" onPointerDown={event=>beginDrag(event,task,'end')}/></div>}</div>})}</div></div></div></section>;
 }
 
 function TaskDialog({task,allocations,onClose,onSave}:{task:Task;allocations:Allocation[];onClose:()=>void;onSave:(task:Task)=>string|null}){
