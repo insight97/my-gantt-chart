@@ -216,8 +216,7 @@ function CapacityPeriods({periods,capacities,allocations,view,scale,onEditCapaci
     const state=capacityState(allocated,available);
     const editable=view==='day';
     const density=periodDensity(scale);
-    const weekend=weekendClass(period.start,view);
-    const className=['capacity-period',state,density,editable?'editable':'',weekend].filter(Boolean).join(' ');
+    const className=['capacity-period',state,density,editable?'editable':''].filter(Boolean).join(' ');
     const title=editable
      ? `${period.label} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)} · 點擊設定容量`
      : `${period.label} · ${period.dates.length} 天容量加總 · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)}`;

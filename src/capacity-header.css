@@ -77,9 +77,8 @@
  z-index:0;
 }
 
-.timeline-weekend-column.weekend,
-.capacity-period.weekend {
- background:#fafcfd;
+.timeline-weekend-column.weekend {
+ background:#eef4f7;
 }
 
 .capacity-period.editable {
