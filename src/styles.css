@@ -6,3 +6,6 @@
 @media print{header,.local-note,.projectbar,.header-actions,.workspace-title .primary,.capacity-summary,.backlog,.row-actions,.app>footer{display:none!important}.app>main{padding:0}.workspace{border:0;box-shadow:none}.planning-layout{display:block}.gantt-section{padding:0}.gantt{grid-template-columns:35% 65%;overflow:visible}.timeline{overflow:visible}.task-range{print-color-adjust:exact}}
 .timeline.panning{cursor:grabbing}
 .range-label{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.timeline-grid{position:relative}
+.timeline-row{z-index:1}
+.task-range{z-index:2}
