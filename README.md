@@ -13,6 +13,8 @@
 - **Allocation**：Task 在特定日期上的工時，可由使用者指定或系統自動產生。
 - **Capacity Gantt**：同時呈現 Task 日期範圍、每日 Allocation 與每日剩餘容量。
 
+Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`）；點擊日期即可編輯總容量與不可用時間，超載日期會以紅色警告。
+
 ## Allocation 規則
 
 - 新增 Task 預設為 Backlog，預估工時預設為 8 小時，日期可留空。
