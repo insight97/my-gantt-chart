@@ -55,6 +55,26 @@
  color:var(--muted);
 }
 
+.capacity-period.compact {
+ gap:1px;
+ padding:3px 1px !important;
+}
+
+.capacity-period.compact b,
+.capacity-period.compact strong {
+ font-size:8px;
+}
+
+.capacity-period.minimal {
+ gap:0;
+ padding:1px 0 !important;
+}
+
+.capacity-period.minimal b,
+.capacity-period.minimal strong {
+ font-size:7px;
+}
+
 .capacity-period.available strong {
  color:var(--green);
 }

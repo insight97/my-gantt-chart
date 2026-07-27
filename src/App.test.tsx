@@ -2,6 +2,8 @@ import {cleanup,createEvent,fireEvent,render,screen,waitFor} from '@testing-libr
 import '@testing-library/jest-dom/vitest';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {WorkspaceData} from './types';
+import './styles.css';
+import './capacity-header.css';
 
 const {loadWorkspaceMock,saveWorkspaceMock}=vi.hoisted(()=>({
  loadWorkspaceMock:vi.fn(),
@@ -35,6 +37,9 @@ const aggregationWorkspace:WorkspaceData={
  dailyCapacities:[],
  allocations:[],
 };
+
+const denseWorkspace:WorkspaceData=structuredClone(aggregationWorkspace);
+denseWorkspace.projects[0].tasks[0].name='這是一個很長的任務標題需要在窄欄位省略';
 
 describe('Project arrangement',()=>{
  afterEach(()=>cleanup());
@@ -111,6 +116,28 @@ describe('Project arrangement',()=>{
   expect(timeline).not.toHaveClass('panning');
  });
 
+ it('uses compact labels when the timeline is narrowed',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  const timeline=document.querySelector('.timeline') as HTMLElement;
+  const timelineGrid=document.querySelector('.timeline-grid') as HTMLElement;
+  for(let index=0;index<24;index+=1){
+   const event=createEvent.wheel(timeline,{deltaY:100,clientX:120,bubbles:true,cancelable:true});
+   timeline.dispatchEvent(event);
+   await waitFor(()=>expect(event.defaultPrevented).toBe(true));
+  }
+
+  expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeLessThan(48);
+  expect(Array.from(document.querySelectorAll('.capacity-period b')).some(item=>item.textContent==='5')).toBe(true);
+  expect(Array.from(document.querySelectorAll('.capacity-period strong')).some(item=>item.textContent==='8')).toBe(true);
+  const taskLabel=document.querySelector('.range-label') as HTMLElement;
+  expect(getComputedStyle(taskLabel).overflow).toBe('hidden');
+  expect(getComputedStyle(taskLabel).textOverflow).toBe('ellipsis');
+ });
+
  it('aggregates capacity into non-editable week and month summaries',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
   render(<App/>);
@@ -126,6 +153,6 @@ describe('Project arrangement',()=>{
   fireEvent.click(screen.getByRole('button',{name:'月'}));
   await waitFor(()=>expect(document.querySelectorAll('.capacity-period').length).toBeGreaterThan(0));
   expect(document.querySelectorAll('.capacity-period[role="button"]')).toHaveLength(0);
-  expect(Array.from(document.querySelectorAll('.capacity-period')).some(period=>period.textContent?.includes('248h'))).toBe(true);
+  expect(Array.from(document.querySelectorAll('.capacity-period')).some(period=>period.textContent?.includes('0/248'))).toBe(true);
  });
 });
