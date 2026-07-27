@@ -1,12 +1,11 @@
-import type {AllocationStrategy,ExportFile,Project,Task,TaskPriority,ViewMode,WorkspaceData} from './types';
-import {addDays as addCapacityDays, datesBetween} from './capacity';
+import type {Allocation,AllocationStrategy,ExportFile,Project,Task,TaskPriority,ViewMode,WorkspaceData} from './types';
+import {addDays,datesBetween,defaultDailyCapacity,today} from './capacity';
+import {priorityOrder} from './formatters';
 
 export const uid=()=>crypto.randomUUID();
-export const addDays=addCapacityDays;
-export {datesBetween};
+export const now=()=>new Date().toISOString();
 
-const offsetDate=(offset:number)=>addDays(new Date().toISOString().slice(0,10),offset);
-const now=()=>new Date().toISOString();
+const offsetDate=(offset:number)=>addDays(today(),offset);
 
 export const emptyTask=():Task=>({
  id:uid(),
@@ -47,7 +46,7 @@ export function sampleWorkspace():WorkspaceData{
  return {
   version:2,
   projects:[project],
-  dailyCapacities:datesBetween(start,offsetDate(45)).map(date=>({date,totalCapacityHours:8,unavailableHours:0,availableHours:8})),
+  dailyCapacities:datesBetween(start,offsetDate(45)).map(date=>defaultDailyCapacity(date)),
   allocations:[],
  };
 }
@@ -134,6 +133,25 @@ export function normalizeWorkspaceData(value:WorkspaceData):WorkspaceData{
    priority:task.priority??'medium',
   }))})),
  };
+}
+
+/**
+ * Splits a Project's Tasks into the three places the UI shows them.
+ * A Scheduled Task stays on the Gantt while it has any Allocation record, a complete
+ * date range, or a zero-hour estimate; otherwise it falls into the pending tray.
+ */
+export function partitionProjectTasks(project:Project,allocations:Allocation[]){
+ const allocatedTaskIds=new Set(allocations.map(allocation=>allocation.taskId));
+ const backlog:Task[]=[];
+ const scheduled:Task[]=[];
+ const pending:Task[]=[];
+ for(const task of project.tasks){
+  if(task.status==='backlog')backlog.push(task);
+  else if(allocatedTaskIds.has(task.id)||(task.start&&task.end)||task.estimatedHours===0)scheduled.push(task);
+  else pending.push(task);
+ }
+ backlog.sort((a,b)=>priorityOrder[a.priority]-priorityOrder[b.priority]||a.createdAt.localeCompare(b.createdAt));
+ return {backlog,scheduled,pending};
 }
 
 export type TaskDragMode='move'|'start'|'end';

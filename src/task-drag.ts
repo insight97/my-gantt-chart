@@ -23,3 +23,9 @@ export type TaskDragState={
 };
 
 export type TaskDropTargetHandler=(target:TaskDropTarget|null,element?:HTMLElement)=>void;
+
+/** True when the pointer actually left `currentTarget` rather than moving between its descendants. */
+export function pointerLeftElement(event:{relatedTarget:EventTarget|null;currentTarget:Element}){
+ const related=event.relatedTarget;
+ return !(related instanceof Node)||!event.currentTarget.contains(related);
+}

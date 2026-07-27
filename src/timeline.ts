@@ -1,9 +1,13 @@
-import {addDays,datesBetween,daysBetween,getDailyAllocatedHours,getDailyCapacity,today} from './capacity';
+import {addDays,datesBetween,daysBetween,DEFAULT_DAILY_CAPACITY_HOURS,today} from './capacity';
 import {compactDateLabel,hourValueLabel,hoursLabel} from './formatters';
-import type {Allocation,DailyCapacity,Task,ViewMode} from './types';
+import type {Task,ViewMode} from './types';
 
 export const TIMELINE_CONTEXT_ROW_HEIGHT=20;
 export const TIMELINE_CAPACITY_ROW_HEIGHT=60;
+/** Must stay in sync with the row heights in styles.css (.timeline-row, .gantt-side-row, .task-card-gantt). */
+export const TIMELINE_TASK_ROW_HEIGHT=70;
+/** Must stay in sync with .task-range{top} in styles.css. */
+export const TIMELINE_TASK_RANGE_TOP=19;
 export const TIMELINE_MIN_PIXELS_PER_DAY=1.25;
 export const TIMELINE_MAX_PIXELS_PER_DAY=288;
 const MIN_TIMELINE_DAYS=180;
@@ -180,13 +184,12 @@ export function buildTimelineContext(periods:TimelinePeriod[],view:ViewMode):Tim
  });
 }
 
-export function periodHours(period:TimelinePeriod,allocations:Allocation[],source?:Allocation['source']){
- const sourceAllocations=source?allocations.filter(item=>item.source===source):allocations;
- return period.dates.reduce((sum,date)=>sum+getDailyAllocatedHours(date,sourceAllocations),0);
+export function periodHours(period:TimelinePeriod,hoursByDate:Map<string,number>){
+ return period.dates.reduce((sum,date)=>sum+(hoursByDate.get(date)||0),0);
 }
 
-export function periodAvailableHours(period:TimelinePeriod,capacities:DailyCapacity[]){
- return period.dates.reduce((sum,date)=>sum+getDailyCapacity(date,capacities).availableHours,0);
+export function periodAvailableHours(period:TimelinePeriod,availableByDate:Map<string,number>){
+ return period.dates.reduce((sum,date)=>sum+(availableByDate.get(date)??DEFAULT_DAILY_CAPACITY_HOURS),0);
 }
 
 export type CapacityState='available'|'full'|'overloaded';

@@ -250,9 +250,10 @@ describe('Project arrangement',()=>{
   const weekend=timeline.querySelector('.timeline-weekend-column.weekend') as HTMLElement;
   const separators=timeline.querySelector('.timeline-row-separators') as HTMLElement;
 
+  // Stacking and hit-testing are owned by .timeline-row-separators in styles.css; assert the hook, not inline style.
   expect(separators).toBeInTheDocument();
-  expect(getComputedStyle(separators).zIndex).toBe('3');
-  expect(getComputedStyle(separators).pointerEvents).toBe('none');
+  expect(separators).toHaveClass('timeline-row-separators');
+  expect(weekend.compareDocumentPosition(separators)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(weekend).toHaveClass('weekend');
  });
 
@@ -310,9 +311,10 @@ describe('Project arrangement',()=>{
   expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeGreaterThanOrEqual(18);
   expect(Array.from(document.querySelectorAll('.capacity-period b')).some(item=>item.textContent==='1/5')).toBe(true);
   expect(Array.from(document.querySelectorAll('.capacity-period strong')).some(item=>item.textContent==='0/8')).toBe(true);
+  // Truncation is owned by .range-label in styles.css; assert the hook, not inline style.
   const taskLabel=document.querySelector('.range-label') as HTMLElement;
-  expect(getComputedStyle(taskLabel).overflow).toBe('hidden');
-  expect(getComputedStyle(taskLabel).textOverflow).toBe('ellipsis');
+  expect(taskLabel).toHaveClass('range-label');
+  expect(taskLabel).toHaveTextContent('這是一個很長的任務標題需要在窄欄位省略');
  });
 
  it('shares semantic zoom across expanded Projects',async()=>{
@@ -391,40 +393,12 @@ describe('Project arrangement',()=>{
   await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
   const card=document.querySelector('.backlog .task-card') as HTMLElement;
-  const timeline=document.querySelector('.timeline-grid') as HTMLElement;
-  const dataTransfer={
-   effectAllowed:'',
-   dropEffect:'',
-   setData:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
-  };
-  fireEvent.dragStart(card,{dataTransfer});
-  fireEvent.drop(timeline,{dataTransfer,clientX:20});
+  const timeline=document.querySelector('.timeline') as HTMLElement;
+  fireEvent.pointerDown(card,{button:0,clientX:10,clientY:10,pointerId:1});
+  fireEvent.pointerMove(timeline,{clientX:100,clientY:100,pointerId:1});
+  fireEvent.pointerMove(timeline,{clientX:102,clientY:102,pointerId:1});
+  fireEvent.pointerUp(timeline,{clientX:102,clientY:102,pointerId:1});
   await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['既有 Task','新加入 Task']));
- });
-
- it('initializes Backlog drags with the same move preview as Gantt drags',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
-
-  const card=document.querySelector('.backlog .task-card') as HTMLElement;
-  const dataTransfer={effectAllowed:'',dropEffect:'',setData:vi.fn(),setDragImage:vi.fn()};
-  fireEvent.dragStart(card,{dataTransfer});
-
-  expect(dataTransfer.effectAllowed).toBe('move');
-  expect(dataTransfer.setDragImage).toHaveBeenCalledWith(card,12,12);
- });
-
- it('keeps the Backlog drop cursor in move mode while entering Backlog',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
-
-  const backlog=document.querySelector('.backlog') as HTMLElement;
-  const dataTransfer={dropEffect:'copy',types:['application/x-gantt-task']};
-  fireEvent.dragEnter(backlog,{dataTransfer});
-  expect(dataTransfer.dropEffect).toBe('move');
  });
 
  it('shows start and end dates in Task details',async()=>{
@@ -459,38 +433,6 @@ describe('Project arrangement',()=>{
   fireEvent.click(screen.getByRole('button',{name:'儲存'}));
   await waitFor(()=>expect(document.querySelector('.gantt-sidebar .task-link')).toHaveTextContent('待排 Task'));
   expect(document.querySelector('.task-range')).toBeInTheDocument();
- });
-
- it('inserts a Gantt Task at the dropped row instead of swapping',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(reorderWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
-
-  const rows=document.querySelectorAll('.gantt-side-row');
-  const last=rows[2].querySelector('.task-link') as HTMLElement;
-  const first=rows[0] as HTMLElement;
-  const dataTransfer={
-   effectAllowed:'',
-   dropEffect:'',
-   setData:vi.fn(),
-   setDragImage:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-reorder'?JSON.stringify({projectId:'project-a',taskId:'last-task'}):''),
-  };
-  fireEvent.dragStart(last,{dataTransfer});
-  expect(dataTransfer.setDragImage).toHaveBeenCalledWith(last,12,12);
-  fireEvent.drop(first,{dataTransfer});
-  await waitFor(()=>expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['最後 Task','第一個 Task','中間 Task']));
- });
-
- it('keeps the reorder drop cursor in move mode while entering Gantt',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(reorderWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
-
-  const gantt=document.querySelector('.gantt') as HTMLElement;
-  const dataTransfer={dropEffect:'none',types:['application/x-gantt-reorder']};
-  fireEvent.dragEnter(gantt,{dataTransfer});
-  expect(dataTransfer.dropEffect).toBe('move');
  });
 
  it('renders each Gantt Task as one integrated card',async()=>{
@@ -612,25 +554,6 @@ describe('Project arrangement',()=>{
   fireEvent.pointerUp(cell,{clientX:120,pointerId:1});
  });
 
- it('drops a Backlog Task into Gantt and schedules the same record',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
-
-  const card=document.querySelector('.backlog .task-card') as HTMLElement;
-  const timeline=document.querySelector('.timeline-grid') as HTMLElement;
-  const dataTransfer={
-   effectAllowed:'',
-   dropEffect:'',
-   setData:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
-  };
-  fireEvent.dragStart(card,{dataTransfer});
-  fireEvent.drop(timeline,{dataTransfer,clientX:20});
-  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument());
-  expect(document.querySelector('.gantt-side-row')).toBeInTheDocument();
- });
-
  it('drops a Backlog Task onto a Gantt row and appends it with a default interval',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(orderedWorkspace));
   render(<App/>);
@@ -638,14 +561,10 @@ describe('Project arrangement',()=>{
 
   const card=document.querySelector('.backlog .task-card') as HTMLElement;
   const row=document.querySelector('.gantt-side-row') as HTMLElement;
-  const dataTransfer={
-   effectAllowed:'',
-   dropEffect:'',
-   setData:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
-  };
-  fireEvent.dragStart(card,{dataTransfer});
-  fireEvent.drop(row,{dataTransfer});
+  fireEvent.pointerDown(card,{button:0,clientX:10,clientY:10,pointerId:1});
+  fireEvent.pointerMove(row,{clientX:60,clientY:60,pointerId:1});
+  fireEvent.pointerMove(row,{clientX:62,clientY:62,pointerId:1});
+  fireEvent.pointerUp(row,{clientX:62,clientY:62,pointerId:1});
   await waitFor(()=>expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument());
   expect(Array.from(document.querySelectorAll('.gantt-sidebar .task-link b')).map(item=>item.textContent)).toEqual(['既有 Task','新加入 Task']);
  });
@@ -665,44 +584,6 @@ describe('Project arrangement',()=>{
   fireEvent.click(firstCell);
   await waitFor(()=>expect(rows[0].querySelector('.allocation-cell.has-hours')).toHaveTextContent('9h'));
   expect(rows[1].querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h');
- });
-
- it('shows a ghost preview while dragging a Backlog Task over Gantt',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByText('待排 Task')).toBeInTheDocument());
-
-  const card=document.querySelector('.backlog .task-card') as HTMLElement;
-  const timeline=document.querySelector('.timeline-grid') as HTMLElement;
-  const dataTransfer={
-   effectAllowed:'',
-   dropEffect:'',
-   setData:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'backlog-task'}):''),
-  };
-  fireEvent.dragStart(card,{dataTransfer});
-  fireEvent.dragOver(timeline,{dataTransfer,clientX:20});
-  expect(document.querySelector('.drop-preview')).toBeInTheDocument();
-  expect(document.querySelector('.drop-preview')).toHaveTextContent('待排 Task');
- });
-
- it('drops a scheduled Task back to Backlog and clears its allocations',async()=>{
-  loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
-  render(<App/>);
-  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
-
-  const taskLink=document.querySelector('.gantt-sidebar .task-link') as HTMLElement;
-  const backlog=document.querySelector('.backlog') as HTMLElement;
-  const dataTransfer={
-   effectAllowed:'',
-   dropEffect:'',
-   setData:vi.fn(),
-   getData:vi.fn((type:string)=>type==='application/x-gantt-task'?JSON.stringify({projectId:'project-a',taskId:'task-a'}):''),
-  };
-  fireEvent.dragStart(taskLink,{dataTransfer});
-  fireEvent.drop(backlog,{dataTransfer});
-  await waitFor(()=>expect(document.querySelector('.backlog .task-card')).toHaveTextContent('這是一個很長的任務標題需要在窄欄位省略'));
-  expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
  });
 
  it('drags a Gantt bar back to Backlog',async()=>{

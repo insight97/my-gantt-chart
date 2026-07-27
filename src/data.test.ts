@@ -1,7 +1,9 @@
 import {describe,expect,it} from 'vitest';
 import {
+ addDays,
  adjustManualAllocationDay,
  capacityAvailableHours,
+ datesBetween,
  getDailyAllocatedHours,
  getProjectEstimatedHours,
  getTaskPendingHours,
@@ -10,7 +12,7 @@ import {
  trimManualAllocationsToEstimate,
  validateTaskDateRange,
 } from './capacity';
-import {addDays,applyTaskDrag,datesBetween,emptyTask,validateImport} from './data';
+import {applyTaskDrag,emptyTask,validateImport} from './data';
 import type {Allocation,DailyCapacity,Project,Task} from './types';
 
 const capacity=(date:string,total=8,unavailable=0):DailyCapacity=>({
