@@ -7,7 +7,7 @@ import {
   allocationsByTask,
   capacityAvailableByDate,
   isTaskOverdue,
-  recalculateAutomaticAllocations,
+  scheduleTaskAt,
   today,
 } from './capacity';
 import { hoursLabel } from './formatters';
@@ -726,17 +726,13 @@ export default function CapacityGantt({
       tasks.find(item => item.id === dropTargetTaskId);
     if (!task) return null;
     try {
-      const result = recalculateAutomaticAllocations(
-        task,
-        capacityAllocations,
-        capacities,
-        dropTargetDate,
-        { fillPending: true },
-      );
+      const result = scheduleTaskAt(task, capacityAllocations, capacities, dropTargetDate, {
+        fillPending: true,
+      });
       return {
-        ...task,
-        start: result.start || dropTargetDate,
-        end: result.end || dropTargetDate,
+        ...result.task,
+        start: result.task.start || dropTargetDate,
+        end: result.task.end || dropTargetDate,
         status: 'scheduled' as const,
       };
     } catch {

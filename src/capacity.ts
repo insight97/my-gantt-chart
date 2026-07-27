@@ -10,6 +10,11 @@ export interface AllocationResult {
   end: string | null;
 }
 
+export interface ScheduleResult {
+  task: Task;
+  allocations: Allocation[];
+}
+
 export interface AllocationValidation {
   valid: boolean;
   message?: string;
@@ -415,6 +420,69 @@ export function recalculateAutomaticAllocations(
   return { allocations: resultAllocations, ...resultRange(task, resultAllocations) };
 }
 
+/**
+ * Recalculates automatic allocations for `task` and folds the result back into the
+ * Task shape (`start`/`end`), so callers stop hand-assembling that pair themselves.
+ * Strategy and range are taken from `task` as given — this is the shared base that
+ * `scheduleTaskAt` and `setTaskDateRange` build on.
+ */
+export function recalculateTaskSchedule(
+  task: Task,
+  allocations: Allocation[],
+  capacities: DailyCapacity[],
+  startDate = today(),
+  options: RecalculateOptions = {},
+): ScheduleResult {
+  const result = recalculateAutomaticAllocations(task, allocations, capacities, startDate, options);
+  return {
+    task: { ...task, start: result.start, end: result.end },
+    allocations: result.allocations,
+  };
+}
+
+/** Anchors `task` at `date` and schedules it with the `fastest` strategy. */
+export function scheduleTaskAt(
+  task: Task,
+  allocations: Allocation[],
+  capacities: DailyCapacity[],
+  date: string,
+  options: RecalculateOptions = {},
+): ScheduleResult {
+  return recalculateTaskSchedule(
+    { ...task, start: date, end: null, allocationStrategy: 'fastest' },
+    allocations,
+    capacities,
+    date,
+    options,
+  );
+}
+
+/** Sets `task`'s explicit date range and schedules it with the `balanced` strategy. */
+export function setTaskDateRange(
+  task: Task,
+  allocations: Allocation[],
+  capacities: DailyCapacity[],
+  start: string | null,
+  end: string | null,
+  options: RecalculateOptions = {},
+): ScheduleResult {
+  return recalculateTaskSchedule(
+    { ...task, start, end, allocationStrategy: 'balanced' },
+    allocations,
+    capacities,
+    start || task.start || today(),
+    options,
+  );
+}
+
+/** Clears `task`'s dates and all of its Allocations, per the Gantt-to-Backlog rule. */
+export function returnTaskToBacklog(task: Task): ScheduleResult {
+  return {
+    task: { ...task, status: 'backlog', start: null, end: null, allocationStrategy: 'fastest' },
+    allocations: [],
+  };
+}
+
 export function adjustManualAllocationDay(
   task: Task,
   allocations: Allocation[],
@@ -507,19 +575,15 @@ export function recalculateWorkspace(data: WorkspaceData): WorkspaceData {
         )
       )
         continue;
-      const result = recalculateAutomaticAllocations(
-        task,
-        allocations,
-        data.dailyCapacities,
-        today(),
-        { fillPending: false },
-      );
+      const result = recalculateTaskSchedule(task, allocations, data.dailyCapacities, today(), {
+        fillPending: false,
+      });
       allocations = [
         ...allocations.filter(allocation => allocation.taskId !== task.id),
         ...result.allocations,
       ];
-      task.start = result.start;
-      task.end = result.end;
+      task.start = result.task.start;
+      task.end = result.task.end;
       if (task.status === 'backlog') task.status = 'scheduled';
       task.updatedAt = new Date().toISOString();
     }

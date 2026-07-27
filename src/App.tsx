@@ -15,8 +15,11 @@ import {
   getProjectEstimatedHours,
   getTaskAllocatedHours,
   getTaskPendingHours,
-  recalculateAutomaticAllocations,
+  recalculateTaskSchedule,
   recalculateWorkspace,
+  returnTaskToBacklog,
+  scheduleTaskAt,
+  setTaskDateRange,
   trimManualAllocationsToEstimate,
   today,
 } from './capacity';
@@ -335,8 +338,9 @@ export default function App() {
     let recalculatedAllocations: Allocation[] | undefined;
     try {
       if (nextTask.status === 'backlog') {
-        nextTask = { ...nextTask, start: null, end: null, allocationStrategy: 'fastest' };
-        recalculatedAllocations = [];
+        const result = returnTaskToBacklog(nextTask);
+        nextTask = result.task;
+        recalculatedAllocations = result.allocations;
       } else if (taskAllocations.length || enteredGantt || datesChanged) {
         const adjustedWorkspaceAllocations = trimManualAllocationsToEstimate(
           draft.id,
@@ -348,7 +352,7 @@ export default function App() {
           !nextTask.start && !nextTask.end
             ? { ...nextTask, start: scheduleAnchor, allocationStrategy: 'fastest' as const }
             : nextTask;
-        const result = recalculateAutomaticAllocations(
+        const result = recalculateTaskSchedule(
           scheduledTask,
           adjustedWorkspaceAllocations,
           workspace.dailyCapacities,
@@ -357,9 +361,9 @@ export default function App() {
         );
         const fallbackStart = scheduledTask.start;
         nextTask = {
-          ...scheduledTask,
-          start: result.start || fallbackStart,
-          end: result.end || result.start || fallbackStart,
+          ...result.task,
+          start: result.task.start || fallbackStart,
+          end: result.task.end || result.task.start || fallbackStart,
         };
         recalculatedAllocations = result.allocations;
       }
@@ -386,21 +390,14 @@ export default function App() {
     const task = project.tasks.find(item => item.id === taskId);
     if (!task) return;
     try {
-      const fastestTask: Task = { ...task, allocationStrategy: 'fastest' };
-      const result = recalculateAutomaticAllocations(
-        fastestTask,
+      const result = scheduleTaskAt(
+        { ...task, status: task.status === 'completed' ? 'completed' : 'scheduled' },
         workspace.allocations,
         workspace.dailyCapacities,
-        task.start || undefined,
+        task.start || today(),
         { fillPending: true },
       );
-      const nextTask: Task = {
-        ...fastestTask,
-        start: result.start,
-        end: result.end,
-        status: task.status === 'completed' ? 'completed' : 'scheduled',
-        updatedAt: now(),
-      };
+      const nextTask: Task = { ...result.task, updatedAt: now() };
       commit(replaceTaskAndAllocations(workspace, project.id, nextTask, result.allocations));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '自動分配失敗。');
@@ -456,26 +453,14 @@ export default function App() {
       )
         return;
       try {
-        const anchored = {
-          ...task,
-          start: date,
-          end: null,
-          status: 'scheduled' as const,
-          allocationStrategy: 'fastest' as const,
-        };
-        const result = recalculateAutomaticAllocations(
-          anchored,
+        const result = scheduleTaskAt(
+          { ...task, status: 'scheduled' },
           workspace.allocations,
           workspace.dailyCapacities,
           date,
           { fillPending: true },
         );
-        const nextTask: Task = {
-          ...anchored,
-          start: result.start,
-          end: result.end,
-          updatedAt: now(),
-        };
+        const nextTask: Task = { ...result.task, updatedAt: now() };
         commit(replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations, true));
       } catch (error) {
         setNotice(error instanceof Error ? error.message : '自動分配失敗。');
@@ -490,14 +475,9 @@ export default function App() {
       const project = workspace.projects.find(item => item.id === projectId);
       const task = project?.tasks.find(item => item.id === taskId);
       if (!project || !task || task.status === 'completed') return;
-      const nextTask: Task = {
-        ...task,
-        status: 'backlog',
-        start: null,
-        end: null,
-        updatedAt: now(),
-      };
-      commit(replaceTaskAndAllocations(workspace, projectId, nextTask, []));
+      const result = returnTaskToBacklog(task);
+      const nextTask: Task = { ...result.task, updatedAt: now() };
+      commit(replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations));
     },
     [workspace, commit],
   );
@@ -590,18 +570,20 @@ export default function App() {
     if (end && manualDates[0] && end < manualDates[0]) end = manualDates[0];
     if (start && end && start > end) end = start;
     try {
-      const draft = { ...task, start, end, allocationStrategy: 'balanced' as const };
-      const result = recalculateAutomaticAllocations(
-        draft,
+      const result = setTaskDateRange(
+        task,
         workspace.allocations,
         workspace.dailyCapacities,
-        start || task.start || today(),
-        { fillPending: true },
+        start,
+        end,
+        {
+          fillPending: true,
+        },
       );
       const savedTask: Task = {
-        ...draft,
-        start: result.start || draft.start,
-        end: result.end || draft.end,
+        ...result.task,
+        start: result.task.start || start,
+        end: result.task.end || end,
         updatedAt: now(),
       };
       commit(replaceTaskAndAllocations(workspace, projectId, savedTask, result.allocations));
