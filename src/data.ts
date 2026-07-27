@@ -1,138 +1,186 @@
-import type {Allocation,AllocationStrategy,ExportFile,Project,Task,TaskPriority,ViewMode,WorkspaceData} from './types';
-import {addDays,datesBetween,defaultDailyCapacity,today} from './capacity';
-import {priorityOrder} from './formatters';
+import type {
+  Allocation,
+  AllocationStrategy,
+  ExportFile,
+  Project,
+  Task,
+  TaskPriority,
+  ViewMode,
+  WorkspaceData,
+} from './types';
+import { addDays, datesBetween, defaultDailyCapacity, today } from './capacity';
+import { priorityOrder } from './formatters';
 
-export const uid=()=>crypto.randomUUID();
-export const now=()=>new Date().toISOString();
+export const uid = () => crypto.randomUUID();
+export const now = () => new Date().toISOString();
 
-const offsetDate=(offset:number)=>addDays(today(),offset);
+const offsetDate = (offset: number) => addDays(today(), offset);
 
-export const emptyTask=():Task=>({
- id:uid(),
- name:'新工作',
- start:null,
- end:null,
- deadline:null,
- estimatedHours:8,
- allocationStrategy:'fastest',
- priority:'medium',
- status:'backlog',
- notes:'',
- owner:'',
- color:'#2f75bb',
- createdAt:now(),
- updatedAt:now(),
+export const emptyTask = (): Task => ({
+  id: uid(),
+  name: '新工作',
+  start: null,
+  end: null,
+  deadline: null,
+  estimatedHours: 8,
+  allocationStrategy: 'fastest',
+  priority: 'medium',
+  status: 'backlog',
+  notes: '',
+  owner: '',
+  color: '#2f75bb',
+  createdAt: now(),
+  updatedAt: now(),
 });
 
-export const sampleProject=():Project=>{
- const createdAt=now();
- return {
-  id:uid(),
-  name:'網站改版計畫',
-  description:'Capacity Gantt 範例工作群組',
-  createdAt,
-  updatedAt:createdAt,
-  tasks:[
-   {...emptyTask(),name:'整理需求與訪談',estimatedHours:12},
-   {...emptyTask(),name:'介面設計',start:offsetDate(1),end:offsetDate(4),estimatedHours:20},
-   {...emptyTask(),name:'第一版開發',start:offsetDate(5),end:offsetDate(10),estimatedHours:32},
-  ],
- };
+export const sampleProject = (): Project => {
+  const createdAt = now();
+  return {
+    id: uid(),
+    name: '網站改版計畫',
+    description: 'Capacity Gantt 範例工作群組',
+    createdAt,
+    updatedAt: createdAt,
+    tasks: [
+      { ...emptyTask(), name: '整理需求與訪談', estimatedHours: 12 },
+      {
+        ...emptyTask(),
+        name: '介面設計',
+        start: offsetDate(1),
+        end: offsetDate(4),
+        estimatedHours: 20,
+      },
+      {
+        ...emptyTask(),
+        name: '第一版開發',
+        start: offsetDate(5),
+        end: offsetDate(10),
+        estimatedHours: 32,
+      },
+    ],
+  };
 };
 
-export function sampleWorkspace():WorkspaceData{
- const start=offsetDate(-2);
- const project=sampleProject();
- return {
-  version:2,
-  projects:[project],
-  dailyCapacities:datesBetween(start,offsetDate(45)).map(date=>defaultDailyCapacity(date)),
-  allocations:[],
- };
+export function sampleWorkspace(): WorkspaceData {
+  const start = offsetDate(-2);
+  const project = sampleProject();
+  return {
+    version: 2,
+    projects: [project],
+    dailyCapacities: datesBetween(start, offsetDate(45)).map(date => defaultDailyCapacity(date)),
+    allocations: [],
+  };
 }
 
-const statuses=new Set(['backlog','scheduled','in_progress','completed']);
-const priorities=new Set(['low','medium','high']);
-const allocationStrategies=new Set(['fastest','balanced']);
-const sources=new Set(['automatic','manual']);
-const datePattern=/^\d{4}-\d{2}-\d{2}$/;
-const isDate=(value:unknown):value is string=>typeof value==='string'&&datePattern.test(value);
-const isNullableDate=(value:unknown):value is string|null=>value===null||isDate(value);
-const isPriority=(value:unknown):value is TaskPriority=>typeof value==='string'&&priorities.has(value);
-const isAllocationStrategy=(value:unknown):value is AllocationStrategy=>typeof value==='string'&&allocationStrategies.has(value);
+const statuses = new Set(['backlog', 'scheduled', 'in_progress', 'completed']);
+const priorities = new Set(['low', 'medium', 'high']);
+const allocationStrategies = new Set(['fastest', 'balanced']);
+const sources = new Set(['automatic', 'manual']);
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const isDate = (value: unknown): value is string =>
+  typeof value === 'string' && datePattern.test(value);
+const isNullableDate = (value: unknown): value is string | null => value === null || isDate(value);
+const isPriority = (value: unknown): value is TaskPriority =>
+  typeof value === 'string' && priorities.has(value);
+const isAllocationStrategy = (value: unknown): value is AllocationStrategy =>
+  typeof value === 'string' && allocationStrategies.has(value);
 
-function validTask(value:unknown):value is Task{
- if(!value||typeof value!=='object')return false;
- const task=value as Partial<Task>;
- return typeof task.id==='string'
-  &&typeof task.name==='string'
-  &&isNullableDate(task.start)
-  &&isNullableDate(task.end)
-  &&(typeof task.deadline==='undefined'||isNullableDate(task.deadline))
-  &&typeof task.estimatedHours==='number'
-  &&Number.isFinite(task.estimatedHours)
-  &&(typeof task.allocationStrategy==='undefined'||isAllocationStrategy(task.allocationStrategy))
-  &&(typeof task.priority==='undefined'||isPriority(task.priority))
-  &&task.estimatedHours>=0
-  &&typeof task.status==='string'
-  &&statuses.has(task.status)
-  &&typeof task.createdAt==='string'
-  &&typeof task.updatedAt==='string';
+function validTask(value: unknown): value is Task {
+  if (!value || typeof value !== 'object') return false;
+  const task = value as Partial<Task>;
+  return (
+    typeof task.id === 'string' &&
+    typeof task.name === 'string' &&
+    isNullableDate(task.start) &&
+    isNullableDate(task.end) &&
+    (typeof task.deadline === 'undefined' || isNullableDate(task.deadline)) &&
+    typeof task.estimatedHours === 'number' &&
+    Number.isFinite(task.estimatedHours) &&
+    (typeof task.allocationStrategy === 'undefined' ||
+      isAllocationStrategy(task.allocationStrategy)) &&
+    (typeof task.priority === 'undefined' || isPriority(task.priority)) &&
+    task.estimatedHours >= 0 &&
+    typeof task.status === 'string' &&
+    statuses.has(task.status) &&
+    typeof task.createdAt === 'string' &&
+    typeof task.updatedAt === 'string'
+  );
 }
 
-function validProject(value:unknown):value is Project{
- if(!value||typeof value!=='object')return false;
- const project=value as Partial<Project>;
- return typeof project.id==='string'
-  &&typeof project.name==='string'
-  &&typeof project.description==='string'
-  &&typeof project.createdAt==='string'
-  &&typeof project.updatedAt==='string'
-  &&Array.isArray(project.tasks)
-  &&project.tasks.every(validTask);
+function validProject(value: unknown): value is Project {
+  if (!value || typeof value !== 'object') return false;
+  const project = value as Partial<Project>;
+  return (
+    typeof project.id === 'string' &&
+    typeof project.name === 'string' &&
+    typeof project.description === 'string' &&
+    typeof project.createdAt === 'string' &&
+    typeof project.updatedAt === 'string' &&
+    Array.isArray(project.tasks) &&
+    project.tasks.every(validTask)
+  );
 }
 
-export function validateImport(value:unknown):value is ExportFile{
- if(!value||typeof value!=='object')return false;
- const file=value as Partial<ExportFile>;
- if(file.schema!=='gantt-capacity-local'||file.version!==2||typeof file.exportedAt!=='string')return false;
- if(!Array.isArray(file.projects)||!file.projects.every(validProject))return false;
- if(!Array.isArray(file.dailyCapacities)||!file.dailyCapacities.every(capacity=>{
-  if(!capacity||typeof capacity!=='object')return false;
-  const value=capacity as unknown as Record<string,unknown>;
-  return isDate(value.date)
-   &&typeof value.totalCapacityHours==='number'
-   &&value.totalCapacityHours>=0
-   &&typeof value.unavailableHours==='number'
-   &&value.unavailableHours>=0
-   &&typeof value.availableHours==='number';
- }))return false;
- return Array.isArray(file.allocations)&&file.allocations.every(allocation=>{
-  if(!allocation||typeof allocation!=='object')return false;
-  const value=allocation as unknown as Record<string,unknown>;
-  return typeof value.id==='string'
-   &&typeof value.taskId==='string'
-   &&isDate(value.date)
-   &&typeof value.allocatedHours==='number'
-   &&Number.isFinite(value.allocatedHours)
-   &&value.allocatedHours>=0
-   &&typeof value.source==='string'
-   &&sources.has(value.source)
-   &&typeof value.locked==='boolean'
-   &&(value.source!=='automatic'||value.allocatedHours>0);
- });
+export function validateImport(value: unknown): value is ExportFile {
+  if (!value || typeof value !== 'object') return false;
+  const file = value as Partial<ExportFile>;
+  if (
+    file.schema !== 'gantt-capacity-local' ||
+    file.version !== 2 ||
+    typeof file.exportedAt !== 'string'
+  )
+    return false;
+  if (!Array.isArray(file.projects) || !file.projects.every(validProject)) return false;
+  if (
+    !Array.isArray(file.dailyCapacities) ||
+    !file.dailyCapacities.every(capacity => {
+      if (!capacity || typeof capacity !== 'object') return false;
+      const value = capacity as unknown as Record<string, unknown>;
+      return (
+        isDate(value.date) &&
+        typeof value.totalCapacityHours === 'number' &&
+        value.totalCapacityHours >= 0 &&
+        typeof value.unavailableHours === 'number' &&
+        value.unavailableHours >= 0 &&
+        typeof value.availableHours === 'number'
+      );
+    })
+  )
+    return false;
+  return (
+    Array.isArray(file.allocations) &&
+    file.allocations.every(allocation => {
+      if (!allocation || typeof allocation !== 'object') return false;
+      const value = allocation as unknown as Record<string, unknown>;
+      return (
+        typeof value.id === 'string' &&
+        typeof value.taskId === 'string' &&
+        isDate(value.date) &&
+        typeof value.allocatedHours === 'number' &&
+        Number.isFinite(value.allocatedHours) &&
+        value.allocatedHours >= 0 &&
+        typeof value.source === 'string' &&
+        sources.has(value.source) &&
+        typeof value.locked === 'boolean' &&
+        (value.source !== 'automatic' || value.allocatedHours > 0)
+      );
+    })
+  );
 }
 
-export function normalizeWorkspaceData(value:WorkspaceData):WorkspaceData{
- return {
-  ...value,
-  projects:value.projects.map(project=>({...project,tasks:project.tasks.map(task=>({
-   ...task,
-   deadline:task.deadline??null,
-   allocationStrategy:task.allocationStrategy??'fastest',
-   priority:task.priority??'medium',
-  }))})),
- };
+export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
+  return {
+    ...value,
+    projects: value.projects.map(project => ({
+      ...project,
+      tasks: project.tasks.map(task => ({
+        ...task,
+        deadline: task.deadline ?? null,
+        allocationStrategy: task.allocationStrategy ?? 'fastest',
+        priority: task.priority ?? 'medium',
+      })),
+    })),
+  };
 }
 
 /**
@@ -140,40 +188,57 @@ export function normalizeWorkspaceData(value:WorkspaceData):WorkspaceData{
  * A Scheduled Task stays on the Gantt while it has any Allocation record, a complete
  * date range, or a zero-hour estimate; otherwise it falls into the pending tray.
  */
-export function partitionProjectTasks(project:Project,allocations:Allocation[]){
- const allocatedTaskIds=new Set(allocations.map(allocation=>allocation.taskId));
- const backlog:Task[]=[];
- const scheduled:Task[]=[];
- const pending:Task[]=[];
- for(const task of project.tasks){
-  if(task.status==='backlog')backlog.push(task);
-  else if(allocatedTaskIds.has(task.id)||(task.start&&task.end)||task.estimatedHours===0)scheduled.push(task);
-  else pending.push(task);
- }
- backlog.sort((a,b)=>priorityOrder[a.priority]-priorityOrder[b.priority]||a.createdAt.localeCompare(b.createdAt));
- return {backlog,scheduled,pending};
+export function partitionProjectTasks(project: Project, allocations: Allocation[]) {
+  const allocatedTaskIds = new Set(allocations.map(allocation => allocation.taskId));
+  const backlog: Task[] = [];
+  const scheduled: Task[] = [];
+  const pending: Task[] = [];
+  for (const task of project.tasks) {
+    if (task.status === 'backlog') backlog.push(task);
+    else if (allocatedTaskIds.has(task.id) || (task.start && task.end) || task.estimatedHours === 0)
+      scheduled.push(task);
+    else pending.push(task);
+  }
+  backlog.sort(
+    (a, b) =>
+      priorityOrder[a.priority] - priorityOrder[b.priority] ||
+      a.createdAt.localeCompare(b.createdAt),
+  );
+  return { backlog, scheduled, pending };
 }
 
-export type TaskDragMode='move'|'start'|'end';
+export type TaskDragMode = 'move' | 'start' | 'end';
 
-function shiftTaskDate(date:string,delta:number,view:ViewMode){
- if(view!=='month')return addDays(date,delta*(view==='week'?7:1));
- const value=new Date(`${date}T00:00:00Z`);
- const day=value.getUTCDate();
- value.setUTCDate(1);
- value.setUTCMonth(value.getUTCMonth()+delta);
- const lastDay=new Date(Date.UTC(value.getUTCFullYear(),value.getUTCMonth()+1,0)).getUTCDate();
- value.setUTCDate(Math.min(day,lastDay));
- return value.toISOString().slice(0,10);
+function shiftTaskDate(date: string, delta: number, view: ViewMode) {
+  if (view !== 'month') return addDays(date, delta * (view === 'week' ? 7 : 1));
+  const value = new Date(`${date}T00:00:00Z`);
+  const day = value.getUTCDate();
+  value.setUTCDate(1);
+  value.setUTCMonth(value.getUTCMonth() + delta);
+  const lastDay = new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  value.setUTCDate(Math.min(day, lastDay));
+  return value.toISOString().slice(0, 10);
 }
 
-export function applyTaskDrag(task:Task,mode:TaskDragMode,delta:number,view:ViewMode='day'){
- if(!task.start||!task.end)return task;
- if(mode==='move')return {...task,start:shiftTaskDate(task.start,delta,view),end:shiftTaskDate(task.end,delta,view)};
- if(mode==='start'){
-  const start=shiftTaskDate(task.start,delta,view);
-  return {...task,start:start<=task.end?start:task.end};
- }
- const end=shiftTaskDate(task.end,delta,view);
- return {...task,end:end>=task.start?end:task.start};
+export function applyTaskDrag(
+  task: Task,
+  mode: TaskDragMode,
+  delta: number,
+  view: ViewMode = 'day',
+) {
+  if (!task.start || !task.end) return task;
+  if (mode === 'move')
+    return {
+      ...task,
+      start: shiftTaskDate(task.start, delta, view),
+      end: shiftTaskDate(task.end, delta, view),
+    };
+  if (mode === 'start') {
+    const start = shiftTaskDate(task.start, delta, view);
+    return { ...task, start: start <= task.end ? start : task.end };
+  }
+  const end = shiftTaskDate(task.end, delta, view);
+  return { ...task, end: end >= task.start ? end : task.start };
 }
