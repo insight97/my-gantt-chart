@@ -25,7 +25,7 @@ Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`�
 - Backlog 卡片只需顯示名稱、優先順序與估計工時；點擊卡片開啟編輯，按住並移動可拖曳。
 - 拖曳 Backlog 卡片到 Gantt 後立即自動排程，不需要確認按鈕；放下位置是最早開始位置。
 - 拖回 Backlog 會清除所有 Allocation 與推導日期，但保留建立日期、Deadline、估計工時與 Task 資訊。
-- 沒有 Allocation 但尚未拖回 Backlog 的 Task，會在 Project 標題列以待處理徽章表示；點擊後才展開清單。
+- 沒有 Allocation、也沒有可用日期範圍但尚未拖回 Backlog 的 Task，會在 Project 標題列以待處理徽章表示；點擊後才展開清單。保留既有日期的 Task 仍會顯示在 Gantt，並標示待安排。
 
 ## Allocation 規則
 
