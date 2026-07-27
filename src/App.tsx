@@ -12,13 +12,26 @@ import {
 import {createEmptyWorkspace,loadWorkspace,saveWorkspace} from './db';
 import CapacityGantt from './CapacityGantt';
 import {formatRange,hoursLabel} from './formatters';
+import {timelineZoomPreset} from './timeline';
 import type {Allocation,DailyCapacity,ExportFile,Project,Task,TaskStatus,ViewMode,WorkspaceData} from './types';
+import type {TimelineZoom} from './timeline';
 
 const clone=<T,>(value:T):T=>structuredClone(value);
 const now=()=>new Date().toISOString();
 const statusLabels:Record<TaskStatus,string>={backlog:'Backlog',scheduled:'已排程',in_progress:'進行中',completed:'已完成'};
 type EditingTask={projectId:string;task:Task};
 type AllocationTarget={projectId:string;taskId:string};
+
+function initialTimelineZoom():TimelineZoom{
+ const savedView=localStorage.getItem('gantt-view');
+ if(savedView==='day'||savedView==='week'||savedView==='month'){
+  const savedPixels=Number(localStorage.getItem('gantt-pixels-per-day'));
+  return Number.isFinite(savedPixels)&&savedPixels>0
+   ? {view:savedView,pixelsPerDay:savedPixels}
+   : timelineZoomPreset(savedView);
+ }
+ return timelineZoomPreset('week');
+}
 
 function replaceTaskAndAllocations(workspace:WorkspaceData,projectId:string,task:Task,taskAllocations?:Allocation[]):WorkspaceData{
  return {
@@ -47,7 +60,7 @@ function dateLabel(date:string){
 export default function App(){
  const [workspace,setWorkspace]=useState<WorkspaceData|null>(null);
  const [expandedProjectIds,setExpandedProjectIds]=useState<Set<string>>(()=>new Set());
- const [view,setView]=useState<ViewMode>(()=>(localStorage.getItem('gantt-view') as ViewMode)||'week');
+ const [timelineZoom,setTimelineZoom]=useState<TimelineZoom>(initialTimelineZoom);
  const [ready,setReady]=useState(false);
  const [editingTask,setEditingTask]=useState<EditingTask|null>(null);
  const [allocationTarget,setAllocationTarget]=useState<AllocationTarget|null>(null);
@@ -75,7 +88,11 @@ export default function App(){
   return()=>clearTimeout(timer);
  },[workspace,ready]);
 
- useEffect(()=>localStorage.setItem('gantt-view',view),[view]);
+ const view=timelineZoom.view;
+ useEffect(()=>{
+  localStorage.setItem('gantt-view',timelineZoom.view);
+  localStorage.setItem('gantt-pixels-per-day',String(timelineZoom.pixelsPerDay));
+ },[timelineZoom]);
 
  const commit=(next:WorkspaceData)=>{
   if(!workspace)return;
@@ -285,7 +302,7 @@ export default function App(){
     </div>
     {workspace.projects.length===0?<div className="empty-projects"><p>目前還沒有 Project。</p><button className="primary" onClick={addProject}>＋ 建立第一個 Project</button></div>:<div className="project-panels">{workspace.projects.map(project=>{
      const projectAllocations=workspace.allocations.filter(allocation=>project.tasks.some(task=>task.id===allocation.taskId));
-     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id)} onEditTask={task=>setEditingTask({projectId:project.id,task})} onAutoTask={taskId=>autoScheduleTask(project.id,taskId)} onAllocateTask={taskId=>setAllocationTarget({projectId:project.id,taskId})} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={setView} onChangeDates={next=>{
+     return <ProjectPanel key={project.id} project={project} allocations={projectAllocations} allAllocations={workspace.allocations} capacities={workspace.dailyCapacities} view={view} timelineZoom={timelineZoom} expanded={expandedProjectIds.has(project.id)} onToggle={()=>toggleProject(project.id)} onChange={fn=>patchProject(project.id,fn)} onDelete={()=>deleteProject(project.id)} onAddTask={()=>addTask(project.id)} onEditTask={task=>setEditingTask({projectId:project.id,task})} onAutoTask={taskId=>autoScheduleTask(project.id,taskId)} onAllocateTask={taskId=>setAllocationTarget({projectId:project.id,taskId})} onDeleteTask={taskId=>deleteTask(project.id,taskId)} onEditCapacity={setCapacityDate} onViewChange={value=>setTimelineZoom(timelineZoomPreset(value))} onZoomChange={setTimelineZoom} onChangeDates={next=>{
       const validation=validateTaskDateRange(next,workspace.allocations);
       if(!validation.valid){setNotice(validation.message||'日期範圍不可排除人工分配。');return;}
       const error=saveTask(project.id,next);
@@ -301,7 +318,7 @@ export default function App(){
  </div>;
 }
 
-function ProjectPanel({project,allocations,allAllocations,capacities,view,expanded,onToggle,onChange,onDelete,onAddTask,onEditTask,onAutoTask,onAllocateTask,onDeleteTask,onEditCapacity,onViewChange,onChangeDates}:{project:Project;allocations:Allocation[];allAllocations:Allocation[];capacities:DailyCapacity[];view:ViewMode;expanded:boolean;onToggle:()=>void;onChange:(fn:(value:Project)=>Project)=>void;onDelete:()=>void;onAddTask:()=>void;onEditTask:(task:Task)=>void;onAutoTask:(taskId:string)=>void;onAllocateTask:(taskId:string)=>void;onDeleteTask:(taskId:string)=>void;onEditCapacity:(date:string)=>void;onViewChange:(view:ViewMode)=>void;onChangeDates:(task:Task)=>void}){
+function ProjectPanel({project,allocations,allAllocations,capacities,view,timelineZoom,expanded,onToggle,onChange,onDelete,onAddTask,onEditTask,onAutoTask,onAllocateTask,onDeleteTask,onEditCapacity,onViewChange,onZoomChange,onChangeDates}:{project:Project;allocations:Allocation[];allAllocations:Allocation[];capacities:DailyCapacity[];view:ViewMode;timelineZoom:TimelineZoom;expanded:boolean;onToggle:()=>void;onChange:(fn:(value:Project)=>Project)=>void;onDelete:()=>void;onAddTask:()=>void;onEditTask:(task:Task)=>void;onAutoTask:(taskId:string)=>void;onAllocateTask:(taskId:string)=>void;onDeleteTask:(taskId:string)=>void;onEditCapacity:(date:string)=>void;onViewChange:(view:ViewMode)=>void;onZoomChange:(next:TimelineZoom)=>void;onChangeDates:(task:Task)=>void}){
  const allocatedHours=allocations.reduce((sum,item)=>sum+item.allocatedHours,0);
  const backlogCount=project.tasks.filter(task=>!allocations.some(item=>item.taskId===task.id)).length;
  return <article className={`project-card${expanded?' expanded':' collapsed'}`}>
@@ -315,7 +332,7 @@ function ProjectPanel({project,allocations,allAllocations,capacities,view,expand
    <div className="workspace-title"><div><h2>{project.name}</h2><p>{project.tasks.length} 個 Task · 預估 {getProjectEstimatedHours(project)} 小時</p></div><div className="view-switch" aria-label={`${project.name} 時間檢視`}>{(['day','week','month'] as const).map(value=><button key={value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{value==='day'?'日':value==='week'?'週':'月'}</button>)}</div><button className="primary" onClick={onAddTask}>＋ 新增 Task</button></div>
    <div className="planning-layout">
     <Backlog tasks={project.tasks.filter(task=>!allocations.some(allocation=>allocation.taskId===task.id))} onEdit={onEditTask} onAuto={onAutoTask} onAllocate={onAllocateTask}/>
-    <CapacityGantt tasks={project.tasks} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} view={view} onEdit={onEditTask} onAllocate={onAllocateTask} onAuto={onAutoTask} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onChangeDates={onChangeDates}/>
+    <CapacityGantt tasks={project.tasks} allocations={allocations} capacityAllocations={allAllocations} capacities={capacities} timelineZoom={timelineZoom} onZoomChange={onZoomChange} onEdit={onEditTask} onAllocate={onAllocateTask} onAuto={onAutoTask} onDelete={onDeleteTask} onEditCapacity={onEditCapacity} onChangeDates={onChangeDates}/>
    </div>
   </div>}
  </article>;

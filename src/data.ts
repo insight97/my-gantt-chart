@@ -1,4 +1,4 @@
-import type {ExportFile, Project, Task, WorkspaceData} from './types';
+import type {ExportFile, Project, Task, ViewMode, WorkspaceData} from './types';
 import {addDays as addCapacityDays, datesBetween} from './capacity';
 
 export const uid=()=>crypto.randomUUID();
@@ -115,10 +115,24 @@ export function validateImport(value:unknown):value is ExportFile{
 
 export type TaskDragMode='move'|'start'|'end';
 
-export function applyTaskDrag(task:Task,mode:TaskDragMode,delta:number){
+function shiftTaskDate(date:string,delta:number,view:ViewMode){
+ if(view!=='month')return addDays(date,delta*(view==='week'?7:1));
+ const value=new Date(`${date}T00:00:00Z`);
+ const day=value.getUTCDate();
+ value.setUTCDate(1);
+ value.setUTCMonth(value.getUTCMonth()+delta);
+ const lastDay=new Date(Date.UTC(value.getUTCFullYear(),value.getUTCMonth()+1,0)).getUTCDate();
+ value.setUTCDate(Math.min(day,lastDay));
+ return value.toISOString().slice(0,10);
+}
+
+export function applyTaskDrag(task:Task,mode:TaskDragMode,delta:number,view:ViewMode='day'){
  if(!task.start||!task.end)return task;
- if(mode==='move')return {...task,start:addDays(task.start,delta),end:addDays(task.end,delta)};
- const duration=Math.round((new Date(`${task.end}T00:00:00Z`).getTime()-new Date(`${task.start}T00:00:00Z`).getTime())/86400000);
- if(mode==='start')return {...task,start:delta<=duration?addDays(task.start,delta):task.end};
- return {...task,end:delta>=-duration?addDays(task.end,delta):task.start};
+ if(mode==='move')return {...task,start:shiftTaskDate(task.start,delta,view),end:shiftTaskDate(task.end,delta,view)};
+ if(mode==='start'){
+  const start=shiftTaskDate(task.start,delta,view);
+  return {...task,start:start<=task.end?start:task.end};
+ }
+ const end=shiftTaskDate(task.end,delta,view);
+ return {...task,end:end>=task.start?end:task.start};
 }

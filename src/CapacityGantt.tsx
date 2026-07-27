@@ -1,37 +1,40 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {CSSProperties,KeyboardEvent,PointerEvent} from 'react';
-import {addDays,applyTaskDrag,datesBetween} from './data';
-import {daysBetween,getDailyAllocatedHours,getDailyCapacity} from './capacity';
-import {compactDateLabel,formatRange,hourValueLabel,hoursLabel} from './formatters';
+import {applyTaskDrag} from './data';
+import {formatRange,hoursLabel} from './formatters';
 import type {Allocation,DailyCapacity,Task,ViewMode} from './types';
-
-const MIN_TIMELINE_SCALE:Record<ViewMode,number>={day:24,week:32,month:40};
-const MAX_TIMELINE_ZOOM=3;
-const CONTEXT_ROW_HEIGHT=20;
-const CAPACITY_ROW_HEIGHT=60;
+import {
+ buildTimelineContext,
+ buildTimelinePeriods,
+ capacityState,
+ periodAvailableHours,
+ periodCapacityLabel,
+ periodDensity,
+ periodDisplayLabel,
+ periodHours,
+ taskRangeGeometry,
+ timelineDateAtPosition,
+ timelinePositionForDate,
+ timelineRange,
+ timelineScale,
+ TIMELINE_CAPACITY_ROW_HEIGHT,
+ TIMELINE_CONTEXT_ROW_HEIGHT,
+ weekendClass,
+ zoomTimeline,
+} from './timeline';
+import type {TimelineContextCell,TimelinePeriod,TimelineZoom} from './timeline';
 
 type DragMode='move'|'start'|'end';
 type DragState={task:Task;mode:DragMode;startX:number;delta:number};
 type PanState={startX:number;startScrollLeft:number};
-type CapacityState='available'|'full'|'overloaded';
-
-type TimelinePeriod={start:string;end:string;dates:string[];label:string};
-type TimelineContextCell={
- key:string;
- index:number;
- year:number;
- month:number;
- yearStart:boolean;
- monthStart:boolean;
- weekStart:boolean;
-};
 
 export type CapacityGanttProps={
  tasks:Task[];
  allocations:Allocation[];
  capacityAllocations:Allocation[];
  capacities:DailyCapacity[];
- view:ViewMode;
+ timelineZoom:TimelineZoom;
+ onZoomChange:(next:TimelineZoom)=>void;
  onEdit:(task:Task)=>void;
  onAllocate:(taskId:string)=>void;
  onAuto:(taskId:string)=>void;
@@ -40,145 +43,11 @@ export type CapacityGanttProps={
  onChangeDates:(next:Task)=>void;
 };
 
-function startOfWeek(date:string){
- const weekday=new Date(`${date}T00:00:00Z`).getUTCDay();
- return addDays(date,-((weekday+6)%7));
-}
-
-function startOfMonth(date:string){
- return `${date.slice(0,7)}-01`;
-}
-
-function startOfNextMonth(date:string){
- const value=new Date(`${startOfMonth(date)}T00:00:00Z`);
- value.setUTCMonth(value.getUTCMonth()+1);
- return value.toISOString().slice(0,10);
-}
-
-function periodStart(date:string,view:ViewMode){
- return view==='week'?startOfWeek(date):view==='month'?startOfMonth(date):date;
-}
-
-function periodEnd(date:string,view:ViewMode){
- if(view==='week')return addDays(startOfWeek(date),6);
- if(view==='month')return addDays(startOfNextMonth(date),-1);
- return date;
-}
-
-function periodLabel(start:string,end:string,view:ViewMode){
- if(view==='day')return compactDateLabel(start);
- if(view==='week')return `${compactDateLabel(start)}–${compactDateLabel(end)}`;
- return new Date(`${start}T00:00:00Z`).toLocaleDateString('zh-TW',{year:'numeric',month:'long'});
-}
-
-function dateParts(date:string){
- const value=new Date(`${date}T00:00:00Z`);
- return {year:value.getUTCFullYear(),month:value.getUTCMonth()+1,day:value.getUTCDate()};
-}
-
-function weekday(date:string){
- return new Date(`${date}T00:00:00Z`).getUTCDay();
-}
-
-function periodDisplayLabel(period:TimelinePeriod,view:ViewMode,scale:number){
- const start=dateParts(period.start);
-
- if(view==='day')return scale<18?String(start.day):`${start.month}/${start.day}`;
-
- if(view==='week'){
-  const end=dateParts(period.end);
-  if(scale>=88)return `${start.month}/${start.day}–${end.month}/${end.day}`;
-  if(scale>=40)return `${start.month}/${start.day}–${end.day}`;
-  if(scale>=18)return `${start.month}/${start.day}`;
-  return String(start.day);
- }
-
- if(scale>=64)return `${start.year}/${start.month}`;
- if(scale>=28)return `${start.month}月`;
- return String(start.month);
-}
-
-function periodDensity(scale:number){
- if(scale>=56)return 'regular';
- if(scale>=24)return 'compact';
- return 'minimal';
-}
-
-function periodCapacityLabel(allocated:number,available:number,scale:number){
- if(scale>=56)return `${hoursLabel(allocated)} / ${hoursLabel(available)}`;
- if(scale>=20)return `${hourValueLabel(allocated)}/${hourValueLabel(available)}`;
- return hourValueLabel(available);
-}
-
-function buildTimelinePeriods(start:string,end:string,view:ViewMode):TimelinePeriod[]{
- const periods:TimelinePeriod[]=[];
- let cursor=periodStart(start,view);
- const final=periodEnd(end,view);
-
- while(cursor<=final){
-  const last=periodEnd(cursor,view);
-  periods.push({
-   start:cursor,
-   end:last,
-   dates:datesBetween(cursor,last),
-   label:periodLabel(cursor,last,view),
-  });
-  cursor=addDays(last,1);
- }
-
- return periods;
-}
-
-function buildTimelineContext(periods:TimelinePeriod[],view:ViewMode):TimelineContextCell[]{
- return periods.map((period,index)=>{
-  const current=dateParts(period.start);
-  const previous=index?dateParts(periods[index-1].start):null;
-  const yearStart=!previous||current.year!==previous.year;
-  const monthStart=!previous||current.year!==previous.year||current.month!==previous.month;
-
-  return {
-   key:period.start,
-   index,
-   year:current.year,
-   month:current.month,
-   yearStart,
-   monthStart:view!=='month'&&monthStart,
-   weekStart:view==='day'&&weekday(period.start)===1,
-  };
- });
-}
-
-function periodHours(period:TimelinePeriod,allocations:Allocation[],source?:Allocation['source']){
- const sourceAllocations=source?allocations.filter(item=>item.source===source):allocations;
- return period.dates.reduce((sum,date)=>sum+getDailyAllocatedHours(date,sourceAllocations),0);
-}
-
-function periodAvailableHours(period:TimelinePeriod,capacities:DailyCapacity[]){
- return period.dates.reduce((sum,date)=>sum+getDailyCapacity(date,capacities).availableHours,0);
-}
-
-function capacityState(allocated:number,available:number):CapacityState{
- if(allocated>available)return 'overloaded';
- if(allocated===available)return 'full';
- return 'available';
-}
-
-function weekendClass(date:string,view:ViewMode){
- if(view!=='day')return '';
- if(weekday(date)===6||weekday(date)===0)return 'weekend';
- return '';
-}
-
-function findPeriodIndex(periods:TimelinePeriod[],date:string){
- const index=periods.findIndex(period=>date>=period.start&&date<=period.end);
- return index<0?(date<periods[0].start?0:periods.length-1):index;
-}
-
 type TimelineContextProps={cells:TimelineContextCell[];scale:number};
 
 function TimelineContext({cells,scale}:TimelineContextProps){
  return (
-  <div className="timeline-context-row" style={{height:CONTEXT_ROW_HEIGHT}}>
+  <div className="timeline-context-row" style={{height:TIMELINE_CONTEXT_ROW_HEIGHT}}>
    {cells.map(cell=>{
     const label=cell.yearStart?`${cell.year} 年`:cell.monthStart?`${cell.month} 月`:'';
     const className=[
@@ -238,7 +107,7 @@ function CapacityPeriods({periods,capacities,allocations,view,scale,onEditCapaci
       aria-label={`${period.label}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(available)}`}
       onClick={editable?()=>onEditCapacity(period.start):undefined}
       onKeyDown={editable?handleKeyDown:undefined}
-      style={{left:index*scale,width:scale,top:CONTEXT_ROW_HEIGHT}}
+      style={{left:index*scale,width:scale,top:TIMELINE_CONTEXT_ROW_HEIGHT}}
      >
       <b>{periodDisplayLabel(period,view,scale)}</b>
       <strong>{periodCapacityLabel(allocated,available,scale)}</strong>
@@ -262,7 +131,7 @@ type TimelineHeaderProps={
 
 function TimelineHeader({periods,context,capacities,allocations,view,scale,onEditCapacity}:TimelineHeaderProps){
  return (
-  <div className="dates capacity-dates" style={{width:periods.length*scale,height:CONTEXT_ROW_HEIGHT+CAPACITY_ROW_HEIGHT}}>
+  <div className="dates capacity-dates" style={{width:periods.length*scale,height:TIMELINE_CONTEXT_ROW_HEIGHT+TIMELINE_CAPACITY_ROW_HEIGHT}}>
    <TimelineContext cells={context} scale={scale}/>
    <CapacityPeriods periods={periods} capacities={capacities} allocations={allocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
   </div>
@@ -380,10 +249,9 @@ function TimelineTaskRows({
    {tasks.map(task=>{
     const taskAllocations=allocations.filter(item=>item.taskId===task.id);
     const value=preview(task);
-    const startIndex=value.start?findPeriodIndex(periods,value.start):0;
-    const endIndex=value.end?findPeriodIndex(periods,value.end):startIndex;
-    const left=value.start?startIndex*scale:0;
-    const width=value.start&&value.end?Math.max(scale*.7,(endIndex-startIndex+1)*scale):0;
+    const geometry=taskRangeGeometry(value,periods,scale);
+    const left=geometry?.left||0;
+    const width=geometry?.width||0;
 
     return (
      <div className="timeline-row" key={task.id}>
@@ -432,7 +300,7 @@ type GanttSidebarProps={
 function GanttSidebar({tasks,allocations,headerHeight,onEdit,onAllocate,onAuto,onDelete}:GanttSidebarProps){
  return (
   <div className="gantt-sidebar">
-   <div className="gantt-head capacity-gantt-head" style={{height:headerHeight,paddingTop:CONTEXT_ROW_HEIGHT}}>
+   <div className="gantt-head capacity-gantt-head" style={{height:headerHeight,paddingTop:TIMELINE_CONTEXT_ROW_HEIGHT}}>
     <span>Task</span>
     <span>工時</span>
     <span>操作</span>
@@ -463,7 +331,8 @@ export default function CapacityGantt({
  allocations,
  capacityAllocations,
  capacities,
- view,
+ timelineZoom,
+ onZoomChange,
  onEdit,
  onAllocate,
  onAuto,
@@ -474,41 +343,46 @@ export default function CapacityGantt({
  const timelineRef=useRef<HTMLDivElement>(null);
  const dragRef=useRef<DragState|null>(null);
  const panRef=useRef<PanState|null>(null);
- const zoomAnchorRef=useRef<{contentX:number;pointerOffset:number;previousScale:number}|null>(null);
+ const zoomAnchorRef=useRef<{date:string;pointerOffset:number}|null>(null);
+ const layoutRef=useRef<{key:string;periods:TimelinePeriod[];scale:number}|null>(null);
  const [dragging,setDragging]=useState<DragState|null>(null);
- const [zoomByView,setZoomByView]=useState<Record<ViewMode,number>>({day:1,week:1,month:1});
  const [panning,setPanning]=useState(false);
- const baseScale=view==='day'?96:view==='week'?64:40;
- const zoom=zoomByView[view];
- const scale=Math.round(baseScale*zoom);
- const zoomRef=useRef(zoom);
- const scaleRef=useRef(scale);
- const baseScaleRef=useRef(baseScale);
- const viewRef=useRef(view);
- const dated=tasks.flatMap(task=>[task.start,task.end].filter((date):date is string=>Boolean(date))).sort();
- const min=dated[0]||new Date().toISOString().slice(0,10);
- const max=dated.at(-1)||addDays(min,21);
- const timelineStart=view==='day'?addDays(min,-2):periodStart(min,view);
- const requestedEnd=view==='day'?addDays(max,5):periodEnd(max,view);
- const timelineEnd=view==='day'&&daysBetween(timelineStart,requestedEnd)<34?addDays(timelineStart,34):requestedEnd;
- const periods=buildTimelinePeriods(timelineStart,timelineEnd,view);
+ const view=timelineZoom.view;
+ const scale=timelineScale(view,timelineZoom.pixelsPerDay);
+ const range=timelineRange(tasks,view);
+ const periods=buildTimelinePeriods(range.start,range.end,view);
  const context=buildTimelineContext(periods,view);
- const headerHeight=CONTEXT_ROW_HEIGHT+CAPACITY_ROW_HEIGHT;
+ const headerHeight=TIMELINE_CONTEXT_ROW_HEIGHT+TIMELINE_CAPACITY_ROW_HEIGHT;
+ const layoutKey=`${view}:${timelineZoom.pixelsPerDay}:${range.start}:${range.end}`;
+ const timelineZoomRef=useRef(timelineZoom);
+ const periodsRef=useRef(periods);
+ const scaleRef=useRef(scale);
+ const onZoomChangeRef=useRef(onZoomChange);
 
  useEffect(()=>{
-  zoomRef.current=zoom;
+  timelineZoomRef.current=timelineZoom;
+  periodsRef.current=periods;
   scaleRef.current=scale;
-  baseScaleRef.current=baseScale;
-  viewRef.current=view;
- },[baseScale,scale,view,zoom]);
+  onZoomChangeRef.current=onZoomChange;
+ },[timelineZoom,periods,scale,onZoomChange]);
 
  useLayoutEffect(()=>{
   const timeline=timelineRef.current;
-  const anchor=zoomAnchorRef.current;
-  if(!timeline||!anchor)return;
-  timeline.scrollLeft=Math.max(0,anchor.contentX*(scale/anchor.previousScale)-anchor.pointerOffset);
-  zoomAnchorRef.current=null;
- },[scale]);
+  if(!timeline)return;
+  const previous=layoutRef.current;
+  if(previous&&previous.key!==layoutKey){
+   const anchor=zoomAnchorRef.current;
+   if(anchor){
+    timeline.scrollLeft=Math.max(0,timelinePositionForDate(anchor.date,periods,scale)-anchor.pointerOffset);
+    zoomAnchorRef.current=null;
+   }else{
+    const focusX=timeline.scrollLeft+timeline.clientWidth/2;
+    const focusDate=timelineDateAtPosition(focusX,previous.periods,previous.scale);
+    timeline.scrollLeft=Math.max(0,timelinePositionForDate(focusDate,periods,scale)-timeline.clientWidth/2);
+   }
+  }
+  layoutRef.current={key:layoutKey,periods,scale};
+ },[layoutKey,periods,scale]);
 
  useEffect(()=>{
   const timeline=timelineRef.current;
@@ -518,22 +392,17 @@ export default function CapacityGantt({
    if(!event.deltaY)return;
    event.preventDefault();
    event.stopPropagation();
-
    const factor=event.deltaY<0?1.12:.88;
-   const currentZoom=zoomRef.current;
+   const currentZoom=timelineZoomRef.current;
+   const currentPeriods=periodsRef.current;
    const currentScale=scaleRef.current;
-   const currentBaseScale=baseScaleRef.current;
-   const currentView=viewRef.current;
-   const minZoom=MIN_TIMELINE_SCALE[currentView]/currentBaseScale;
-   const nextZoom=Math.min(MAX_TIMELINE_ZOOM,Math.max(minZoom,Number((currentZoom*factor).toFixed(3))));
-   const nextScale=Math.round(currentBaseScale*nextZoom);
-   if(nextScale===currentScale)return;
+   const nextZoom=zoomTimeline(currentZoom,factor);
+   if(nextZoom.pixelsPerDay===currentZoom.pixelsPerDay)return;
 
    const pointerOffset=event.clientX-timeline.getBoundingClientRect().left;
-   zoomAnchorRef.current={contentX:timeline.scrollLeft+pointerOffset,pointerOffset,previousScale:currentScale};
-   zoomRef.current=nextZoom;
-   scaleRef.current=nextScale;
-   setZoomByView(current=>({...current,[currentView]:nextZoom}));
+   zoomAnchorRef.current={date:timelineDateAtPosition(timeline.scrollLeft+pointerOffset,currentPeriods,currentScale),pointerOffset};
+   timelineZoomRef.current=nextZoom;
+   onZoomChangeRef.current(nextZoom);
   };
 
   timeline.addEventListener('wheel',handleWheel,{passive:false});
@@ -563,7 +432,7 @@ export default function CapacityGantt({
  const endDrag=(event:PointerEvent<HTMLDivElement>)=>{
   const current=dragRef.current;
   if(!current)return;
-  const next=applyTaskDrag(current.task,current.mode,current.delta);
+  const next=applyTaskDrag(current.task,current.mode,current.delta,view);
   if(next.start!==current.task.start||next.end!==current.task.end)onChangeDates(next);
   if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
   dragRef.current=null;
@@ -597,7 +466,7 @@ export default function CapacityGantt({
   setPanning(false);
  };
 
- const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta):task;
+ const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta,view):task;
  const capacityMessage=view==='day'?'每日顯示已分配／可用容量；點擊日期可設定容量':view==='week'?'每週顯示該週每日容量加總':'每月顯示該月每日容量加總';
 
  return (
@@ -610,7 +479,7 @@ export default function CapacityGantt({
    </div>
    <div className="gantt">
     <GanttSidebar tasks={tasks} allocations={allocations} headerHeight={headerHeight} onEdit={onEdit} onAllocate={onAllocate} onAuto={onAuto} onDelete={onDelete}/>
-    <div className={`timeline${panning?' panning':''}`} ref={timelineRef} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
+    <div className={`timeline${panning?' panning':''}`} data-view={view} data-pixels-per-day={timelineZoom.pixelsPerDay} ref={timelineRef} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
      <TimelineHeader periods={periods} context={context} capacities={capacities} allocations={capacityAllocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
      <TimelineGrid periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} dragging={dragging} preview={preview} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag}/>
     </div>

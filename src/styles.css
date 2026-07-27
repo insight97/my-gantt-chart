@@ -7,5 +7,7 @@
 .timeline.panning{cursor:grabbing}
 .range-label{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .timeline-grid{position:relative}
+.timeline-grid{isolation:isolate}
+.timeline-row{background:transparent;border-bottom:1px solid #edf0f2}
 .timeline-row{z-index:1}
 .task-range{z-index:2}
