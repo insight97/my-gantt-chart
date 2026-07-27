@@ -1,5 +1,117 @@
-import type { Project } from './types';
-const DB='gantt-local-db', STORE='projects';
-function open(){return new Promise<IDBDatabase>((resolve,reject)=>{const req=indexedDB.open(DB,1);req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id'});req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
-export async function loadProjects(){const db=await open();return new Promise<Project[]>((resolve,reject)=>{const r=db.transaction(STORE).objectStore(STORE).getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
-export async function saveProjects(items:Project[]){const db=await open();await new Promise<void>((resolve,reject)=>{const tx=db.transaction(STORE,'readwrite');const s=tx.objectStore(STORE);s.clear();items.forEach(x=>s.put(x));tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}
+import {addDays,datesBetween,sampleWorkspace,uid} from './data';
+import {normalizeCapacity} from './capacity';
+import type {DailyCapacity,Project,Task,WorkspaceData} from './types';
+
+const DB='gantt-local-db';
+const VERSION=2;
+const WORKSPACE_STORE='workspace';
+const LEGACY_STORE='projects';
+const WORKSPACE_ID='workspace';
+
+interface WorkspaceRecord extends WorkspaceData{
+ id:string;
+}
+
+function open(){
+ return new Promise<IDBDatabase>((resolve,reject)=>{
+  const request=indexedDB.open(DB,VERSION);
+  request.onupgradeneeded=()=>{
+   if(!request.result.objectStoreNames.contains(WORKSPACE_STORE))request.result.createObjectStore(WORKSPACE_STORE,{keyPath:'id'});
+  };
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>reject(request.error);
+ });
+}
+
+function readAll<T>(db:IDBDatabase,storeName:string){
+ return new Promise<T[]>((resolve,reject)=>{
+  const request=db.transaction(storeName).objectStore(storeName).getAll();
+  request.onsuccess=()=>resolve(request.result as T[]);
+  request.onerror=()=>reject(request.error);
+ });
+}
+
+function readOne<T>(db:IDBDatabase,storeName:string,key:string){
+ return new Promise<T|undefined>((resolve,reject)=>{
+  const request=db.transaction(storeName).objectStore(storeName).get(key);
+  request.onsuccess=()=>resolve(request.result as T|undefined);
+  request.onerror=()=>reject(request.error);
+ });
+}
+
+function migrateTask(value:Partial<Task>&Record<string,unknown>):Task{
+ const now=new Date().toISOString();
+ return {
+  id:typeof value.id==='string'?value.id:uid(),
+  name:typeof value.name==='string'?value.name:'未命名工作',
+  start:typeof value.start==='string'?value.start:null,
+  end:typeof value.end==='string'?value.end:null,
+  estimatedHours:0,
+  status:'backlog',
+  notes:typeof value.notes==='string'?value.notes:'',
+  owner:typeof value.owner==='string'?value.owner:'',
+  color:typeof value.color==='string'?value.color:'#2f75bb',
+  createdAt:typeof value.createdAt==='string'?value.createdAt:now,
+  updatedAt:typeof value.updatedAt==='string'?value.updatedAt:now,
+ };
+}
+
+function migrateProject(value:Record<string,unknown>):Project{
+ const now=new Date().toISOString();
+ const tasks=Array.isArray(value.tasks)?value.tasks.map(task=>migrateTask((task||{}) as Partial<Task>&Record<string,unknown>)):[];
+ return {
+  id:typeof value.id==='string'?value.id:uid(),
+  name:typeof value.name==='string'?value.name:'未命名專案',
+  description:typeof value.description==='string'?value.description:'',
+  createdAt:typeof value.createdAt==='string'?value.createdAt:now,
+  updatedAt:typeof value.updatedAt==='string'?value.updatedAt:now,
+  tasks,
+ };
+}
+
+function migrationCapacities(projects:Project[]):DailyCapacity[]{
+ const dates=projects.flatMap(project=>project.tasks.flatMap(task=>[task.start,task.end].filter((date):date is string=>typeof date==='string'))).sort();
+ const first=dates[0]||new Date().toISOString().slice(0,10);
+ const last=dates.at(-1)||addDays(first,45);
+ return datesBetween(first,last).map(date=>({date,totalCapacityHours:8,unavailableHours:0,availableHours:8}));
+}
+
+function migrateLegacyProjects(value:unknown):WorkspaceData{
+ const projects=Array.isArray(value)?value.filter((item):item is Record<string,unknown>=>!!item&&typeof item==='object').map(migrateProject):[];
+ return {version:2,projects,dailyCapacities:migrationCapacities(projects),allocations:[]};
+}
+
+function normalizeWorkspace(value:WorkspaceData):WorkspaceData{
+ return {
+  version:2,
+  projects:value.projects,
+  dailyCapacities:value.dailyCapacities.map(normalizeCapacity),
+  allocations:value.allocations,
+ };
+}
+
+export async function loadWorkspace(){
+ const db=await open();
+ const stored=await readOne<WorkspaceRecord>(db,WORKSPACE_STORE,WORKSPACE_ID);
+ if(stored)return normalizeWorkspace(stored);
+ if(db.objectStoreNames.contains(LEGACY_STORE)){
+  const legacy=await readAll<unknown>(db,LEGACY_STORE);
+  if(legacy.length)return migrateLegacyProjects(legacy);
+ }
+ return null;
+}
+
+export async function saveWorkspace(value:WorkspaceData){
+ const db=await open();
+ await new Promise<void>((resolve,reject)=>{
+  const transaction=db.transaction(WORKSPACE_STORE,'readwrite');
+  transaction.objectStore(WORKSPACE_STORE).put({id:WORKSPACE_ID,...normalizeWorkspace(value)} satisfies WorkspaceRecord);
+  transaction.oncomplete=()=>resolve();
+  transaction.onerror=()=>reject(transaction.error);
+ });
+}
+
+export function createEmptyWorkspace(){
+ const sample=sampleWorkspace();
+ return {version:2,projects:sample.projects,dailyCapacities:sample.dailyCapacities,allocations:[]} satisfies WorkspaceData;
+}
