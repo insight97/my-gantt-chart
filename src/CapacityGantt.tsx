@@ -165,8 +165,7 @@ function capacityState(allocated:number,available:number):CapacityState{
 
 function weekendClass(date:string,view:ViewMode){
  if(view!=='day')return '';
- if(weekday(date)===6)return 'weekend-saturday';
- if(weekday(date)===0)return 'weekend-sunday';
+ if(weekday(date)===6||weekday(date)===0)return 'weekend';
  return '';
 }
 
