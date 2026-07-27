@@ -1,4 +1,4 @@
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,createEvent,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {WorkspaceData} from './types';
@@ -90,12 +90,18 @@ describe('Project arrangement',()=>{
   const timelineGrid=document.querySelector('.timeline-grid') as HTMLElement;
   expect(timelineGrid.style.getPropertyValue('--scale')).toBe('64px');
 
-  fireEvent.wheel(timeline,{deltaY:-100,clientX:120});
+  const wheelEvent=createEvent.wheel(timeline,{deltaY:-100,clientX:120,bubbles:true,cancelable:true});
+  timeline.dispatchEvent(wheelEvent);
+  expect(wheelEvent.defaultPrevented).toBe(true);
   await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeGreaterThan(64));
-  const zoomedScale=Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10);
+  const weekZoomedScale=Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10);
 
-  fireEvent.wheel(timeline,{deltaY:100,clientX:120});
-  await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBeLessThan(zoomedScale));
+  fireEvent.click(screen.getByRole('button',{name:'月'}));
+  await waitFor(()=>expect(timelineGrid.style.getPropertyValue('--scale')).toBe('40px'));
+  fireEvent.click(screen.getByRole('button',{name:'日'}));
+  await waitFor(()=>expect(timelineGrid.style.getPropertyValue('--scale')).toBe('96px'));
+  fireEvent.click(screen.getByRole('button',{name:'週'}));
+  await waitFor(()=>expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'),10)).toBe(weekZoomedScale));
 
   timeline.scrollLeft=0;
   fireEvent.pointerDown(timeline,{button:0,clientX:200,pointerId:1});
