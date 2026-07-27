@@ -423,7 +423,7 @@ function taskTransferData(projectId:string,taskId:string){
 }
 
 function TaskCard({projectId,task,onEdit,onDelete,onDragStart}:{projectId:string;task:Task;onEdit:(task:Task)=>void;onDelete:(taskId:string)=>void;onDragStart:(task:Task)=>void}){
- return <article className="backlog-item task-card" draggable onDragStart={event=>{event.dataTransfer.setData('application/x-gantt-task',taskTransferData(projectId,task.id));event.dataTransfer.effectAllowed='move';onDragStart(task);}} onClick={()=>onEdit(task)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onEdit(task);}}} tabIndex={0}>
+ return <article className="backlog-item task-card" draggable onDragStart={event=>{event.dataTransfer.setData('application/x-gantt-task',taskTransferData(projectId,task.id));event.dataTransfer.effectAllowed='move';event.dataTransfer.setDragImage?.(event.currentTarget,12,12);onDragStart(task);}} onClick={()=>onEdit(task)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onEdit(task);}}} tabIndex={0}>
   <div><b>{task.name}</b><span><em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> · 預估 {task.estimatedHours}h</span></div><button className="task-card-delete" type="button" aria-label={`刪除 ${task.name}`} onClick={event=>{event.stopPropagation();onDelete(task.id);}}>×</button>
  </article>;
 }
@@ -438,7 +438,7 @@ function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDelete,onDropT
   if(value?.projectId===projectId)onDropToBacklog(value.taskId);
  };
  const handleDragOver=(event:React.DragEvent)=>{event.preventDefault();event.dataTransfer.dropEffect='move';};
- return <aside className="backlog" onDragOver={handleDragOver} onDrop={handleDrop}>
+ return <aside className="backlog" onDragEnterCapture={handleDragOver} onDragOver={handleDragOver} onDrop={handleDrop}>
   <div className="section-heading"><div><h2>Backlog</h2><small>{tasks.length} 個待排程 Task</small></div></div>
   {tasks.length===0&&<div className="empty">把 Gantt Task 拖回這裡，或從下方新增 Task。</div>}
   <div className="backlog-list">{tasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDelete={onDelete} onDragStart={()=>undefined}/>)}<button className="add-task-row" type="button" aria-label="Backlog 新增 Task" onClick={onAddTask}>＋ 新增 Task</button></div>
