@@ -27,7 +27,7 @@ import type {TimelineContextCell,TimelinePeriod,TimelineZoom} from './timeline';
 
 type DragMode='move'|'start'|'end';
 type DragState={task:Task;mode:DragMode;startX:number;delta:number};
-type PanState={startX:number;startScrollLeft:number};
+type PanState={startX:number;startScrollLeft:number;candidate:boolean;active:boolean};
 
 export type CapacityGanttProps={
  projectId:string;
@@ -197,7 +197,7 @@ function TimelineGrid({projectId,periods,view,scale,tasks,allocations,allocation
  </div>;
 }
 
-function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onDelete,onDragStart,onScheduleAtDate,onReorder}:{projectId:string;tasks:Task[];allocations:Allocation[];headerHeight:number;onEdit:(task:Task)=>void;onDelete:(taskId:string)=>void;onDragStart:(event:DragEvent<HTMLButtonElement>,task:Task)=>void;onScheduleAtDate:(taskId:string,date:string)=>void;onReorder:(sourceTaskId:string,targetTaskId:string)=>void}){
+function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onAddTask,onDelete,onDragStart,onScheduleAtDate,onReorder}:{projectId:string;tasks:Task[];allocations:Allocation[];headerHeight:number;onEdit:(task:Task)=>void;onAddTask:()=>void;onDelete:(taskId:string)=>void;onDragStart:(event:DragEvent<HTMLButtonElement>,task:Task)=>void;onScheduleAtDate:(taskId:string,date:string)=>void;onReorder:(sourceTaskId:string,targetTaskId:string)=>void}){
  const taskIds=new Set(tasks.map(task=>task.id));
  const readTask=(event:DragEvent<HTMLDivElement>)=>{try{return JSON.parse(event.dataTransfer.getData('application/x-gantt-task')) as {projectId:string;taskId:string};}catch{return null;}};
  const handleDrop=(event:DragEvent<HTMLDivElement>)=>{event.preventDefault();const value=readTask(event);if(value?.projectId===projectId&&!taskIds.has(value.taskId))onScheduleAtDate(value.taskId,today());};
@@ -215,6 +215,7 @@ function GanttSidebar({projectId,tasks,allocations,headerHeight,onEdit,onDelete,
     <div className="row-actions">{task.status!=='completed'&&<button title="刪除 Task" onClick={()=>onDelete(task.id)}>×</button>}</div>
    </div>;
   })}
+  <button className="gantt-add-row" type="button" aria-label="Gantt 新增 Task" onClick={onAddTask}>＋ 新增 Task</button>
  </div>;
 }
 
@@ -228,6 +229,7 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
  const [dragging,setDragging]=useState<DragState|null>(null);
  const [dropTarget,setDropTarget]=useState<{taskId:string;date:string}|null>(null);
  const [panning,setPanning]=useState(false);
+ const suppressClickRef=useRef(false);
  const view=timelineZoom.view;
  const scale=timelineScale(view,timelineZoom.pixelsPerDay);
  const range=timelineRange(tasks,view);
@@ -292,19 +294,23 @@ export default function CapacityGantt({projectId,tasks,backlogTasks,allocations,
  const beginPan=(event:PointerEvent<HTMLDivElement>)=>{
   if(event.button!==0)return;
   const target=event.target;const targetElement=target instanceof Element?target:null;
-  if(targetElement?.closest('button,[role="button"],.task-range,.allocation-cell'))return;
-  event.preventDefault();const timeline=event.currentTarget;panRef.current={startX:event.clientX,startScrollLeft:timeline.scrollLeft};if(typeof timeline.setPointerCapture==='function')timeline.setPointerCapture(event.pointerId);setPanning(true);
+  const canPanFromAllocationSurface=allocationMode==='allocate'&&Boolean(targetElement?.closest('.allocation-cell,.task-range'));
+  if(targetElement?.closest('button,[role="button"],.task-range,.allocation-cell')&&!canPanFromAllocationSurface)return;
+  const timeline=event.currentTarget;
+  const active=!canPanFromAllocationSurface;
+  panRef.current={startX:event.clientX,startScrollLeft:timeline.scrollLeft,candidate:!active,active};
+  if(active){event.preventDefault();if(typeof timeline.setPointerCapture==='function')timeline.setPointerCapture(event.pointerId);setPanning(true);}
  };
- const movePan=(event:PointerEvent<HTMLDivElement>)=>{const current=panRef.current;if(!current)return;event.preventDefault();event.currentTarget.scrollLeft=current.startScrollLeft-(event.clientX-current.startX);};
- const endPan=(event:PointerEvent<HTMLDivElement>)=>{if(!panRef.current)return;if(typeof event.currentTarget.hasPointerCapture==='function'&&event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);panRef.current=null;setPanning(false);};
+ const movePan=(event:PointerEvent<HTMLDivElement>)=>{const current=panRef.current;if(!current)return;if(current.candidate&&!current.active){if(Math.abs(event.clientX-current.startX)<4)return;current.active=true;event.preventDefault();if(typeof event.currentTarget.setPointerCapture==='function')event.currentTarget.setPointerCapture(event.pointerId);setPanning(true);}if(!current.active)return;event.preventDefault();event.currentTarget.scrollLeft=current.startScrollLeft-(event.clientX-current.startX);};
+ const endPan=(event:PointerEvent<HTMLDivElement>)=>{const current=panRef.current;if(!current)return;if(current.active&&current.candidate){suppressClickRef.current=true;setTimeout(()=>{suppressClickRef.current=false;},0);}if(typeof event.currentTarget.hasPointerCapture==='function'&&event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);panRef.current=null;if(current.active)setPanning(false);};
  const preview=(task:Task)=>dragging?.task.id===task.id?applyTaskDrag(task,dragging.mode,dragging.delta,view):task;
- const handleTaskDragStart=(event:DragEvent<HTMLDivElement>|DragEvent<HTMLButtonElement>,task:Task)=>{const value=JSON.stringify({projectId,taskId:task.id});event.dataTransfer.setData('application/x-gantt-task',value);event.dataTransfer.setData('application/x-gantt-reorder',value);event.dataTransfer.effectAllowed='move';};
+ const handleTaskDragStart=(event:DragEvent<HTMLDivElement>|DragEvent<HTMLButtonElement>,task:Task)=>{const value=JSON.stringify({projectId,taskId:task.id});event.dataTransfer.setData('application/x-gantt-task',value);event.dataTransfer.setData('application/x-gantt-reorder',value);event.dataTransfer.effectAllowed='move';event.dataTransfer.setDragImage?.(event.currentTarget,12,12);};
  const canvasHeight=headerHeight+Math.max(70,tasks.length*70);
  return <section className="gantt-section">
-  <div className="section-heading"><div><h2>Capacity Gantt</h2><small>{allocationMode==='allocate'?'Allocate 模式：日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。':'一般模式：拖曳 Task bar 調整排程；可將 Task 拖回 Backlog。'} 滾輪縮放、拖曳平移時間軸</small></div><button className="add-task-tab" type="button" aria-label="Gantt 新增 Task" title="新增 Task" onClick={onAddTask}>＋</button></div>
+  <div className="section-heading"><div><h2>Capacity Gantt</h2><small>{allocationMode==='allocate'?'Allocate 模式：日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。':'一般模式：拖曳 Task bar 調整排程；可將 Task 拖回 Backlog。'} 滾輪縮放、拖曳平移時間軸</small></div></div>
   <div className="gantt">
-   <GanttSidebar projectId={projectId} tasks={tasks} allocations={allocations} headerHeight={headerHeight} onEdit={onEdit} onDelete={onDelete} onDragStart={handleTaskDragStart} onScheduleAtDate={onScheduleAtDate} onReorder={onReorder}/>
-   <div className={`timeline${panning?' panning':''}`} data-view={view} data-pixels-per-day={timelineZoom.pixelsPerDay} ref={timelineRef} onScroll={event=>onTimelineScroll(event.currentTarget.scrollLeft)} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
+   <GanttSidebar projectId={projectId} tasks={tasks} allocations={allocations} headerHeight={headerHeight} onEdit={onEdit} onAddTask={onAddTask} onDelete={onDelete} onDragStart={handleTaskDragStart} onScheduleAtDate={onScheduleAtDate} onReorder={onReorder}/>
+   <div className={`timeline${panning?' panning':''}`} data-view={view} data-pixels-per-day={timelineZoom.pixelsPerDay} ref={timelineRef} onScroll={event=>onTimelineScroll(event.currentTarget.scrollLeft)} onClickCapture={event=>{if(suppressClickRef.current){event.preventDefault();event.stopPropagation();suppressClickRef.current=false;}}} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
     <div className="timeline-canvas" style={{width:periods.length*scale,minHeight:canvasHeight}}>
      <TimelineHeader periods={periods} context={context} capacities={capacities} allocations={capacityAllocations} view={view} scale={scale} onEditCapacity={onEditCapacity}/>
      <TimelineGrid projectId={projectId} periods={periods} view={view} scale={scale} tasks={tasks} allocations={allocations} allocationMode={allocationMode} dragging={dragging} preview={preview} dropPreview={dropPreview} onDropPreview={(taskId,date)=>setDropTarget(taskId&&date?{taskId,date}:null)} onBeginDrag={beginDrag} onMoveDrag={moveDrag} onEndDrag={endDrag} onDragStart={handleTaskDragStart} onAdjustAllocation={onAdjustAllocation} onScheduleAtDate={onScheduleAtDate}/>

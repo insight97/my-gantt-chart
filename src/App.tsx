@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {ChangeEvent,DragEvent,FormEvent} from 'react';
 import {emptyTask,normalizeWorkspaceData,uid,validateImport} from './data';
 import {
@@ -436,8 +436,9 @@ function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDropToBacklog}
  };
  const handleDragOver=(event:React.DragEvent)=>{event.preventDefault();event.dataTransfer.dropEffect='move';};
  return <aside className="backlog" onDragOver={handleDragOver} onDrop={handleDrop}>
-  <div className="section-heading"><div><h2>Backlog</h2><small>{tasks.length} 個待排程 Task</small></div><button className="add-task-tab" type="button" aria-label="Backlog 新增 Task" title="新增 Task" onClick={onAddTask}>＋</button></div>
-  {tasks.length===0?<div className="empty">把 Gantt Task 拖回這裡，或新增 Task。</div>:<div className="backlog-list">{tasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDragStart={()=>undefined}/>)}</div>}
+  <div className="section-heading"><div><h2>Backlog</h2><small>{tasks.length} 個待排程 Task</small></div></div>
+  {tasks.length===0&&<div className="empty">把 Gantt Task 拖回這裡，或從下方新增 Task。</div>}
+  <div className="backlog-list">{tasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDragStart={()=>undefined}/>)}<button className="add-task-row" type="button" aria-label="Backlog 新增 Task" onClick={onAddTask}>＋ 新增 Task</button></div>
   {pendingTasks.length>0&&<div className="pending-tray"><div className="section-heading"><div><h3>待處理</h3><small>尚未安排工時的 Gantt Task</small></div></div><div className="backlog-list">{pendingTasks.map(task=><TaskCard key={task.id} projectId={projectId} task={task} onEdit={onEdit} onDragStart={()=>undefined}/>)}</div></div>}
  </aside>;
 }
@@ -445,6 +446,8 @@ function Backlog({projectId,tasks,pendingTasks,onEdit,onAddTask,onDropToBacklog}
 function TaskDialog({task,allocations,onClose,onSave,onAutoSchedule}:{task:Task;allocations:Allocation[];onClose:()=>void;onSave:(task:Task)=>string|null;onAutoSchedule:()=>void}){
  const [draft,setDraft]=useState(task);
  const [error,setError]=useState('');
+ const nameInputRef=useRef<HTMLInputElement>(null);
+ useLayoutEffect(()=>{nameInputRef.current?.focus();},[]);
  const manualHours=allocations.filter(item=>item.source==='manual').reduce((sum,item)=>sum+item.allocatedHours,0);
  const saveDraft=()=>{
   const result=onSave({...draft,estimatedHours:Number(draft.estimatedHours)});
@@ -454,7 +457,7 @@ function TaskDialog({task,allocations,onClose,onSave,onAutoSchedule}:{task:Task;
  return <div className="modal" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)saveDraft();}}>
   <form className="dialog" role="dialog" aria-modal="true" onSubmit={submit}>
    <div className="dialog-head"><div><small>Task 詳細資料</small><h2>{task.name==='新工作'?'新增 Task':'編輯 Task'}</h2></div><button type="button" onClick={onClose} aria-label="關閉">×</button></div>
-   <label>Task 名稱<input autoFocus required value={draft.name} onChange={event=>setDraft({...draft,name:event.target.value})}/></label>
+   <label>Task 名稱<input ref={nameInputRef} autoFocus required value={draft.name} onChange={event=>setDraft({...draft,name:event.target.value})}/></label>
    <div className="form-grid">
     <label>開始日期<input type="date" value={draft.start||''} onChange={event=>setDraft({...draft,start:event.target.value||null})}/></label>
     <label>結束日期<input type="date" value={draft.end||''} onChange={event=>setDraft({...draft,end:event.target.value||null})}/></label>
