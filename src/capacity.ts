@@ -23,6 +23,13 @@ export interface AllocationValidation {
 export interface RecalculateOptions {
   fillPending?: boolean;
   horizonDays?: number;
+  /**
+   * Pre-built `capacityAvailableByDate` result. `recalculateWorkspace` builds this
+   * once and threads it through every task's recalculation instead of each one
+   * re-scanning the same `dailyCapacities` array per candidate date; callers that
+   * don't pass one get it built for them.
+   */
+  capacityIndex?: Map<string, number>;
 }
 
 export function capacityAvailableHours(totalCapacityHours: number, unavailableHours: number) {
@@ -303,13 +310,17 @@ function appendAutomaticHours(
 function recalculateBalancedAllocations(
   task: Task,
   allocations: Allocation[],
-  capacities: DailyCapacity[],
+  capacityIndex: Map<string, number>,
   automaticHours: number,
   manualDates: Set<string>,
   manualHoursByDate: Map<string, number>,
   horizonDays: number,
 ): Allocation[] {
   const otherAllocations = allocations.filter(item => item.taskId !== task.id);
+  // `otherAllocations` never changes during this pass — mergeAutomaticHours below
+  // only appends to `result`, the task's own emerging list — so a snapshot index
+  // built once here stays accurate for every candidate date.
+  const otherAllocatedIndex = allocatedHoursByDate(otherAllocations);
   const range =
     task.start && task.end
       ? datesBetween(task.start, task.end)
@@ -320,7 +331,8 @@ function recalculateBalancedAllocations(
       date,
       available: Math.max(
         0,
-        getRemainingCapacity(date, capacities, otherAllocations) -
+        (capacityIndex.get(date) ?? DEFAULT_DAILY_CAPACITY_HOURS) -
+          (otherAllocatedIndex.get(date) || 0) -
           (manualHoursByDate.get(date) || 0),
       ),
     }));
@@ -362,6 +374,7 @@ export function recalculateAutomaticAllocations(
 ): AllocationResult {
   const fillPending = options.fillPending ?? true;
   const horizonDays = options.horizonDays ?? DEFAULT_PLANNING_HORIZON_DAYS;
+  const capacityIndex = options.capacityIndex ?? capacityAvailableByDate(capacities);
   const taskAllocations = allocations.filter(allocation => allocation.taskId === task.id);
   const validation = validateTaskDateRange(task, allocations);
   if (!validation.valid) throw new Error(validation.message);
@@ -384,7 +397,7 @@ export function recalculateAutomaticAllocations(
     const balancedAllocations = recalculateBalancedAllocations(
       task,
       allocations,
-      capacities,
+      capacityIndex,
       automaticHours,
       manualDates,
       manualHoursByDate,
@@ -393,6 +406,8 @@ export function recalculateAutomaticAllocations(
     return { allocations: balancedAllocations, ...resultRange(task, balancedAllocations) };
   }
   const otherAllocations = allocations.filter(item => item.taskId !== task.id);
+  // Snapshot once — see the identical note in recalculateBalancedAllocations.
+  const otherAllocatedIndex = allocatedHoursByDate(otherAllocations);
   const anchor = [...manualDates].sort()[0] || task.start || startDate;
   const resultAllocations = [...manual];
   const searchEnd = Math.max(
@@ -406,7 +421,9 @@ export function recalculateAutomaticAllocations(
   for (const date of searchDates) {
     if (remaining <= 0) break;
     if (manualDates.has(date)) continue;
-    const available = getRemainingCapacity(date, capacities, otherAllocations);
+    const available =
+      (capacityIndex.get(date) ?? DEFAULT_DAILY_CAPACITY_HOURS) -
+      (otherAllocatedIndex.get(date) || 0);
     if (available <= 0) continue;
     const hours = Math.min(remaining, available);
     resultAllocations.push(createAutomaticAllocation(task.id, date, hours));
@@ -567,6 +584,9 @@ export function recalculateWorkspace(data: WorkspaceData): WorkspaceData {
     ...project,
     tasks: project.tasks.map(task => ({ ...task })),
   }));
+  // dailyCapacities is the same for every task in this pass, so build the lookup once
+  // instead of every task's recalculation re-scanning it per candidate date.
+  const capacityIndex = capacityAvailableByDate(data.dailyCapacities);
   for (const project of projects) {
     for (const task of project.tasks) {
       if (
@@ -577,6 +597,7 @@ export function recalculateWorkspace(data: WorkspaceData): WorkspaceData {
         continue;
       const result = recalculateTaskSchedule(task, allocations, data.dailyCapacities, today(), {
         fillPending: false,
+        capacityIndex,
       });
       allocations = [
         ...allocations.filter(allocation => allocation.taskId !== task.id),

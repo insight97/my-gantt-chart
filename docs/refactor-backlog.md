@@ -172,24 +172,35 @@ not a scheduled task.
 
 ## 5. Smaller, independent items
 
-**5a. `recalculateWorkspace` is O(tasks × days × allocations).**
-`src/capacity.ts:370-385`. Each task runs a full scheduling pass, and each pass calls
-`getRemainingCapacity` per date, which does a linear `capacities.find` plus a linear
-allocating `allocations.filter`. The loop also rebuilds the whole allocation array
-per task (`src/capacity.ts:377`). This runs synchronously on a capacity edit
-(`saveCapacity`, `src/App.tsx:~368`). With 40 tasks / 300 allocations / 270 capacity
-rows that is roughly 4M inner iterations on one click. Fix: hoist
-`Map<date, DailyCapacity>` and `Map<date, hours>` to the top of
-`recalculateAutomaticAllocations`, thread them in from `recalculateWorkspace` so the
-capacity index is built once, and accumulate into one result array. The index
-builders already exist — `capacityAvailableByDate` and `allocatedHoursByDate` in
-`capacity.ts`, added by PR #29.
+**5a. `recalculateWorkspace` is O(tasks × days × allocations).** **Done in PR #33.**
+`recalculateAutomaticAllocations`'s two per-date hot loops (the `fastest` search and
+`recalculateBalancedAllocations`'s candidate map) now read from a `capacityAvailableByDate`
+index plus an `allocatedHoursByDate` snapshot of the task's siblings, both built once
+per call instead of re-scanning `capacities`/`allocations` per date.
+`recalculateWorkspace` builds the capacity index once and threads it through every
+task via `RecalculateOptions.capacityIndex`, so it's not rebuilt per task either.
+Measured ~3.4x on a synthetic 150-task/3000-capacity-day/3000-allocation workspace
+(188ms → 55ms), growing with scale since the remaining cost is now roughly linear
+instead of the old per-task-per-date rescans. The "accumulate into one result array"
+half of the original suggestion was left alone: fixing it would mean changing
+`recalculateAutomaticAllocations`'s public signature (it takes a flat
+`Allocation[]`, not an index) to avoid the O(allocations) `.filter()` it already does
+per task — real cost, but ~300x smaller than what this PR removed, and not worth the
+added blast radius on its own.
 
 **5b. `capacity.ts` mutates lifecycle status.**
 `src/capacity.ts:380`: `if (task.status === 'backlog') task.status = 'scheduled';`
-inside a _capacity_ recalculation. The engine is compensating for the UI's task
-partitioning. Removing this is natural once #1 gives status transitions an owner —
-do it as part of #1, not standalone, or the pending-tray behavior will shift.
+inside a _capacity_ recalculation. **Investigated when doing 5a — not removed.** This
+isn't dead code: the loop it's in only re-fires for tasks that already have
+automatic Allocations, and every in-app path that sets `status: 'backlog'` also
+clears Allocations (`returnTaskToBacklog`, centralized in #1) — but an imported JSON
+file can still describe a task that's `status: 'backlog'` with Allocations still
+attached (`validWorkspaceData` doesn't cross-validate that invariant). This line is
+what self-heals that case on the next capacity edit; deleting it would leave such a
+task permanently mis-shown in the Backlog panel while still consuming capacity
+elsewhere. The real fix is what the original note gestured at — `partitionProjectTasks`
+should stop using `status` as a Backlog/Gantt signal at all — which is a
+`partitionProjectTasks`/#4-shaped redesign, not a one-line deletion.
 
 **5c. Write-only fields.** `Task.owner` (`src/types.ts:19`) is set in `emptyTask`
 and `migrateTask` and never read, rendered, or edited. `Allocation.locked`
