@@ -7,6 +7,6 @@ Allocate Mode 採全域切換：日層級以每次一小時的左鍵增加、右
 ## Consequences
 
 - Task 可以有正值或負值 Pending Hours；畫面必須明確區分待安排與需釋放。
-- 沒有 Allocation 但尚未拖回 Backlog 的 Task 需要條件式待處理清單，不應固定佔用時間軸空間。
+- 沒有 Allocation 且沒有完整日期、又尚未拖回 Backlog 的 Task 需要條件式待處理清單，不應固定佔用時間軸空間；保留既有日期的 Task 仍需顯示 bar 並警示待安排。
 - Automatic Allocation 重新計算時必須保留 Manual Allocation Day；capacity 變更不會自動補回使用者刻意留下的 Pending Hours。
 - Gantt 的日期範圍與 Deadline 必須分開建模；Deadline 超出目前 viewport 時仍要存在於可滾動時間軸範圍內。

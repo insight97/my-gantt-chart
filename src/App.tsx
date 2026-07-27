@@ -370,8 +370,10 @@ type ProjectPanelProps={
 function ProjectPanel({project,allocations,allAllocations,capacities,view,timelineZoom,allocationMode,timelineScrollLeft,expanded,pendingExpanded,onToggle,onTogglePending,onChange,onDelete,onAddTask,onEditTask,onAdjustAllocation,onScheduleAtDate,onMoveToBacklog,onDeleteTask,onEditCapacity,onViewChange,onZoomChange,onTimelineScroll,onChangeDates}:ProjectPanelProps){
  const allocatedHours=allocations.reduce((sum,item)=>sum+item.allocatedHours,0);
  const backlogTasks=project.tasks.filter(task=>task.status==='backlog').sort((a,b)=>({high:0,medium:1,low:2}[a.priority]-({high:0,medium:1,low:2}[b.priority]))||a.createdAt.localeCompare(b.createdAt));
- const scheduledTasks=project.tasks.filter(task=>task.status!=='backlog'&&allocations.some(item=>item.taskId===task.id&&item.allocatedHours>0));
- const pendingTasks=project.tasks.filter(task=>task.status!=='backlog'&&!allocations.some(item=>item.taskId===task.id&&item.allocatedHours>0));
+ const hasPositiveAllocation=(task:Task)=>allocations.some(item=>item.taskId===task.id&&item.allocatedHours>0);
+ const hasDatedSchedule=(task:Task)=>Boolean(task.start&&task.end);
+ const scheduledTasks=project.tasks.filter(task=>task.status!=='backlog'&&(hasPositiveAllocation(task)||hasDatedSchedule(task)));
+ const pendingTasks=project.tasks.filter(task=>task.status!=='backlog'&&!hasPositiveAllocation(task)&&!hasDatedSchedule(task));
  return <article className={`project-card${expanded?' expanded':' collapsed'}`}>
   <div className="project-card-header">
    <button className="project-toggle" type="button" aria-expanded={expanded} aria-label={`${expanded?'收合':'展開'} ${project.name}`} onClick={onToggle}><span aria-hidden="true">{expanded?'⌄':'›'}</span><small>Project</small></button>

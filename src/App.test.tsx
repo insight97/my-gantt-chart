@@ -238,6 +238,15 @@ describe('Project arrangement',()=>{
   expect(Array.from(document.querySelectorAll('.capacity-period')).some(period=>period.textContent?.includes('0/248'))).toBe(true);
  });
 
+ it('keeps a dated scheduled Task visible before it has allocations',async()=>{
+  loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
+  render(<App/>);
+  await waitFor(()=>expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+  expect(document.querySelectorAll('.gantt-side-row')).toHaveLength(1);
+  expect(document.querySelector('.task-range')).toBeInTheDocument();
+ });
+
  it('uses Allocate Mode for daily edits and read-only period summaries',async()=>{
   loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
   render(<App/>);
