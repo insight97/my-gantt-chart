@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {daysBetween} from './capacity';
+import {daysBetween,today} from './capacity';
 import {
  buildTimelinePeriods,
  taskRangeGeometry,
@@ -52,6 +52,11 @@ describe('語意時間軸',()=>{
  it('keeps a six-month planning horizon even for short task ranges',()=>{
   const range=timelineRange([task],'day');
   expect(daysBetween(range.start,range.end)).toBeGreaterThanOrEqual(180);
+ });
+
+ it('keeps a useful history window before today',()=>{
+  const range=timelineRange([task],'day');
+  expect(daysBetween(range.start,today())).toBeGreaterThanOrEqual(89);
  });
 
  it('keeps task positions at actual dates inside aggregated periods',()=>{

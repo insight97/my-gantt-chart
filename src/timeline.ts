@@ -13,6 +13,7 @@ const DAY_TO_WEEK_EXIT=20;
 const WEEK_TO_MONTH_ENTER=4;
 const WEEK_TO_MONTH_EXIT=5;
 const NOMINAL_DAYS:Record<ViewMode,number>={day:1,week:7,month:30};
+const MIN_TIMELINE_PAST_DAYS=90;
 
 export type TimelineZoom={view:ViewMode;pixelsPerDay:number};
 export type TimelinePeriod={start:string;end:string;dates:string[];label:string};
@@ -150,9 +151,11 @@ export function buildTimelinePeriods(start:string,end:string,view:ViewMode):Time
 export function timelineRange(tasks:Task[],view:ViewMode){
  const dated=tasks.flatMap(task=>[task.start,task.end,task.deadline].filter((date):date is string=>Boolean(date))).sort();
  const min=dated[0]||today();
- const max=dated.at(-1)||addDays(min,21);
- const baseStart=addDays(min,-2);
- const requestedEnd=addDays(max,5);
+ const max=dated.at(-1)||today();
+ const taskStart=addDays(min,-2);
+ const historyStart=addDays(today(),-MIN_TIMELINE_PAST_DAYS);
+ const baseStart=taskStart<historyStart?taskStart:historyStart;
+ const requestedEnd=addDays(max>today()?max:today(),5);
  const minimumEnd=addDays(baseStart,MIN_TIMELINE_DAYS);
  const end=requestedEnd>minimumEnd?requestedEnd:minimumEnd;
  return {start:periodStart(baseStart,view),end:periodEnd(end,view)};

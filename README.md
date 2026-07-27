@@ -46,6 +46,9 @@ Gantt 日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`�
 - **Allocate Mode**：全域切換所有展開的 Project。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。
 - Allocate Mode 不會改變縮放層級；所有 Project 的水平滾動位置同步。
 - Gantt 會保留既有 Task 順序，新拖入的 Task 放在最下方，不會自動依優先順序重排。
+- Gantt 內的 Task row 可以拖曳互換顯示順序；這不會改變 Task 日期或 Allocation。
+- 時間軸至少提供今天前 90 天的歷史範圍，並以垂直線標出今天的位置。
+- 新增 Task 會直接開啟編輯視窗；點擊視窗外側儲存，叉叉與取消放棄尚未儲存的內容。
 
 ## 本機開發
 
