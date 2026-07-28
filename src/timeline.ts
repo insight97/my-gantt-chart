@@ -6,7 +6,7 @@ import {
   today,
 } from './capacity';
 import { compactDateLabel, hourValueLabel, hoursLabel } from './formatters';
-import type { Task, ViewMode } from './types';
+import type { Allocation, Task, ViewMode } from './types';
 
 export const TIMELINE_CONTEXT_ROW_HEIGHT = 20;
 export const TIMELINE_CAPACITY_ROW_HEIGHT = 60;
@@ -161,11 +161,12 @@ export function buildTimelinePeriods(start: string, end: string, view: ViewMode)
   return periods;
 }
 
-export function timelineRange(tasks: Task[], view: ViewMode) {
+export function timelineRange(tasks: Task[], view: ViewMode, allocations: Allocation[] = []) {
   const dated = tasks
     .flatMap(task =>
       [task.start, task.end, task.deadline].filter((date): date is string => Boolean(date)),
     )
+    .concat(allocations.map(allocation => allocation.date))
     .sort();
   const min = dated[0] || today();
   const max = dated.at(-1) || today();

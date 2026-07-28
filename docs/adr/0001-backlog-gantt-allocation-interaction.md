@@ -1,5 +1,7 @@
 # Backlog 與 Gantt 共用 Task，支援兩種 Allocation 排程策略
 
+Status: superseded by ADR-0002
+
 我們決定讓 Backlog 與 Gantt 共用同一份 Task 資料，透過使用者在同一 Project 內的拖曳明確改變排程狀態；不複製 Task，也不讓兩邊同時顯示同一個 Task。Task 的開始／結束日期可以由 Allocation 推導，也可以由使用者在詳細資料或 Gantt bar 上指定。預設採最快完成策略；使用者修改起訖日後，切換成明確日期範圍內的平均分配策略。Deadline 則是獨立的軟限制，超過時保留排程並警告。
 
 Allocate Mode 採全域切換：日層級以每次一小時的左鍵增加、右鍵減少編輯每日工時，被點擊過的日期視為 Manual Allocation Day；週／月層級只顯示唯讀摘要。這個分工保留一般 Gantt 的簡潔閱讀性，同時提供需要時的每日容量控制，而不在所有時間層級重複呈現 allocation 細節。

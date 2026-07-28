@@ -439,16 +439,10 @@ h1 {
   color: #fff;
   padding: 0 9px;
   min-width: 10px;
-  touch-action: none;
-  cursor: grab;
+  touch-action: auto;
+  cursor: default;
   box-shadow: 0 2px 4px #182d3d2b;
   overflow: visible;
-}
-.task-range.dragging {
-  z-index: 4;
-  outline: 2px solid var(--navy);
-  outline-offset: 2px;
-  cursor: grabbing;
 }
 .backlog-range {
   background: #eef3f6 !important;
@@ -479,32 +473,6 @@ h1 {
   background: var(--green);
   border: 1px solid #fff;
   pointer-events: none;
-}
-.allocation.automatic {
-  background: #61b29a;
-}
-.allocation.manual {
-  background: var(--orange);
-}
-.resize-handle {
-  position: absolute;
-  z-index: 5;
-  top: 0;
-  width: 9px;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: ew-resize;
-}
-.resize-handle:hover {
-  background: #fff7;
-}
-.resize-handle.start {
-  left: 0;
-}
-.resize-handle.end {
-  right: 0;
 }
 .modal {
   position: fixed;

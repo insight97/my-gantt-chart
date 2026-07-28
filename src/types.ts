@@ -1,14 +1,11 @@
 // Schema version of WorkspaceData/ExportFile. The one place a future field addition
 // that isn't safely defaultable bumps — db.ts's migrateWorkspace and data.ts's
 // validation import it instead of each holding their own copy of the number.
-export const CURRENT_WORKSPACE_VERSION = 2;
+export const CURRENT_WORKSPACE_VERSION = 3;
 
 export type ViewMode = 'day' | 'week' | 'month';
-export type AllocationMode = 'general' | 'allocate';
-export type AllocationStrategy = 'fastest' | 'balanced';
 export type TaskStatus = 'backlog' | 'scheduled' | 'in_progress' | 'completed';
 export type TaskPriority = 'low' | 'medium' | 'high';
-export type AllocationSource = 'automatic' | 'manual';
 
 export interface Task {
   id: string;
@@ -17,7 +14,6 @@ export interface Task {
   end: string | null;
   deadline: string | null;
   estimatedHours: number;
-  allocationStrategy: AllocationStrategy;
   priority: TaskPriority;
   status: TaskStatus;
   notes: string;
@@ -48,8 +44,6 @@ export interface Allocation {
   taskId: string;
   date: string;
   allocatedHours: number;
-  source: AllocationSource;
-  locked: boolean;
 }
 
 export interface WorkspaceData {

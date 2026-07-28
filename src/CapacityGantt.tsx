@@ -1,7 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import { applyTaskDrag } from './data';
-import type { TaskDragMode } from './data';
 import {
   allocatedHoursByDate,
   allocationsByTask,
@@ -14,7 +12,7 @@ import { hoursLabel } from './formatters';
 import TaskCard from './TaskCard';
 import { pointerLeftElement } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
-import type { Allocation, AllocationMode, DailyCapacity, Task, ViewMode } from './types';
+import type { Allocation, DailyCapacity, Task, ViewMode } from './types';
 import {
   buildTimelineContext,
   buildTimelinePeriods,
@@ -38,7 +36,6 @@ import {
 } from './timeline';
 import type { TimelineContextCell, TimelinePeriod, TimelineZoom } from './timeline';
 
-type DragState = { task: Task; mode: TaskDragMode; startX: number; delta: number };
 type PanState = { startX: number; startScrollLeft: number; candidate: boolean; active: boolean };
 
 export type CapacityGanttProps = {
@@ -49,7 +46,6 @@ export type CapacityGanttProps = {
   capacityAllocations: Allocation[];
   capacities: DailyCapacity[];
   timelineZoom: TimelineZoom;
-  allocationMode: AllocationMode;
   scrollLeft: number;
   taskDrag: TaskDragState | null;
   onZoomChange: (next: TimelineZoom) => void;
@@ -63,11 +59,9 @@ export type CapacityGanttProps = {
   ) => void;
   onTaskDropTarget: TaskDropTargetHandler;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
-  onMoveToBacklog: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onEditCapacity: (date: string) => void;
   onTimelineScroll: (left: number) => void;
-  onChangeDates: (next: Task) => void;
 };
 
 type TimelineContextProps = { cells: TimelineContextCell[]; scale: number };
@@ -255,31 +249,11 @@ type TaskRangeProps = {
   scale: number;
   left: number;
   width: number;
-  dragging: DragState | null;
-  allocationMode: AllocationMode;
-  onBeginDrag: (event: PointerEvent<HTMLElement>, task: Task, mode: TaskDragMode) => void;
-  onMoveDrag: (event: PointerEvent<HTMLDivElement>) => void;
-  onEndDrag: (event: PointerEvent<HTMLDivElement>) => void;
 };
 
-function TaskRange({
-  task,
-  scale,
-  left,
-  width,
-  dragging,
-  allocationMode,
-  onBeginDrag,
-  onMoveDrag,
-  onEndDrag,
-}: TaskRangeProps) {
+function TaskRange({ task, scale, left, width }: TaskRangeProps) {
   const rangePadding = Math.min(9, Math.max(2, Math.round(scale / 10)));
-  const canDrag = allocationMode === 'general' && task.status !== 'completed';
-  const className = [
-    'task-range',
-    task.status === 'backlog' ? 'backlog-range' : 'scheduled-range',
-    dragging?.task.id === task.id ? 'dragging' : '',
-  ]
+  const className = ['task-range', task.status === 'backlog' ? 'backlog-range' : 'scheduled-range']
     .filter(Boolean)
     .join(' ');
   return (
@@ -287,43 +261,27 @@ function TaskRange({
       className={className}
       draggable={false}
       style={{ left, width, backgroundColor: task.color, padding: `0 ${rangePadding}px` }}
-      onPointerDown={canDrag ? event => onBeginDrag(event, task, 'move') : undefined}
-      onPointerMove={canDrag ? onMoveDrag : undefined}
-      onPointerUp={canDrag ? onEndDrag : undefined}
-      onPointerCancel={canDrag ? onEndDrag : undefined}
-      title={`${task.name} · ${canDrag ? '拖曳以重新安排' : 'Allocate 模式下請操作每日工時'}`}
+      title={`${task.name} · 任務日期 metadata${task.start || ''}${task.end ? ` 至 ${task.end}` : ''}`}
     >
       <span className="range-label">{task.name}</span>
-      {canDrag && (
-        <>
-          <button
-            className="resize-handle start"
-            aria-label="調整開始日期"
-            onPointerDown={event => onBeginDrag(event, task, 'start')}
-          />
-          <button
-            className="resize-handle end"
-            aria-label="調整結束日期"
-            onPointerDown={event => onBeginDrag(event, task, 'end')}
-          />
-        </>
-      )}
     </div>
   );
 }
 
 function DeadlineMarker({
   task,
+  allocations,
   periods,
   scale,
 }: {
   task: Task;
+  allocations: Allocation[];
   periods: TimelinePeriod[];
   scale: number;
 }) {
   if (!task.deadline) return null;
   const left = timelinePositionForDate(task.deadline, periods, scale);
-  const overdue = isTaskOverdue(task);
+  const overdue = isTaskOverdue(task, allocations);
   return (
     <span
       className={`deadline-marker${overdue ? ' overdue' : ''}`}
@@ -397,65 +355,46 @@ const EMPTY_HOURS_BY_DATE = new Map<string, number>();
 function TimelineTaskRows({
   tasks,
   hoursByTask,
+  allocationsByTask,
   periods,
   scale,
   view,
-  allocationMode,
-  dragging,
-  preview,
-  onBeginDrag,
-  onMoveDrag,
-  onEndDrag,
   onAdjustAllocation,
 }: {
   tasks: Task[];
   hoursByTask: Map<string, Map<string, number>>;
+  allocationsByTask: Map<string, Allocation[]>;
   periods: TimelinePeriod[];
   scale: number;
   view: ViewMode;
-  allocationMode: AllocationMode;
-  dragging: DragState | null;
-  preview: (task: Task) => Task;
-  onBeginDrag: (event: PointerEvent<HTMLElement>, task: Task, mode: TaskDragMode) => void;
-  onMoveDrag: (event: PointerEvent<HTMLDivElement>) => void;
-  onEndDrag: (event: PointerEvent<HTMLDivElement>) => void;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
 }) {
   return (
     <>
       {tasks.map(task => {
-        const geometry = taskRangeGeometry(preview(task), periods, scale);
+        const geometry = taskRangeGeometry(task, periods, scale);
         const left = geometry?.left || 0;
         const width = geometry?.width || 0;
         return (
           <div
-            className={`timeline-row${isTaskOverdue(task) ? ' deadline-overdue' : ''}`}
+            className={`timeline-row${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' deadline-overdue' : ''}`}
             key={task.id}
           >
-            {width > 0 && (
-              <TaskRange
-                task={task}
-                scale={scale}
-                left={left}
-                width={width}
-                dragging={dragging}
-                allocationMode={allocationMode}
-                onBeginDrag={onBeginDrag}
-                onMoveDrag={onMoveDrag}
-                onEndDrag={onEndDrag}
-              />
-            )}
-            <DeadlineMarker task={task} periods={periods} scale={scale} />
-            {allocationMode === 'allocate' && (
-              <AllocationSummaries
-                task={task}
-                hoursByDate={hoursByTask.get(task.id) || EMPTY_HOURS_BY_DATE}
-                periods={periods}
-                scale={scale}
-                view={view}
-                onAdjustAllocation={onAdjustAllocation}
-              />
-            )}
+            {width > 0 && <TaskRange task={task} scale={scale} left={left} width={width} />}
+            <DeadlineMarker
+              task={task}
+              allocations={allocationsByTask.get(task.id) || []}
+              periods={periods}
+              scale={scale}
+            />
+            <AllocationSummaries
+              task={task}
+              hoursByDate={hoursByTask.get(task.id) || EMPTY_HOURS_BY_DATE}
+              periods={periods}
+              scale={scale}
+              view={view}
+              onAdjustAllocation={onAdjustAllocation}
+            />
           </div>
         );
       })}
@@ -498,13 +437,8 @@ function TimelineGrid({
   scale,
   tasks,
   hoursByTask,
-  allocationMode,
-  dragging,
-  preview,
+  allocationsByTask,
   dropPreview,
-  onBeginDrag,
-  onMoveDrag,
-  onEndDrag,
   onAdjustAllocation,
 }: {
   periods: TimelinePeriod[];
@@ -512,13 +446,8 @@ function TimelineGrid({
   scale: number;
   tasks: Task[];
   hoursByTask: Map<string, Map<string, number>>;
-  allocationMode: AllocationMode;
-  dragging: DragState | null;
-  preview: (task: Task) => Task;
+  allocationsByTask: Map<string, Allocation[]>;
   dropPreview: Task | null;
-  onBeginDrag: (event: PointerEvent<HTMLElement>, task: Task, mode: TaskDragMode) => void;
-  onMoveDrag: (event: PointerEvent<HTMLDivElement>) => void;
-  onEndDrag: (event: PointerEvent<HTMLDivElement>) => void;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
 }) {
   const style = {
@@ -532,15 +461,10 @@ function TimelineGrid({
       <TimelineTaskRows
         tasks={tasks}
         hoursByTask={hoursByTask}
+        allocationsByTask={allocationsByTask}
         periods={periods}
         scale={scale}
         view={view}
-        allocationMode={allocationMode}
-        dragging={dragging}
-        preview={preview}
-        onBeginDrag={onBeginDrag}
-        onMoveDrag={onMoveDrag}
-        onEndDrag={onEndDrag}
         onAdjustAllocation={onAdjustAllocation}
       />
       {dropPreview && (
@@ -560,6 +484,7 @@ function GanttSidebar({
   projectId,
   tasks,
   allocatedByTask,
+  allocationsByTask,
   headerHeight,
   taskDrag,
   onEdit,
@@ -571,6 +496,7 @@ function GanttSidebar({
   projectId: string;
   tasks: Task[];
   allocatedByTask: Map<string, number>;
+  allocationsByTask: Map<string, Allocation[]>;
   headerHeight: number;
   taskDrag: TaskDragState | null;
   onEdit: (task: Task) => void;
@@ -602,7 +528,7 @@ function GanttSidebar({
         className="gantt-head capacity-gantt-head"
         style={{ height: headerHeight, paddingTop: TIMELINE_CONTEXT_ROW_HEIGHT }}
       >
-        <span>Gantt Task</span>
+        <span>Timeline Task</span>
         <small>工時摘要／操作</small>
       </div>
       {tasks.map(task => {
@@ -612,7 +538,7 @@ function GanttSidebar({
           onTaskDropTarget({ kind: 'gantt-row', projectId, taskId: task.id }, event.currentTarget);
         return (
           <div
-            className={`gantt-side-row${pending !== 0 ? ' has-pending' : ''}${isTaskOverdue(task) ? ' has-deadline-warning' : ''}`}
+            className={`gantt-side-row${pending !== 0 ? ' has-pending' : ''}${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' has-deadline-warning' : ''}`}
             key={task.id}
             onPointerMove={handleRowPointerMove}
             onPointerLeave={handleLeave}
@@ -639,7 +565,7 @@ function GanttSidebar({
       <button
         className="gantt-add-row"
         type="button"
-        aria-label="Gantt 新增 Task"
+        aria-label="Allocation Timeline 新增 Task"
         onClick={onAddTask}
       >
         ＋ 新增 Task
@@ -656,7 +582,6 @@ export default function CapacityGantt({
   capacityAllocations,
   capacities,
   timelineZoom,
-  allocationMode,
   scrollLeft,
   taskDrag,
   onZoomChange,
@@ -665,24 +590,20 @@ export default function CapacityGantt({
   onBeginTaskDrag,
   onTaskDropTarget,
   onAdjustAllocation,
-  onMoveToBacklog,
   onDelete,
   onEditCapacity,
   onTimelineScroll,
-  onChangeDates,
 }: CapacityGanttProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
   const zoomAnchorRef = useRef<{ date: string; pointerOffset: number } | null>(null);
   const layoutRef = useRef<{ key: string; periods: TimelinePeriod[]; scale: number } | null>(null);
   const skipScrollSyncRef = useRef(false);
-  const [dragging, setDragging] = useState<DragState | null>(null);
   const [panning, setPanning] = useState(false);
   const suppressClickRef = useRef(false);
   const view = timelineZoom.view;
   const scale = timelineScale(view, timelineZoom.pixelsPerDay);
-  const range = useMemo(() => timelineRange(tasks, view), [tasks, view]);
+  const range = useMemo(() => timelineRange(tasks, view, allocations), [tasks, view, allocations]);
   const periods = useMemo(
     () => buildTimelinePeriods(range.start, range.end, view),
     [range.start, range.end, view],
@@ -726,9 +647,7 @@ export default function CapacityGantt({
       tasks.find(item => item.id === dropTargetTaskId);
     if (!task) return null;
     try {
-      const result = scheduleTaskAt(task, capacityAllocations, capacities, dropTargetDate, {
-        fillPending: true,
-      });
+      const result = scheduleTaskAt(task, capacityAllocations, capacities, dropTargetDate);
       return {
         ...result.task,
         start: result.task.start || dropTargetDate,
@@ -808,56 +727,13 @@ export default function CapacityGantt({
     timeline.addEventListener('wheel', handleWheel, { passive: false });
     return () => timeline.removeEventListener('wheel', handleWheel);
   }, []);
-  const beginDrag = (event: PointerEvent<HTMLElement>, task: Task, mode: TaskDragMode) => {
-    if (allocationMode !== 'general' || task.status === 'completed' || !task.start || !task.end)
-      return;
-    event.preventDefault();
-    event.stopPropagation();
-    const next = { task, mode, startX: event.clientX, delta: 0 };
-    dragRef.current = next;
-    if (typeof event.currentTarget.setPointerCapture === 'function')
-      event.currentTarget.setPointerCapture(event.pointerId);
-    setDragging(next);
-  };
-  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
-    const current = dragRef.current;
-    if (!current) return;
-    const delta = Math.round((event.clientX - current.startX) / scale);
-    if (delta === current.delta) return;
-    const next = { ...current, delta };
-    dragRef.current = next;
-    setDragging(next);
-  };
-  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
-    const current = dragRef.current;
-    if (!current) return;
-    const target =
-      typeof document.elementFromPoint === 'function'
-        ? document.elementFromPoint(event.clientX, event.clientY)
-        : null;
-    const droppedOnBacklog = target instanceof Element && Boolean(target.closest('.backlog'));
-    if (droppedOnBacklog) onMoveToBacklog(current.task.id);
-    else {
-      const next = applyTaskDrag(current.task, current.mode, current.delta, view);
-      if (next.start !== current.task.start || next.end !== current.task.end) onChangeDates(next);
-    }
-    if (
-      typeof event.currentTarget.hasPointerCapture === 'function' &&
-      event.currentTarget.hasPointerCapture(event.pointerId)
-    )
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    dragRef.current = null;
-    setDragging(null);
-  };
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target;
     const targetElement = target instanceof Element ? target : null;
-    const canPanFromAllocationSurface =
-      allocationMode === 'allocate' &&
-      Boolean(targetElement?.closest('.allocation-cell,.task-range'));
+    const canPanFromAllocationSurface = Boolean(targetElement?.closest('.allocation-cell'));
     if (
-      targetElement?.closest('button,[role="button"],.task-range,.allocation-cell') &&
+      targetElement?.closest('button,[role="button"],.allocation-cell') &&
       !canPanFromAllocationSurface
     )
       return;
@@ -908,8 +784,6 @@ export default function CapacityGantt({
     panRef.current = null;
     if (current.active) setPanning(false);
   };
-  const preview = (task: Task) =>
-    dragging?.task.id === task.id ? applyTaskDrag(task, dragging.mode, dragging.delta, view) : task;
   const handleTaskDropMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!taskDrag?.active) return;
     const timeline = timelineRef.current;
@@ -938,11 +812,9 @@ export default function CapacityGantt({
     <section className="gantt-section">
       <div className="section-heading">
         <div>
-          <h2>Capacity Gantt</h2>
+          <h2>Capacity Allocation</h2>
           <small>
-            {allocationMode === 'allocate'
-              ? 'Allocate 模式：日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。'
-              : '一般模式：拖曳 Task bar 調整排程；可將 Task 拖回 Backlog。'}{' '}
+            日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。Task bar 僅顯示日期 metadata。{' '}
             滾輪縮放、拖曳平移時間軸
           </small>
         </div>
@@ -952,6 +824,7 @@ export default function CapacityGantt({
           projectId={projectId}
           tasks={tasks}
           allocatedByTask={allocatedByTask}
+          allocationsByTask={taskAllocations}
           headerHeight={headerHeight}
           taskDrag={taskDrag}
           onEdit={onEdit}
@@ -998,13 +871,8 @@ export default function CapacityGantt({
               scale={scale}
               tasks={tasks}
               hoursByTask={hoursByTask}
-              allocationMode={allocationMode}
-              dragging={dragging}
-              preview={preview}
+              allocationsByTask={taskAllocations}
               dropPreview={dropPreview}
-              onBeginDrag={beginDrag}
-              onMoveDrag={moveDrag}
-              onEndDrag={endDrag}
               onAdjustAllocation={onAdjustAllocation}
             />
             <TodayMarker periods={periods} scale={scale} />
