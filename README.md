@@ -38,7 +38,7 @@ Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（
 
 ## Allocation Timeline 顯示
 
-- Allocation Timeline 固定採單一 Allocation 操作語意。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。Allocation 範圍使用淺色底，有工時的格子使用較深底色。
+- Allocation Timeline 固定採單一 Allocation 操作語意。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。Allocation 範圍使用淺色底，有工時的格子使用較深底色，週末使用斜線紋理區分。
 - 時間軸縮放層級與所有 Project 的水平滾動位置同步。
 - Timeline 會保留既有 Task 順序，新拖入的 Task 放在最下方；Task row 可由使用者手動排序。
 - 時間軸至少提供今天前 90 天的歷史範圍，並以垂直線標出今天的位置。
