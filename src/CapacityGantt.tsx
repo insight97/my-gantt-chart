@@ -121,17 +121,20 @@ function CapacityPeriods({
       {periods.map((period, index) => {
         const allocated = periodHours(period, allocatedByDate);
         const available = periodAvailableHours(period, availableByDate);
+        const weekend = weekendClass(period.start, view);
         const className = [
           'capacity-period',
           capacityState(allocated, available),
           density,
           editable ? 'editable' : '',
+          weekend,
         ]
           .filter(Boolean)
           .join(' ');
+        const weekendLabel = weekend ? ' · 週末' : '';
         const title = editable
-          ? `${period.label} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)} · 點擊設定容量`
-          : `${period.label} · ${period.dates.length} 天容量加總 · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)}`;
+          ? `${period.label}${weekendLabel} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)} · 點擊設定容量`
+          : `${period.label}${weekendLabel} · ${period.dates.length} 天容量加總 · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)}`;
         return (
           <span
             className={className}
@@ -139,7 +142,7 @@ function CapacityPeriods({
             role={editable ? 'button' : undefined}
             tabIndex={editable ? 0 : undefined}
             title={title}
-            aria-label={`${period.label}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(available)}`}
+            aria-label={`${period.label}${weekendLabel}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(available)}`}
             onClick={editable ? () => onEditCapacity(period.start) : undefined}
             onKeyDown={
               editable
@@ -153,6 +156,11 @@ function CapacityPeriods({
             }
             style={{ left: index * scale, width: scale, top: TIMELINE_CONTEXT_ROW_HEIGHT }}
           >
+            {weekend && (
+              <i className="weekend-label" aria-hidden="true">
+                週末
+              </i>
+            )}
             <b>{periodDisplayLabel(period, view, scale)}</b>
             <strong>{periodCapacityLabel(allocated, available, scale)}</strong>
             {!editable && scale >= 56 && <small>{period.dates.length} 天合計</small>}
@@ -213,34 +221,6 @@ function TodayMarker({ periods, scale }: { periods: TimelinePeriod[]; scale: num
     >
       <i>今天</i>
     </span>
-  );
-}
-
-function WeekendColumns({
-  periods,
-  view,
-  scale,
-}: {
-  periods: TimelinePeriod[];
-  view: ViewMode;
-  scale: number;
-}) {
-  if (view !== 'day') return null;
-  return (
-    <>
-      {periods.map((period, index) => {
-        const weekend = weekendClass(period.start, view);
-        if (!weekend) return null;
-        return (
-          <span
-            className={`timeline-weekend-column ${weekend}`}
-            key={period.start}
-            style={{ left: index * scale, width: scale, borderRight: '1px solid #d4e0e7' }}
-            aria-hidden="true"
-          />
-        );
-      })}
-    </>
   );
 }
 
@@ -314,7 +294,6 @@ function AllocationSummaries({
         const windowState = periodInAllocationWindow(period, allocationWindow);
         const className = [
           view === 'day' ? 'allocation-cell' : 'allocation-summary',
-          weekendClass(period.start, view),
           windowState.active ? 'in-allocation-window' : '',
           windowState.start ? 'window-start' : '',
           windowState.end ? 'window-end' : '',
@@ -464,7 +443,6 @@ function TimelineGrid({
   } as CSSProperties;
   return (
     <div className="timeline-grid" style={style}>
-      <WeekendColumns periods={periods} view={view} scale={scale} />
       <TimelineTaskRows
         tasks={tasks}
         hoursByTask={hoursByTask}
@@ -821,7 +799,7 @@ export default function CapacityGantt({
         <div>
           <h2>Capacity Allocation</h2>
           <small>
-            日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation 範圍、深底＝實際工時、斜線＝週末。
+            日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation 範圍、深底＝實際工時、標題標記＝週末。
             滾輪縮放、拖曳平移時間軸
           </small>
         </div>
