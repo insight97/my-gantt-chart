@@ -26,7 +26,7 @@ Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（
 - 拖曳 Backlog 卡片到 Allocation Timeline 後立即執行 fastest Automatic Scheduling，不需要確認按鈕；放下位置是起始日期，新 Task 放到清單最下方。
 - 按下 Task 的「自動排程」也會讓 Backlog Task 進入 Allocation Timeline；沒有 `start` 時從今天開始。
 - 拖曳 Timeline 的 Task card 回 Backlog，或在 editor 切換狀態，會清除所有 Allocation，但保留日期與其他 Task metadata。
-- Task bar 只呈現 Task Date Range metadata，不提供拖曳日期操作。
+- Task card 顯示 Task Date Range metadata；時間軸不再繪製可遮住 Allocation 的 Task bar。
 
 ## Allocation 規則
 
@@ -38,7 +38,7 @@ Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（
 
 ## Allocation Timeline 顯示
 
-- Allocation Timeline 固定採單一 Allocation 操作語意。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。Task bar 只顯示日期 metadata。
+- Allocation Timeline 固定採單一 Allocation 操作語意。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。Allocation 範圍使用淺色底，有工時的格子使用較深底色。
 - 時間軸縮放層級與所有 Project 的水平滾動位置同步。
 - Timeline 會保留既有 Task 順序，新拖入的 Task 放在最下方；Task row 可由使用者手動排序。
 - 時間軸至少提供今天前 90 天的歷史範圍，並以垂直線標出今天的位置。

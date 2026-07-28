@@ -44,13 +44,13 @@
 
 **Backlog to Allocation Timeline**：同一份 Task 資料在兩個位置之間移動，不建立副本。拖曳 Backlog 卡片到 Project 的 Allocation Timeline 時，放下的日／週／月週期是起始位置，這會直接觸發 Automatic Scheduling，並把新加入的 Task 放在 Allocation Timeline 清單最下方；不需要確認按鈕。
 
-**Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Task card 拖回 Backlog，或在 Task editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `start`、`end`、`deadline` 與其他 Task metadata；Task bar 不提供拖曳操作。這代表重新開始安排。
+**Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Task card 拖回 Backlog，或在 Task editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `start`、`end`、`deadline` 與其他 Task metadata。這代表重新開始安排。
 
 ## 視圖與操作模式
 
 **Allocation Adjustment**：Allocation Timeline 在日層級可用左鍵增加 1 小時、右鍵減少 1 小時，只修改被操作的日期；不跨日期重平衡，也不隱含觸發 Automatic Scheduling。週與月層級只顯示各期間 Allocation 加總並唯讀。各 Project 的水平滾動位置同步，方便比較同一日期的跨 Project 負載。
 
-**Allocation Timeline**：唯一保留的時間軸畫面，固定採 Allocation Adjustment 的操作語意。它保留日、週、月的容量與 Allocation 顯示、時間軸平移與縮放，以及 Backlog Task 放入時間軸的操作；Task bar 只呈現 Task Date Range metadata，不提供拖曳或調整日期操作，也不會由 bar 操作改寫 Task Date Range。Allocation cells 呈現實際每日工時，日期可以與 Task bar 不同。
+**Allocation Timeline**：唯一保留的時間軸畫面，固定採 Allocation Adjustment 的操作語意。它保留日、週、月的容量與 Allocation 顯示、時間軸平移與縮放，以及 Backlog Task 放入時間軸的操作；不繪製 Task bar，改以淺色底顯示第一個到最後一個正 Allocation 日期的範圍，實際有工時的格子使用較深底色。Task Date Range metadata 顯示在 Task card 上。
 
 **Timeline Semantic Level**：日、週、月是同一條連續時間軸的不同縮放語意；只有日層級可編輯每日工時。
 

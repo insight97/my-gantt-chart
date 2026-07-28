@@ -520,9 +520,9 @@ describe('Project arrangement', () => {
         item => item.textContent === '0/8',
       ),
     ).toBe(true);
-    // Truncation is owned by .range-label in styles.css; assert the hook, not inline style.
-    const taskLabel = document.querySelector('.range-label') as HTMLElement;
-    expect(taskLabel).toHaveClass('range-label');
+    // Task names now live in the Timeline card; the canvas only renders Allocation cells.
+    const taskLabel = document.querySelector('.task-card-gantt .task-card-info b') as HTMLElement;
+    expect(taskLabel).toBeInTheDocument();
     expect(taskLabel).toHaveTextContent('這是一個很長的任務標題需要在窄欄位省略');
   });
 
@@ -579,13 +579,14 @@ describe('Project arrangement', () => {
     ).toBe(true);
   });
 
-  it('keeps a dated scheduled Task visible before it has allocations', async () => {
+  it('keeps a dated scheduled Task card visible before it has allocations', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     expect(document.querySelectorAll('.gantt-side-row')).toHaveLength(1);
-    expect(document.querySelector('.task-range')).toBeInTheDocument();
+    expect(document.querySelector('.task-range')).not.toBeInTheDocument();
+    expect(document.querySelector('.task-card-gantt')).toHaveTextContent('2026-01-05 → 2026-01-18');
   });
 
   it('does not render an extra empty Gantt row', async () => {
@@ -873,18 +874,16 @@ describe('Project arrangement', () => {
     expect(rows[1].querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h');
   });
 
-  it('keeps the Task bar readonly and requires the Task card for Backlog return', async () => {
+  it('uses Allocation cell backgrounds instead of Task bars', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-    const taskRange = document.querySelector('.task-range') as HTMLElement;
-    const originalStart = document.querySelector('.task-range')?.getAttribute('style');
-    fireEvent.pointerDown(taskRange, { button: 0, clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(taskRange, { clientX: 90, pointerId: 1 });
-    fireEvent.pointerUp(taskRange, { clientX: 90, pointerId: 1 });
-    expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
-    expect(document.querySelector('.task-range')).toHaveAttribute('style', originalStart);
-    expect(document.querySelectorAll('.resize-handle')).toHaveLength(0);
+    expect(document.querySelector('.task-range')).not.toBeInTheDocument();
+    expect(document.querySelector('.allocation-summary.has-hours')).toHaveClass(
+      'in-allocation-window',
+      'window-start',
+      'window-end',
+    );
   });
 });
