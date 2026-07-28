@@ -44,9 +44,9 @@ npm run build     # tsc -b && vite build
 ## Domain
 
 `CONTEXT.md` is the domain contract — it defines Project, Task, Allocation, Daily
-Capacity, the `fastest` vs `balanced` allocation strategies, Manual vs Automatic
-Allocation, and Pending Hours. Read it before changing scheduling behavior. Several
-past defects came from the same rule being implemented in more than one place.
+Capacity, the Allocation Timeline, explicit `fastest` Automatic Scheduling, and
+Pending Hours. Read it before changing scheduling behavior. Several past defects
+came from the same rule being implemented in more than one place.
 
 `docs/adr/` holds architecture decision records. `docs/refactor-backlog.md` lists
 known refactors worth doing, with current line references and the ones that need the

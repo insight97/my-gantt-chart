@@ -1,12 +1,10 @@
 import type {
   Allocation,
-  AllocationStrategy,
   DailyCapacity,
   ExportFile,
   Project,
   Task,
   TaskPriority,
-  ViewMode,
   WorkspaceData,
 } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
@@ -25,7 +23,6 @@ export const emptyTask = (): Task => ({
   end: null,
   deadline: null,
   estimatedHours: 8,
-  allocationStrategy: 'fastest',
   priority: 'medium',
   status: 'backlog',
   notes: '',
@@ -40,7 +37,7 @@ export const sampleProject = (): Project => {
   return {
     id: uid(),
     name: '網站改版計畫',
-    description: 'Capacity Gantt 範例工作群組',
+    description: 'Capacity Allocation 範例工作群組',
     createdAt,
     updatedAt: createdAt,
     tasks: [
@@ -76,17 +73,12 @@ export function sampleWorkspace(): WorkspaceData {
 
 const statuses = new Set(['backlog', 'scheduled', 'in_progress', 'completed']);
 const priorities = new Set(['low', 'medium', 'high']);
-const allocationStrategies = new Set(['fastest', 'balanced']);
-const sources = new Set(['automatic', 'manual']);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const isDate = (value: unknown): value is string =>
   typeof value === 'string' && datePattern.test(value);
 const isNullableDate = (value: unknown): value is string | null => value === null || isDate(value);
 const isPriority = (value: unknown): value is TaskPriority =>
   typeof value === 'string' && priorities.has(value);
-const isAllocationStrategy = (value: unknown): value is AllocationStrategy =>
-  typeof value === 'string' && allocationStrategies.has(value);
-
 // Assumes `value` has already gone through db.ts's migrateWorkspace, which is the
 // only place that fills in fields added since the schema was first shaped — so every
 // field here is required, not optionally undefined.
@@ -102,7 +94,6 @@ function validTask(value: unknown): value is Task {
     typeof task.estimatedHours === 'number' &&
     Number.isFinite(task.estimatedHours) &&
     task.estimatedHours >= 0 &&
-    isAllocationStrategy(task.allocationStrategy) &&
     isPriority(task.priority) &&
     typeof task.status === 'string' &&
     statuses.has(task.status) &&
@@ -147,11 +138,7 @@ function validAllocation(value: unknown): value is Allocation {
     isDate(allocation.date) &&
     typeof allocation.allocatedHours === 'number' &&
     Number.isFinite(allocation.allocatedHours) &&
-    allocation.allocatedHours >= 0 &&
-    typeof allocation.source === 'string' &&
-    sources.has(allocation.source) &&
-    typeof allocation.locked === 'boolean' &&
-    (allocation.source !== 'automatic' || allocation.allocatedHours > 0)
+    allocation.allocatedHours >= 0
   );
 }
 
@@ -181,7 +168,9 @@ export function validateImport(value: unknown): value is ExportFile {
   const file = value as Record<string, unknown>;
   return (
     file.schema === 'gantt-capacity-local' &&
-    file.version === CURRENT_WORKSPACE_VERSION &&
+    typeof file.version === 'number' &&
+    file.version >= 1 &&
+    file.version <= CURRENT_WORKSPACE_VERSION &&
     typeof file.exportedAt === 'string' &&
     Array.isArray(file.projects) &&
     file.projects.every(
@@ -200,20 +189,31 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
     ...value,
     projects: value.projects.map(project => ({
       ...project,
-      tasks: project.tasks.map(task => ({
-        ...task,
-        deadline: task.deadline ?? null,
-        allocationStrategy: task.allocationStrategy ?? 'fastest',
-        priority: task.priority ?? 'medium',
-      })),
+      tasks: project.tasks.map(task => {
+        const currentTask = { ...(task as Task & { allocationStrategy?: unknown }) };
+        delete currentTask.allocationStrategy;
+        return {
+          ...currentTask,
+          deadline: task.deadline ?? null,
+          priority: task.priority ?? 'medium',
+        };
+      }),
+    })),
+    allocations: value.allocations.map(allocation => ({
+      id: allocation.id,
+      taskId: allocation.taskId,
+      date: allocation.date,
+      allocatedHours: allocation.allocatedHours,
     })),
   };
 }
 
 /**
  * Splits a Project's Tasks into the three places the UI shows them.
- * A Scheduled Task stays on the Gantt while it has any Allocation record, a complete
- * date range, or a zero-hour estimate; otherwise it falls into the pending tray.
+ * A Scheduled Task stays on the Allocation Timeline once it has an explicit scheduling
+ * anchor, any Allocation record, a complete date range, or a zero-hour estimate; otherwise
+ * it falls into the pending tray. The anchor keeps a no-capacity schedule visible with
+ * its positive Pending Hours.
  */
 export function partitionProjectTasks(project: Project, allocations: Allocation[]) {
   const allocatedTaskIds = new Set(allocations.map(allocation => allocation.taskId));
@@ -222,7 +222,7 @@ export function partitionProjectTasks(project: Project, allocations: Allocation[
   const pending: Task[] = [];
   for (const task of project.tasks) {
     if (task.status === 'backlog') backlog.push(task);
-    else if (allocatedTaskIds.has(task.id) || (task.start && task.end) || task.estimatedHours === 0)
+    else if (task.start || allocatedTaskIds.has(task.id) || task.estimatedHours === 0)
       scheduled.push(task);
     else pending.push(task);
   }
@@ -232,40 +232,4 @@ export function partitionProjectTasks(project: Project, allocations: Allocation[
       a.createdAt.localeCompare(b.createdAt),
   );
   return { backlog, scheduled, pending };
-}
-
-export type TaskDragMode = 'move' | 'start' | 'end';
-
-function shiftTaskDate(date: string, delta: number, view: ViewMode) {
-  if (view !== 'month') return addDays(date, delta * (view === 'week' ? 7 : 1));
-  const value = new Date(`${date}T00:00:00Z`);
-  const day = value.getUTCDate();
-  value.setUTCDate(1);
-  value.setUTCMonth(value.getUTCMonth() + delta);
-  const lastDay = new Date(
-    Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  value.setUTCDate(Math.min(day, lastDay));
-  return value.toISOString().slice(0, 10);
-}
-
-export function applyTaskDrag(
-  task: Task,
-  mode: TaskDragMode,
-  delta: number,
-  view: ViewMode = 'day',
-) {
-  if (!task.start || !task.end) return task;
-  if (mode === 'move')
-    return {
-      ...task,
-      start: shiftTaskDate(task.start, delta, view),
-      end: shiftTaskDate(task.end, delta, view),
-    };
-  if (mode === 'start') {
-    const start = shiftTaskDate(task.start, delta, view);
-    return { ...task, start: start <= task.end ? start : task.end };
-  }
-  const end = shiftTaskDate(task.end, delta, view);
-  return { ...task, end: end >= task.start ? end : task.start };
 }

@@ -20,7 +20,7 @@ vi.mock('./db', () => ({
 import App from './App';
 
 const workspace: WorkspaceData = {
-  version: 2,
+  version: 3,
   projects: [
     {
       id: 'project-a',
@@ -44,7 +44,7 @@ const workspace: WorkspaceData = {
 };
 
 const aggregationWorkspace: WorkspaceData = {
-  version: 2,
+  version: 3,
   projects: [
     {
       id: 'project-a',
@@ -60,7 +60,6 @@ const aggregationWorkspace: WorkspaceData = {
           end: '2026-01-18',
           deadline: null,
           estimatedHours: 40,
-          allocationStrategy: 'fastest',
           priority: 'medium',
           status: 'scheduled',
           notes: '',
@@ -92,8 +91,6 @@ denseWorkspace.allocations = [
     taskId: 'task-a',
     date: '2026-01-05',
     allocatedHours: 8,
-    source: 'automatic',
-    locked: false,
   },
 ];
 
@@ -168,16 +165,12 @@ allocateWorkspace.allocations = [
     taskId: 'task-a',
     date: '2026-01-05',
     allocatedHours: 8,
-    source: 'automatic',
-    locked: false,
   },
   {
     id: 'allocation-b',
     taskId: 'task-a',
     date: '2026-01-06',
     allocatedHours: 8,
-    source: 'automatic',
-    locked: false,
   },
 ];
 
@@ -208,16 +201,12 @@ multiAllocateWorkspace.allocations = [
     taskId: 'allocate-a',
     date: '2026-01-05',
     allocatedHours: 8,
-    source: 'automatic',
-    locked: false,
   },
   {
     id: 'allocation-b',
     taskId: 'allocate-b',
     date: '2026-01-05',
     allocatedHours: 8,
-    source: 'automatic',
-    locked: false,
   },
 ];
 
@@ -315,13 +304,13 @@ describe('Project arrangement', () => {
     expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
   });
 
-  it('adds a Task from the Gantt list directly into Gantt', async () => {
+  it('adds a Task from the Allocation Timeline list and auto-schedules it', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     fireEvent.click(document.querySelector('.gantt-sidebar .gantt-add-row') as HTMLElement);
     fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: 'Gantt 新增 Task' } });
-    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    fireEvent.click(screen.getByRole('button', { name: '自動排程' }));
     await waitFor(() =>
       expect(document.querySelector('.gantt-sidebar .task-link b')).toHaveTextContent(
         'Gantt 新增 Task',
@@ -668,7 +657,7 @@ describe('Project arrangement', () => {
     expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
   });
 
-  it('schedules a backlog Task when its status is changed to scheduled', async () => {
+  it('changing a Task status does not implicitly schedule it', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(backlogWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByText('待排 Task')).toBeInTheDocument());
@@ -677,12 +666,13 @@ describe('Project arrangement', () => {
     fireEvent.change(screen.getByLabelText('狀態'), { target: { value: 'scheduled' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     await waitFor(() =>
-      expect(document.querySelector('.gantt-sidebar .task-link')).toHaveTextContent('待排 Task'),
+      expect(document.querySelector('.pending-tray')).toHaveTextContent('待排 Task'),
     );
-    expect(document.querySelector('.task-range')).toBeInTheDocument();
+    expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
+    expect(document.querySelector('.task-range')).not.toBeInTheDocument();
   });
 
-  it('renders each Gantt Task as one integrated card', async () => {
+  it('renders each Timeline Task as one integrated card', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
@@ -776,37 +766,33 @@ describe('Project arrangement', () => {
     fireEvent.pointerUp(timeline, { clientX: 102, clientY: 102, pointerId: 1 });
   });
 
-  it('uses Allocate Mode for daily edits and read-only period summaries', async () => {
+  it('uses the Allocation Timeline for daily edits and read-only period summaries', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-    expect(document.querySelector('.allocation-summaries')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Allocate 模式' }));
     expect(document.querySelector('.allocation-summaries')).toBeInTheDocument();
     expect(document.querySelector('.deadline-marker')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '日' }));
     const allocationCell = document.querySelector('.allocation-cell.has-hours') as HTMLElement;
     expect(allocationCell).toBeInTheDocument();
+    expect(allocationCell).toHaveTextContent('8h');
     fireEvent.click(allocationCell);
-    await waitFor(() => expect(document.querySelector('.hours b')).toHaveTextContent('16h'));
+    await waitFor(() => expect(allocationCell).toHaveTextContent('9h'));
     fireEvent.contextMenu(document.querySelector('.allocation-cell.has-hours') as HTMLElement);
-    await waitFor(() =>
-      expect(document.querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h'),
-    );
+    await waitFor(() => expect(allocationCell).toHaveTextContent('8h'));
 
     fireEvent.click(screen.getByRole('button', { name: '週' }));
     expect(document.querySelectorAll('.allocation-summary.has-hours').length).toBeGreaterThan(0);
     expect(document.querySelectorAll('.allocation-cell')).toHaveLength(0);
   });
 
-  it('allows timeline panning from an allocation cell in Allocate Mode', async () => {
+  it('allows timeline panning from an allocation cell', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Allocate 模式' }));
     fireEvent.click(screen.getByRole('button', { name: '日' }));
     const timeline = document.querySelector('.timeline') as HTMLElement;
     const cell = document.querySelector('.allocation-cell') as HTMLElement;
@@ -838,12 +824,42 @@ describe('Project arrangement', () => {
     ).toEqual(['既有 Task', '新加入 Task']);
   });
 
+  it('keeps existing Allocation when metadata, estimate, or capacity changes', async () => {
+    loadWorkspaceMock.mockResolvedValue(structuredClone(allocateWorkspace));
+    render(<App />);
+    await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+    const taskCard = document.querySelector('.gantt-sidebar .task-link') as HTMLElement;
+    fireEvent.click(taskCard);
+    fireEvent.change(screen.getByLabelText('結束日期'), { target: { value: '2026-01-20' } });
+    fireEvent.change(screen.getByLabelText('預估工時'), { target: { value: '24' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    await waitFor(() =>
+      expect(document.querySelector('.task-card-hours')).toHaveTextContent('16h'),
+    );
+    expect(document.querySelector('.task-card-hours')).toHaveTextContent('/ 24h');
+
+    fireEvent.click(screen.getByRole('button', { name: '日' }));
+    const beforeCapacityEdit = Array.from(
+      document.querySelectorAll('.allocation-cell.has-hours'),
+    ).map(cell => cell.textContent);
+    fireEvent.click(document.querySelector('.capacity-period[role="button"]') as HTMLElement);
+    fireEvent.change(screen.getByLabelText('每日總容量（小時）'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    await waitFor(() =>
+      expect(
+        Array.from(document.querySelectorAll('.allocation-cell.has-hours')).map(
+          cell => cell.textContent,
+        ),
+      ).toEqual(beforeCapacityEdit),
+    );
+  });
+
   it('changes allocation hours only for the clicked Task', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(multiAllocateWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Allocate 模式' }));
     fireEvent.click(screen.getByRole('button', { name: '日' }));
     const rows = document.querySelectorAll('.timeline-row');
     const firstCell = rows[0].querySelector('.allocation-cell.has-hours') as HTMLElement;
@@ -857,32 +873,18 @@ describe('Project arrangement', () => {
     expect(rows[1].querySelector('.allocation-cell.has-hours')).toHaveTextContent('8h');
   });
 
-  it('drags a Gantt bar back to Backlog', async () => {
+  it('keeps the Task bar readonly and requires the Task card for Backlog return', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     const taskRange = document.querySelector('.task-range') as HTMLElement;
-    const backlog = document.querySelector('.backlog') as HTMLElement;
-    const originalElementFromPoint = document.elementFromPoint;
-    Object.defineProperty(document, 'elementFromPoint', {
-      configurable: true,
-      value: () => backlog,
-    });
+    const originalStart = document.querySelector('.task-range')?.getAttribute('style');
     fireEvent.pointerDown(taskRange, { button: 0, clientX: 100, pointerId: 1 });
     fireEvent.pointerMove(taskRange, { clientX: 90, pointerId: 1 });
     fireEvent.pointerUp(taskRange, { clientX: 90, pointerId: 1 });
-    await waitFor(() =>
-      expect(document.querySelector('.backlog .task-card')).toHaveTextContent(
-        '這是一個很長的任務標題需要在窄欄位省略',
-      ),
-    );
-    if (originalElementFromPoint)
-      Object.defineProperty(document, 'elementFromPoint', {
-        configurable: true,
-        value: originalElementFromPoint,
-      });
-    else
-      delete (document as { elementFromPoint?: typeof document.elementFromPoint }).elementFromPoint;
+    expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
+    expect(document.querySelector('.task-range')).toHaveAttribute('style', originalStart);
+    expect(document.querySelectorAll('.resize-handle')).toHaveLength(0);
   });
 });
