@@ -26,10 +26,10 @@ import {
   timelinePositionForDate,
   timelineRange,
   timelineScale,
-  taskRangeGeometry,
+  dropPreviewGeometry,
   TIMELINE_CAPACITY_ROW_HEIGHT,
   TIMELINE_CONTEXT_ROW_HEIGHT,
-  TIMELINE_TASK_RANGE_TOP,
+  DROP_PREVIEW_TOP,
   TIMELINE_TASK_ROW_HEIGHT,
   weekendClass,
   zoomTimeline,
@@ -394,20 +394,20 @@ function DropPreview({
   scale: number;
   rowIndex: number;
 }) {
-  const geometry = taskRangeGeometry(task, periods, scale);
+  const geometry = dropPreviewGeometry(task, periods, scale);
   if (!geometry) return null;
   return (
     <div
-      className="drop-preview task-range"
+      className="drop-preview"
       style={{
         left: geometry.left,
         width: geometry.width,
-        top: rowIndex * TIMELINE_TASK_ROW_HEIGHT + TIMELINE_TASK_RANGE_TOP,
+        top: rowIndex * TIMELINE_TASK_ROW_HEIGHT + DROP_PREVIEW_TOP,
         backgroundColor: task.color,
       }}
       title={`${task.name} · 預覽排程`}
     >
-      <span className="range-label">{task.name}</span>
+      <span className="drop-preview-label">{task.name}</span>
     </div>
   );
 }

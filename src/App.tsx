@@ -9,14 +9,11 @@ import {
   validWorkspaceData,
 } from './data';
 import {
-  adjustAllocationDay as adjustAllocationDayEngine,
   capacityAvailableHours,
   getDailyCapacity,
   getProjectEstimatedHours,
   getTaskAllocatedHours,
   getTaskPendingHours,
-  returnTaskToBacklog,
-  scheduleTaskAt,
   today,
 } from './capacity';
 import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } from './db';
@@ -44,6 +41,14 @@ import type {
   WorkspaceData,
 } from './types';
 import type { TimelineZoom } from './timeline';
+import {
+  adjustAllocationDay as adjustAllocationDayOperation,
+  autoScheduleTask as autoScheduleTaskOperation,
+  moveTaskToBacklog as moveTaskToBacklogOperation,
+  saveTask as saveTaskOperation,
+  scheduleTaskAtDate as scheduleTaskAtDateOperation,
+} from './workspace-operations';
+import type { WorkspaceOperationResult } from './workspace-operations';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const statusLabels: Record<TaskStatus, string> = {
@@ -70,38 +75,6 @@ function sameDropTarget(a: TaskDropTarget | null, b: TaskDropTarget | null) {
   return (
     a.kind === b.kind && a.projectId === b.projectId && a.taskId === b.taskId && a.date === b.date
   );
-}
-
-function replaceTaskAndAllocations(
-  workspace: WorkspaceData,
-  projectId: string,
-  task: Task,
-  taskAllocations?: Allocation[],
-  moveTaskToEnd = false,
-): WorkspaceData {
-  const replacementAllocations = taskAllocations?.filter(item => item.taskId === task.id);
-  return {
-    ...workspace,
-    projects: workspace.projects.map(project =>
-      project.id === projectId
-        ? {
-            ...project,
-            tasks: moveTaskToEnd
-              ? [...project.tasks.filter(value => value.id !== task.id), task]
-              : project.tasks.some(value => value.id === task.id)
-                ? project.tasks.map(value => (value.id === task.id ? task : value))
-                : [...project.tasks, task],
-            updatedAt: now(),
-          }
-        : project,
-    ),
-    allocations: replacementAllocations
-      ? [
-          ...workspace.allocations.filter(item => item.taskId !== task.id),
-          ...replacementAllocations,
-        ]
-      : workspace.allocations,
-  };
 }
 
 function download(data: string, name: string, type: string) {
@@ -185,6 +158,14 @@ export default function App() {
       setWorkspace(next);
     },
     [workspace],
+  );
+  const commitOperation = useCallback(
+    (result: WorkspaceOperationResult) => {
+      if (!result.ok) return result.error;
+      if (result.changed) commit(result.workspace);
+      return null;
+    },
+    [commit],
   );
   const beginTaskDrag = (
     projectId: string,
@@ -309,74 +290,21 @@ export default function App() {
 
   const saveTask = (projectId: string, draft: Task): string | null => {
     if (!workspace) return '目前沒有可編輯的工作區。';
-    const project = workspace.projects.find(item => item.id === projectId);
-    if (!project) return '找不到 Project。';
-    if (!draft.name.trim()) return '請輸入 Task 名稱。';
-    if (!Number.isFinite(draft.estimatedHours) || draft.estimatedHours < 0)
-      return '請輸入有效的預估工時。';
-    const existingTask = project.tasks.find(value => value.id === draft.id);
-    if (draft.start && draft.end && draft.start > draft.end) return '開始日期不可晚於結束日期。';
-    let nextTask: Task = {
-      ...draft,
-      name: draft.name.trim(),
-      updatedAt: now(),
-    };
-    let taskAllocations: Allocation[] | undefined;
-    if (nextTask.status === 'backlog') {
-      const result = returnTaskToBacklog(nextTask);
-      nextTask = result.task;
-      taskAllocations = result.allocations;
-    }
-    commit(
-      replaceTaskAndAllocations(
-        workspace,
-        project.id,
-        nextTask,
-        taskAllocations,
-        existingTask?.status === 'backlog' && nextTask.status !== 'backlog',
-      ),
-    );
+    const error = commitOperation(saveTaskOperation(workspace, projectId, draft));
+    if (error) return error;
     setEditingTask(null);
     return null;
   };
 
   const autoScheduleTask = (projectId: string, taskId: string, draft?: Task): boolean => {
     if (!workspace) return false;
-    const project = workspace.projects.find(item => item.id === projectId);
-    if (!project) return false;
-    const task = draft
-      ? { ...draft, name: draft.name.trim(), updatedAt: now() }
-      : project.tasks.find(item => item.id === taskId);
-    if (!task || task.status === 'completed') return false;
-    if (!task.name.trim() || !Number.isFinite(task.estimatedHours) || task.estimatedHours < 0) {
-      setNotice('請先輸入有效的 Task 名稱與預估工時。');
+    const result = autoScheduleTaskOperation(workspace, projectId, taskId, draft);
+    if (!result.ok) {
+      setNotice(result.error);
       return false;
     }
-    if (task.start && task.end && task.start > task.end) {
-      setNotice('開始日期不可晚於結束日期。');
-      return false;
-    }
-    try {
-      const result = scheduleTaskAt(
-        task,
-        workspace.allocations,
-        workspace.dailyCapacities,
-        task.start || today(),
-      );
-      const nextTask: Task = { ...result.task, updatedAt: now() };
-      commit(
-        replaceTaskAndAllocations(
-          workspace,
-          project.id,
-          nextTask,
-          result.allocations,
-          !project.tasks.some(item => item.id === task.id) || task.status === 'backlog',
-        ),
-      );
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : '自動分配失敗。');
-      return false;
-    }
+    if (!result.changed) return false;
+    commit(result.workspace);
     return true;
   };
 
@@ -387,50 +315,15 @@ export default function App() {
     delta: number,
   ): string | null => {
     if (!workspace) return '目前沒有可編輯的工作區。';
-    const project = workspace.projects.find(item => item.id === projectId);
-    if (!project) return '找不到 Project。';
-    const task = project.tasks.find(item => item.id === taskId);
-    if (!task) return '找不到 Task。';
-    if (task.status === 'completed') return '已完成 Task 不可修改。';
-    try {
-      const result = adjustAllocationDayEngine(task, workspace.allocations, date, delta);
-      const savedTask: Task = {
-        ...task,
-        status: task.status === 'in_progress' ? 'in_progress' : 'scheduled',
-        updatedAt: now(),
-      };
-      commit(replaceTaskAndAllocations(workspace, project.id, savedTask, result.allocations));
-      return null;
-    } catch (error) {
-      return error instanceof Error ? error.message : 'Allocation 更新失敗。';
-    }
+    return commitOperation(adjustAllocationDayOperation(workspace, projectId, taskId, date, delta));
   };
 
   const scheduleTaskAtDate = useCallback(
     (projectId: string, taskId: string, date: string) => {
       if (!workspace) return;
-      const project = workspace.projects.find(item => item.id === projectId);
-      const task = project?.tasks.find(item => item.id === taskId);
-      const hasAllocations = workspace.allocations.some(item => item.taskId === taskId);
-      if (
-        !project ||
-        !task ||
-        task.status === 'completed' ||
-        (task.status !== 'backlog' && hasAllocations)
-      )
-        return;
-      try {
-        const result = scheduleTaskAt(
-          { ...task, status: 'scheduled' },
-          workspace.allocations,
-          workspace.dailyCapacities,
-          date,
-        );
-        const nextTask: Task = { ...result.task, updatedAt: now() };
-        commit(replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations, true));
-      } catch (error) {
-        setNotice(error instanceof Error ? error.message : '自動分配失敗。');
-      }
+      const result = scheduleTaskAtDateOperation(workspace, projectId, taskId, date);
+      if (!result.ok) setNotice(result.error);
+      else if (result.changed) commit(result.workspace);
     },
     [workspace, commit],
   );
@@ -438,12 +331,8 @@ export default function App() {
   const moveTaskToBacklog = useCallback(
     (projectId: string, taskId: string) => {
       if (!workspace) return;
-      const project = workspace.projects.find(item => item.id === projectId);
-      const task = project?.tasks.find(item => item.id === taskId);
-      if (!project || !task || task.status === 'completed') return;
-      const result = returnTaskToBacklog(task);
-      const nextTask: Task = { ...result.task, updatedAt: now() };
-      commit(replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations));
+      const result = moveTaskToBacklogOperation(workspace, projectId, taskId);
+      if (result.ok && result.changed) commit(result.workspace);
     },
     [workspace, commit],
   );

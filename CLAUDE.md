@@ -61,6 +61,8 @@ owner's decision rather than an agent's judgement.
 - `src/timeline.ts` — timeline geometry, zoom, and period bucketing.
 - `src/formatters.ts` — all display strings and label tables.
 - `src/data.ts` / `src/db.ts` — workspace shape, validation, persistence, migration.
+- `src/workspace-operations.ts` — pure Task／Allocation workspace transitions; `App.tsx`
+  handles history, notices, and committing the returned workspace.
 - `src/App.tsx` / `src/CapacityGantt.tsx` — presentation and interaction.
 
 Before writing a helper, check whether one of the modules above already exports it;
