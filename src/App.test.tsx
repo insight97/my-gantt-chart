@@ -408,9 +408,7 @@ describe('Project arrangement', () => {
       0,
     );
     expect(timeline.querySelectorAll('.capacity-period.weekend').length).toBeGreaterThan(0);
-    expect(timeline.querySelector('.capacity-period.weekend .weekend-label')).toHaveTextContent(
-      '週末',
-    );
+    expect(timeline.querySelector('.capacity-period.weekend')).toHaveClass('weekend');
     expect(timeline.querySelectorAll('.timeline-weekend-column')).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: '週' }));
@@ -445,7 +443,7 @@ describe('Project arrangement', () => {
     expect(separators).toBeInTheDocument();
     expect(separators).toHaveClass('timeline-row-separators');
     expect(weekend).toHaveClass('weekend');
-    expect(weekend.querySelector('.weekend-label')).toHaveTextContent('週末');
+    expect(weekend).not.toHaveTextContent('週末');
     expect(timeline.querySelectorAll('.timeline-weekend-column')).toHaveLength(0);
     expect(timeline.querySelectorAll('.allocation-cell.weekend')).toHaveLength(0);
   });
@@ -909,9 +907,7 @@ describe('Project arrangement', () => {
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '日' }));
-    expect(document.querySelector('.capacity-period.weekend .weekend-label')).toHaveTextContent(
-      '週末',
-    );
+    expect(document.querySelector('.capacity-period.weekend')).toHaveClass('weekend');
     expect(
       document.querySelectorAll('.allocation-cell.in-allocation-window').length,
     ).toBeGreaterThan(0);

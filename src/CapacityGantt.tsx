@@ -156,11 +156,6 @@ function CapacityPeriods({
             }
             style={{ left: index * scale, width: scale, top: TIMELINE_CONTEXT_ROW_HEIGHT }}
           >
-            {weekend && (
-              <i className="weekend-label" aria-hidden="true">
-                週末
-              </i>
-            )}
             <b>{periodDisplayLabel(period, view, scale)}</b>
             <strong>{periodCapacityLabel(allocated, available, scale)}</strong>
             {!editable && scale >= 56 && <small>{period.dates.length} 天合計</small>}
