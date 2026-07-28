@@ -20,23 +20,7 @@
 }
 
 .capacity-period.weekend {
-  box-shadow: inset 0 4px 0 #718e9a;
-}
-
-.weekend-label {
-  position: absolute;
-  top: 5px;
-  left: 3px;
-  right: 3px;
-  overflow: hidden;
-  color: #536b79;
-  font-size: 8px;
-  font-style: normal;
-  font-weight: 700;
-  line-height: 10px;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  box-shadow: inset 0 3px 0 #718e9a;
 }
 
 .timeline-context-row {
@@ -139,11 +123,6 @@
   font-size: 10px;
 }
 
-.capacity-period.compact .weekend-label {
-  top: 4px;
-  font-size: 7px;
-}
-
 .capacity-period.minimal {
   gap: 0;
   padding: 1px 0 !important;
@@ -152,10 +131,6 @@
 .capacity-period.minimal b,
 .capacity-period.minimal strong {
   font-size: 8px;
-}
-
-.capacity-period.minimal .weekend-label {
-  display: none;
 }
 
 .capacity-period.available strong {
