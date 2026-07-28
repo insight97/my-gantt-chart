@@ -50,7 +50,7 @@
 
 **Allocation Adjustment**：Allocation Timeline 在日層級可用左鍵增加 1 小時、右鍵減少 1 小時，只修改被操作的日期；不跨日期重平衡，也不隱含觸發 Automatic Scheduling。週與月層級只顯示各期間 Allocation 加總並唯讀。各 Project 的水平滾動位置同步，方便比較同一日期的跨 Project 負載。
 
-**Allocation Timeline**：唯一保留的時間軸畫面，固定採 Allocation Adjustment 的操作語意。它保留日、週、月的容量與 Allocation 顯示、時間軸平移與縮放，以及 Backlog Task 放入時間軸的操作；不繪製 Task bar，改以淺色底顯示第一個到最後一個正 Allocation 日期的範圍，實際有工時的格子使用較深底色。Task Date Range metadata 顯示在 Task card 上。
+**Allocation Timeline**：唯一保留的時間軸畫面，固定採 Allocation Adjustment 的操作語意。它保留日、週、月的容量與 Allocation 顯示、時間軸平移與縮放，以及 Backlog Task 放入時間軸的操作；不繪製 Task bar，改以淺色底顯示第一個到最後一個正 Allocation 日期的範圍，實際有工時的格子使用較深底色，週末使用斜線紋理區分。Task Date Range metadata 顯示在 Task card 上。
 
 **Timeline Semantic Level**：日、週、月是同一條連續時間軸的不同縮放語意；只有日層級可編輯每日工時。
 

@@ -174,6 +174,23 @@ allocateWorkspace.allocations = [
   },
 ];
 
+const weekendAllocationWorkspace: WorkspaceData = structuredClone(aggregationWorkspace);
+weekendAllocationWorkspace.projects[0].tasks[0].estimatedHours = 16;
+weekendAllocationWorkspace.allocations = [
+  {
+    id: 'allocation-friday',
+    taskId: 'task-a',
+    date: '2026-01-09',
+    allocatedHours: 8,
+  },
+  {
+    id: 'allocation-monday',
+    taskId: 'task-a',
+    date: '2026-01-12',
+    allocatedHours: 8,
+  },
+];
+
 const multiAllocateWorkspace: WorkspaceData = structuredClone(workspace);
 multiAllocateWorkspace.projects[0].tasks = [
   {
@@ -885,5 +902,18 @@ describe('Project arrangement', () => {
       'window-start',
       'window-end',
     );
+  });
+
+  it('marks weekend allocation cells independently from allocation backgrounds', async () => {
+    loadWorkspaceMock.mockResolvedValue(structuredClone(weekendAllocationWorkspace));
+    render(<App />);
+    await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '日' }));
+    const weekendCells = document.querySelectorAll('.allocation-cell.weekend');
+    expect(weekendCells.length).toBeGreaterThan(0);
+    expect(
+      document.querySelector('.allocation-cell.in-allocation-window.weekend'),
+    ).toBeInTheDocument();
   });
 });

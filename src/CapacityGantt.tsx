@@ -314,6 +314,7 @@ function AllocationSummaries({
         const windowState = periodInAllocationWindow(period, allocationWindow);
         const className = [
           view === 'day' ? 'allocation-cell' : 'allocation-summary',
+          weekendClass(period.start, view),
           windowState.active ? 'in-allocation-window' : '',
           windowState.start ? 'window-start' : '',
           windowState.end ? 'window-end' : '',
@@ -820,7 +821,8 @@ export default function CapacityGantt({
         <div>
           <h2>Capacity Allocation</h2>
           <small>
-            日層級左鍵 +1h、右鍵 -1h；底色區分 Allocation 範圍與實際工時。 滾輪縮放、拖曳平移時間軸
+            日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation 範圍、深底＝實際工時、斜線＝週末。
+            滾輪縮放、拖曳平移時間軸
           </small>
         </div>
       </div>

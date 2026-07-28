@@ -847,6 +847,16 @@ h1 {
   background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
   font-weight: 700;
 }
+.allocation-cell.weekend,
+.allocation-summary.weekend {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 5px,
+    #718e9a2b 5px,
+    #718e9a2b 6px
+  );
+}
 .timeline-row .deadline-marker {
   z-index: 4;
 }
