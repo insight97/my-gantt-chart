@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Capacity Allocation 只保留 Allocation Timeline 作為時間軸操作介面，移除 General Mode、Task bar 日期操作與 balanced allocation。Automatic Scheduling 只在使用者按下按鈕或將 Backlog Task 拖入 Allocation Timeline 時執行；兩者共用同一個 fastest scheduling module。Capacity、Estimated Hours 與 Task metadata 的修改不會隱含重排，只有明確 Automatic Scheduling 會清除並重建全部 Allocation。
+Capacity Allocation 只保留 Allocation Timeline 作為時間軸操作介面，移除 General Mode、Task bar 日期操作與 balanced allocation。Automatic Scheduling 只在使用者按下按鈕、將 Backlog Task 拖入 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存時執行；三者共用同一個 fastest scheduling module。Capacity、Estimated Hours 與既有 Task metadata 的修改不會隱含重排，只有明確 Automatic Scheduling 會清除並重建全部 Allocation。
 
 ## Consequences
 

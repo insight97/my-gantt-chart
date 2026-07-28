@@ -36,6 +36,8 @@ more realistic, but requires reviewing existing tests and runtime cost.
   manual source or locked field.
 - Metadata, capacity, estimate edits, and timeline navigation do not implicitly
   reschedule a Task.
+- Backlog is the only unscheduled area; Timeline-created Tasks are automatically
+  scheduled on save, and Scheduled Tasks do not use a separate pending tray.
 - Task bar date manipulation and General Mode were removed; Task-card movement and
   direct daily Allocation adjustment remain.
 - Former Task bar geometry names now describe the temporary `DropPreview` only.

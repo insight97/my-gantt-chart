@@ -30,7 +30,7 @@
 
 **Automatic Allocation**：系統依使用者指定的起始日期與每日可用容量產生的 Allocation。系統從起始日期往後尋找有空間的日期，不會在一般日期故意超載；使用者可重新自動安排，重新執行時依當次起點重建 Allocation。
 
-**Automatic Scheduling**：使用者明確按下「自動排程」，或將 Backlog Task 拖曳到 Allocation Timeline；兩者都是同一個排程操作。操作會讓 Task 進入 Allocation Timeline，使用 `fastest` 建立 Allocation，並將新進入的 Task 放到清單最下方。按鈕排程沒有開始日時從今天開始；拖曳排程使用放下日期。只分配到 Capacity-Available Day，沒有容量時保留 Pending Hours，不產生 Automatic Overflow。編輯 Task metadata、修改 Daily Capacity 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
+**Automatic Scheduling**：使用者明確按下「自動排程」、將 Backlog Task 拖曳到 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存；三者都是同一個排程操作。操作會讓 Task 進入 Allocation Timeline，使用 `fastest` 建立 Allocation，並將新進入的 Task 放到清單最下方。按鈕與 Timeline 新增沒有開始日時從今天開始；拖曳排程使用放下日期。只分配到 Capacity-Available Day，沒有容量時保留 Pending Hours，不產生 Automatic Overflow。編輯既有 Task metadata、修改 Daily Capacity 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
 
 **Estimated Hours**：Task 預計需要完成的總工時。修改 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation；需要重新分配時必須明確執行 Automatic Scheduling。
 
@@ -40,7 +40,7 @@
 
 ## 日期與排程邊界
 
-**Task Date Range**：Task 卡片上的開始日與結束日 metadata，使用者可以編輯，包含兩端。若設定開始日，它也是 Automatic Allocation 的起點；沒有開始日時使用今天或 Backlog drop 日期。結束日只描述卡片資訊，不是 Automatic Allocation 的上限；Automatic Allocation 只採 `fastest`。Task Date Range 與實際 Allocation 日期可以不同，不互相驗證或改寫。已進入排程的 Task 會保留 `start` anchor，即使沒有可用容量也仍顯示在 Allocation Timeline 並保留 Pending Hours；保留完整既有日期、Allocation record 或 `0h` 預估工時的 Scheduled Task 也仍顯示。只有尚未建立 anchor／Allocation／完整日期的 Scheduled Task，才會出現在 Project 的條件式待處理清單。
+**Task Date Range**：Task 卡片上的開始日與結束日 metadata，使用者可以編輯，包含兩端。若設定開始日，它也是 Automatic Allocation 的起點；沒有開始日時使用今天或 Backlog drop 日期。結束日只描述卡片資訊，不是 Automatic Allocation 的上限；Automatic Allocation 只採 `fastest`。Task Date Range 與實際 Allocation 日期可以不同，不互相驗證或改寫。已進入排程的 Task 會保留 `start` anchor，即使沒有可用容量也仍顯示在 Allocation Timeline 並保留 Pending Hours；保留完整既有日期、Allocation record、或 `0h` 預估工時的 Scheduled Task 也仍顯示。Scheduled Task 不另設待處理區，尚未安排的工時直接在 Timeline Task card 上顯示。
 
 **Backlog to Allocation Timeline**：同一份 Task 資料在兩個位置之間移動，不建立副本。拖曳 Backlog 卡片到 Project 的 Allocation Timeline 時，放下的日／週／月週期是起始位置，這會直接觸發 Automatic Scheduling，並把新加入的 Task 放在 Allocation Timeline 清單最下方；不需要確認按鈕。
 

@@ -99,9 +99,9 @@ backlogWorkspace.projects[0].tasks = [
   { ...emptyTask(), id: 'backlog-task', name: '待排 Task', estimatedHours: 16 },
 ];
 
-const pendingWorkspace: WorkspaceData = structuredClone(workspace);
-pendingWorkspace.projects[0].tasks = [
-  { ...emptyTask(), id: 'pending-task', name: '待處理 Task', status: 'scheduled' },
+const unallocatedScheduledWorkspace: WorkspaceData = structuredClone(workspace);
+unallocatedScheduledWorkspace.projects[0].tasks = [
+  { ...emptyTask(), id: 'unallocated-task', name: '未分配 Task', status: 'scheduled' },
 ];
 
 const orderedWorkspace: WorkspaceData = structuredClone(backlogWorkspace);
@@ -327,12 +327,13 @@ describe('Project arrangement', () => {
 
     fireEvent.click(document.querySelector('.gantt-sidebar .gantt-add-row') as HTMLElement);
     fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: 'Gantt 新增 Task' } });
-    fireEvent.click(screen.getByRole('button', { name: '自動排程' }));
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     await waitFor(() =>
       expect(document.querySelector('.gantt-sidebar .task-link b')).toHaveTextContent(
         'Gantt 新增 Task',
       ),
     );
+    expect(document.querySelector('.task-card-hours')).toHaveTextContent('8h / 8h');
     expect(document.querySelector('.backlog .task-card')).not.toBeInTheDocument();
   });
 
@@ -619,13 +620,13 @@ describe('Project arrangement', () => {
     expect(document.querySelector('.gantt-side-row')).toHaveTextContent('零工時 Task');
   });
 
-  it('shows pending tasks immediately and hides the tray when there are none', async () => {
-    loadWorkspaceMock.mockResolvedValue(structuredClone(pendingWorkspace));
+  it('keeps an unscheduled Timeline Task on the Timeline without a pending tray', async () => {
+    loadWorkspaceMock.mockResolvedValue(structuredClone(unallocatedScheduledWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-    expect(document.querySelector('.pending-tray')).toBeInTheDocument();
-    expect(document.querySelector('.pending-tray')).toHaveTextContent('待處理 Task');
+    expect(document.querySelector('.pending-tray')).not.toBeInTheDocument();
+    expect(document.querySelector('.gantt-side-row')).toHaveTextContent('未分配 Task');
   });
 
   it('puts a newly scheduled Task at the bottom of the Gantt order', async () => {
@@ -681,9 +682,9 @@ describe('Project arrangement', () => {
     fireEvent.change(screen.getByLabelText('狀態'), { target: { value: 'scheduled' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     await waitFor(() =>
-      expect(document.querySelector('.pending-tray')).toHaveTextContent('待排 Task'),
+      expect(document.querySelector('.gantt-sidebar .task-link')).toHaveTextContent('待排 Task'),
     );
-    expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
+    expect(document.querySelector('.pending-tray')).not.toBeInTheDocument();
     expect(document.querySelector('.drop-preview')).not.toBeInTheDocument();
   });
 
