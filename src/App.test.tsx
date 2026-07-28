@@ -407,11 +407,11 @@ describe('Project arrangement', () => {
     expect(timeline.querySelectorAll('.timeline-context-cell.week-start').length).toBeGreaterThan(
       0,
     );
-    expect(timeline.querySelectorAll('.timeline-weekend-column.weekend').length).toBeGreaterThan(0);
-    expect(timeline.querySelectorAll('.capacity-period.weekend')).toHaveLength(0);
-    expect(timeline.querySelector('.timeline-weekend-column.weekend')).toHaveStyle({
-      borderRight: '1px solid #d4e0e7',
-    });
+    expect(timeline.querySelectorAll('.capacity-period.weekend').length).toBeGreaterThan(0);
+    expect(timeline.querySelector('.capacity-period.weekend .weekend-label')).toHaveTextContent(
+      '週末',
+    );
+    expect(timeline.querySelectorAll('.timeline-weekend-column')).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: '週' }));
     await waitFor(() => expect(timeline.querySelectorAll('.timeline-context-row')).toHaveLength(1));
@@ -432,23 +432,22 @@ describe('Project arrangement', () => {
     expect(timeline.querySelectorAll('.timeline-context-cell.month-start')).toHaveLength(0);
   });
 
-  it('keeps task row separators above weekend backgrounds', async () => {
+  it('keeps weekend markers in the header instead of task rows', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(aggregationWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '日' }));
     const timeline = document.querySelector('.timeline') as HTMLElement;
-    const weekend = timeline.querySelector('.timeline-weekend-column.weekend') as HTMLElement;
+    const weekend = timeline.querySelector('.capacity-period.weekend') as HTMLElement;
     const separators = timeline.querySelector('.timeline-row-separators') as HTMLElement;
 
-    // Stacking and hit-testing are owned by .timeline-row-separators in styles.css; assert the hook, not inline style.
     expect(separators).toBeInTheDocument();
     expect(separators).toHaveClass('timeline-row-separators');
-    expect(
-      weekend.compareDocumentPosition(separators) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
     expect(weekend).toHaveClass('weekend');
+    expect(weekend.querySelector('.weekend-label')).toHaveTextContent('週末');
+    expect(timeline.querySelectorAll('.timeline-weekend-column')).toHaveLength(0);
+    expect(timeline.querySelectorAll('.allocation-cell.weekend')).toHaveLength(0);
   });
 
   it('zooms the timeline with the wheel and pans it by dragging', async () => {
@@ -904,16 +903,18 @@ describe('Project arrangement', () => {
     );
   });
 
-  it('marks weekend allocation cells independently from allocation backgrounds', async () => {
+  it('keeps weekend markers out of Allocation cells', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(weekendAllocationWorkspace));
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '日' }));
-    const weekendCells = document.querySelectorAll('.allocation-cell.weekend');
-    expect(weekendCells.length).toBeGreaterThan(0);
+    expect(document.querySelector('.capacity-period.weekend .weekend-label')).toHaveTextContent(
+      '週末',
+    );
     expect(
-      document.querySelector('.allocation-cell.in-allocation-window.weekend'),
-    ).toBeInTheDocument();
+      document.querySelectorAll('.allocation-cell.in-allocation-window').length,
+    ).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.allocation-cell.weekend')).toHaveLength(0);
   });
 });

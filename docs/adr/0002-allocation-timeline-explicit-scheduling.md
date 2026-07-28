@@ -10,6 +10,6 @@ Capacity Allocation 只保留 Allocation Timeline 作為時間軸操作介面，
 - `start` 是下一次 Automatic Scheduling 的起點；`end` 只描述卡片 metadata；Deadline 只根據實際 Allocation 日期顯示警告。
 - Allocation 不再區分 automatic／manual source，也不再保存 locked 狀態。
 - Allocation Timeline 的每日調整只修改被操作日期，不跨日期重平衡；超過容量或預估工時時保留結果並警告。
-- 日層級的週末欄位使用斜線紋理標示，避免與 Allocation 範圍的淺色底混淆。
+- 日層級的週末在日期標題使用標記帶與「週末」文字標示，下方 Allocation 格子不加入額外紋理。
 - Capacity 不足時保留 Pending Hours，不產生 Automatic Overflow。
 - 新進入 Timeline 的 Task 放到清單最下方；Automatic Scheduling 不改變既有 Task 順序。
