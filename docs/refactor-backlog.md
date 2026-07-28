@@ -30,9 +30,12 @@ more realistic, but requires reviewing existing tests and runtime cost.
 ## Completed by the current model
 
 - Automatic Scheduling is centralized around the fastest-only scheduling operation.
+- Task／Allocation workspace transitions are centralized in `src/workspace-operations.ts`;
+  `App.tsx` remains the composition root for UI state, history, notices, and persistence.
 - Allocation rebuilds discard the Task's old Allocation records; there is no automatic/
   manual source or locked field.
 - Metadata, capacity, estimate edits, and timeline navigation do not implicitly
   reschedule a Task.
 - Task bar date manipulation and General Mode were removed; Task-card movement and
   direct daily Allocation adjustment remain.
+- Former Task bar geometry names now describe the temporary `DropPreview` only.

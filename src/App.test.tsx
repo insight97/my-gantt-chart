@@ -599,7 +599,7 @@ describe('Project arrangement', () => {
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
     expect(document.querySelectorAll('.gantt-side-row')).toHaveLength(1);
-    expect(document.querySelector('.task-range')).not.toBeInTheDocument();
+    expect(document.querySelector('.drop-preview')).not.toBeInTheDocument();
     expect(document.querySelector('.task-card-gantt')).toHaveTextContent('2026-01-05 → 2026-01-18');
   });
 
@@ -684,7 +684,7 @@ describe('Project arrangement', () => {
       expect(document.querySelector('.pending-tray')).toHaveTextContent('待排 Task'),
     );
     expect(document.querySelector('.gantt-sidebar .task-link')).not.toBeInTheDocument();
-    expect(document.querySelector('.task-range')).not.toBeInTheDocument();
+    expect(document.querySelector('.drop-preview')).not.toBeInTheDocument();
   });
 
   it('renders each Timeline Task as one integrated card', async () => {
@@ -893,7 +893,7 @@ describe('Project arrangement', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
 
-    expect(document.querySelector('.task-range')).not.toBeInTheDocument();
+    expect(document.querySelector('.drop-preview')).not.toBeInTheDocument();
     expect(document.querySelector('.allocation-summary.has-hours')).toHaveClass(
       'in-allocation-window',
       'window-start',

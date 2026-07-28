@@ -12,8 +12,8 @@ export const TIMELINE_CONTEXT_ROW_HEIGHT = 20;
 export const TIMELINE_CAPACITY_ROW_HEIGHT = 60;
 /** Must stay in sync with the row heights in styles.css (.timeline-row, .gantt-side-row, .task-card-gantt). */
 export const TIMELINE_TASK_ROW_HEIGHT = 70;
-/** Must stay in sync with .task-range{top} in styles.css. */
-export const TIMELINE_TASK_RANGE_TOP = 19;
+/** Must stay in sync with the top offset of the temporary drop preview. */
+export const DROP_PREVIEW_TOP = 19;
 export const TIMELINE_MIN_PIXELS_PER_DAY = 1.25;
 export const TIMELINE_MAX_PIXELS_PER_DAY = 288;
 const MIN_TIMELINE_DAYS = 180;
@@ -252,7 +252,7 @@ export function timelineDateAtPosition(position: number, periods: TimelinePeriod
   return period.dates[offset];
 }
 
-export function taskRangeGeometry(task: Task, periods: TimelinePeriod[], scale: number) {
+export function dropPreviewGeometry(task: Task, periods: TimelinePeriod[], scale: number) {
   if (!task.start || !task.end) return null;
   const left = timelinePositionForDate(task.start, periods, scale);
   const end = timelinePositionForDate(addDays(task.end, 1), periods, scale);

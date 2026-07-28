@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { daysBetween, today } from './capacity';
 import {
   buildTimelinePeriods,
-  taskRangeGeometry,
+  dropPreviewGeometry,
   timelineRange,
   timelinePositionForDate,
   timelineScale,
@@ -61,7 +61,7 @@ describe('語意時間軸', () => {
   it('keeps task positions at actual dates inside aggregated periods', () => {
     const periods = buildTimelinePeriods('2026-07-08', '2026-07-20', 'week');
     const scale = timelineScale('week', timelineZoomPreset('week').pixelsPerDay);
-    const geometry = taskRangeGeometry(task, periods, scale);
+    const geometry = dropPreviewGeometry(task, periods, scale);
     expect(geometry?.left).toBeCloseTo((2 / 7) * scale);
     expect(geometry?.width).toBeCloseTo(
       timelinePositionForDate('2026-07-19', periods, scale) - geometry!.left,

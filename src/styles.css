@@ -865,7 +865,7 @@ h1 {
   opacity: 0.85;
   pointer-events: none;
 }
-.drop-preview .range-label {
+.drop-preview-label {
   display: block;
   min-width: 0;
   max-width: 100%;
