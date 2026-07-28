@@ -244,30 +244,6 @@ function WeekendColumns({
   );
 }
 
-type TaskRangeProps = {
-  task: Task;
-  scale: number;
-  left: number;
-  width: number;
-};
-
-function TaskRange({ task, scale, left, width }: TaskRangeProps) {
-  const rangePadding = Math.min(9, Math.max(2, Math.round(scale / 10)));
-  const className = ['task-range', task.status === 'backlog' ? 'backlog-range' : 'scheduled-range']
-    .filter(Boolean)
-    .join(' ');
-  return (
-    <div
-      className={className}
-      draggable={false}
-      style={{ left, width, backgroundColor: task.color, padding: `0 ${rangePadding}px` }}
-      title={`${task.name} · 任務日期 metadata${task.start || ''}${task.end ? ` 至 ${task.end}` : ''}`}
-    >
-      <span className="range-label">{task.name}</span>
-    </div>
-  );
-}
-
 function DeadlineMarker({
   task,
   allocations,
@@ -293,12 +269,32 @@ function DeadlineMarker({
   );
 }
 
+type AllocationWindow = { start: string; end: string } | null;
+
+function allocationWindow(allocations: Allocation[]): AllocationWindow {
+  const dates = allocations
+    .filter(allocation => allocation.allocatedHours > 0)
+    .map(allocation => allocation.date)
+    .sort();
+  return dates.length ? { start: dates[0], end: dates[dates.length - 1] } : null;
+}
+
+function periodInAllocationWindow(period: TimelinePeriod, window: AllocationWindow) {
+  if (!window) return { active: false, start: false, end: false };
+  return {
+    active: period.start <= window.end && period.end >= window.start,
+    start: period.start <= window.start && period.end >= window.start,
+    end: period.start <= window.end && period.end >= window.end,
+  };
+}
+
 function AllocationSummaries({
   task,
   hoursByDate,
   periods,
   scale,
   view,
+  allocationWindow,
   onAdjustAllocation,
 }: {
   task: Task;
@@ -306,18 +302,30 @@ function AllocationSummaries({
   periods: TimelinePeriod[];
   scale: number;
   view: ViewMode;
+  allocationWindow: AllocationWindow;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
 }) {
   const editable = task.status !== 'completed';
+  const taskStyle = { '--task-color': task.color } as CSSProperties;
   return (
-    <div className={`allocation-summaries ${view === 'day' ? 'editable' : ''}`}>
+    <div className={`allocation-summaries ${view === 'day' ? 'editable' : ''}`} style={taskStyle}>
       {periods.map((period, index) => {
         const hours = periodHours(period, hoursByDate);
+        const windowState = periodInAllocationWindow(period, allocationWindow);
+        const className = [
+          view === 'day' ? 'allocation-cell' : 'allocation-summary',
+          windowState.active ? 'in-allocation-window' : '',
+          windowState.start ? 'window-start' : '',
+          windowState.end ? 'window-end' : '',
+          hours ? 'has-hours' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
         if (view === 'day')
           return (
             <button
               key={period.start}
-              className={`allocation-cell${hours ? ' has-hours' : ''}`}
+              className={className}
               disabled={!editable}
               style={{ left: index * scale, width: scale }}
               title={`${period.label} · ${hoursLabel(hours)}${editable ? ' · 左鍵 +1h，右鍵 -1h' : ' · 已完成，不可修改'}`}
@@ -338,7 +346,7 @@ function AllocationSummaries({
         return (
           <span
             key={period.start}
-            className={`allocation-summary${hours ? ' has-hours' : ''}`}
+            className={className}
             style={{ left: index * scale, width: scale }}
             title={`${period.label} · ${hoursLabel(hours)}`}
           >
@@ -372,15 +380,12 @@ function TimelineTaskRows({
   return (
     <>
       {tasks.map(task => {
-        const geometry = taskRangeGeometry(task, periods, scale);
-        const left = geometry?.left || 0;
-        const width = geometry?.width || 0;
+        const taskAllocationWindow = allocationWindow(allocationsByTask.get(task.id) || []);
         return (
           <div
             className={`timeline-row${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' deadline-overdue' : ''}`}
             key={task.id}
           >
-            {width > 0 && <TaskRange task={task} scale={scale} left={left} width={width} />}
             <DeadlineMarker
               task={task}
               allocations={allocationsByTask.get(task.id) || []}
@@ -393,6 +398,7 @@ function TimelineTaskRows({
               periods={periods}
               scale={scale}
               view={view}
+              allocationWindow={taskAllocationWindow}
               onAdjustAllocation={onAdjustAllocation}
             />
           </div>
@@ -814,8 +820,7 @@ export default function CapacityGantt({
         <div>
           <h2>Capacity Allocation</h2>
           <small>
-            日層級左鍵 +1h、右鍵 -1h；週／月只顯示摘要。Task bar 僅顯示日期 metadata。{' '}
-            滾輪縮放、拖曳平移時間軸
+            日層級左鍵 +1h、右鍵 -1h；底色區分 Allocation 範圍與實際工時。 滾輪縮放、拖曳平移時間軸
           </small>
         </div>
       </div>

@@ -431,49 +431,6 @@ h1 {
   border-bottom: 1px solid #edf0f2;
   position: relative;
 }
-.task-range {
-  position: absolute;
-  top: 19px;
-  height: 32px;
-  border-radius: 6px;
-  color: #fff;
-  padding: 0 9px;
-  min-width: 10px;
-  touch-action: auto;
-  cursor: default;
-  box-shadow: 0 2px 4px #182d3d2b;
-  overflow: visible;
-}
-.backlog-range {
-  background: #eef3f6 !important;
-  border: 2px dashed var(--blue);
-  color: #245477;
-  box-shadow: none;
-}
-.scheduled-range {
-  opacity: 0.94;
-}
-.range-label {
-  position: relative;
-  z-index: 2;
-  font-size: 11px;
-  line-height: 32px;
-  white-space: nowrap;
-  text-shadow: 0 1px 2px #0004;
-}
-.backlog-range .range-label {
-  text-shadow: none;
-}
-.allocation {
-  position: absolute;
-  z-index: 3;
-  bottom: -7px;
-  height: 9px;
-  border-radius: 2px;
-  background: var(--green);
-  border: 1px solid #fff;
-  pointer-events: none;
-}
 .modal {
   position: fixed;
   z-index: 50;
@@ -702,19 +659,9 @@ h1 {
   .timeline {
     overflow: visible;
   }
-  .task-range {
-    print-color-adjust: exact;
-  }
 }
 .timeline.panning {
   cursor: grabbing;
-}
-.range-label {
-  display: block;
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .timeline-grid {
   position: relative;
@@ -728,9 +675,6 @@ h1 {
 }
 .timeline-row {
   z-index: 1;
-}
-.task-range {
-  z-index: 2;
 }
 .timeline-row-separators {
   position: absolute;
@@ -844,6 +788,36 @@ h1 {
   place-items: center;
   overflow: hidden;
   white-space: nowrap;
+  box-sizing: border-box;
+}
+.allocation-cell.in-allocation-window,
+.allocation-summary.in-allocation-window {
+  background: #eef6f7;
+  background: color-mix(in srgb, var(--task-color, #4f9aa3) 11%, #fff);
+  box-shadow:
+    inset 0 1px 0 #d5e9eb,
+    inset 0 -1px 0 #d5e9eb;
+}
+.allocation-cell.window-start,
+.allocation-summary.window-start {
+  border-radius: 7px 0 0 7px;
+  box-shadow:
+    inset 2px 0 0 #c1dfe2,
+    inset 0 1px 0 #d5e9eb,
+    inset 0 -1px 0 #d5e9eb;
+}
+.allocation-cell.window-end,
+.allocation-summary.window-end {
+  border-radius: 0 7px 7px 0;
+  box-shadow:
+    inset -2px 0 0 #c1dfe2,
+    inset 0 1px 0 #d5e9eb,
+    inset 0 -1px 0 #d5e9eb;
+}
+.allocation-cell.window-start.window-end,
+.allocation-summary.window-start.window-end {
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 2px #c1dfe2;
 }
 .allocation-cell {
   pointer-events: auto;
@@ -858,6 +832,8 @@ h1 {
   background: #eaf4f8;
 }
 .allocation-cell.has-hours {
+  background: #b8dfe1;
+  background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
   font-weight: 700;
   color: #24566a;
 }
@@ -867,12 +843,20 @@ h1 {
   font-size: 10px;
 }
 .allocation-summary.has-hours {
+  background: #b8dfe1;
+  background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
   font-weight: 700;
 }
 .timeline-row .deadline-marker {
   z-index: 4;
 }
 .drop-preview {
+  position: absolute;
+  height: 32px;
+  min-width: 10px;
+  padding: 0 9px;
+  color: #245477;
+  overflow: hidden;
   z-index: 5;
   border: 2px dashed var(--blue);
   background: #eaf4f8 !important;
@@ -882,7 +866,14 @@ h1 {
   pointer-events: none;
 }
 .drop-preview .range-label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: none;
+  line-height: 28px;
+  white-space: nowrap;
 }
 .timeline-canvas {
   position: relative;
