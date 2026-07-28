@@ -101,9 +101,8 @@ describe('容量 domain', () => {
       '2026-01-01',
       { horizonDays: 1 },
     ).task;
-    const result = partitionProjectTasks({ tasks: [scheduled] } as Project, []);
+    const result = partitionProjectTasks({ tasks: [scheduled] } as Project);
     expect(result.scheduled.map(item => item.id)).toEqual(['task']);
-    expect(result.pending).toEqual([]);
   });
 
   it('排程保留 end metadata，end 不限制實際 Allocation 日期', () => {

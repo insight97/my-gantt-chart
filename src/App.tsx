@@ -57,7 +57,7 @@ const statusLabels: Record<TaskStatus, string> = {
   in_progress: '進行中',
   completed: '已完成',
 };
-type EditingTask = { projectId: string; task: Task };
+type EditingTask = { projectId: string; task: Task; scheduleOnSave: boolean };
 
 function initialTimelineZoom(): TimelineZoom {
   const savedView = localStorage.getItem('gantt-view');
@@ -285,11 +285,19 @@ export default function App() {
     if (!workspace || !workspace.projects.some(project => project.id === projectId)) return;
     const task = emptyTask();
     if (entryPoint === 'timeline') task.status = 'scheduled';
-    setEditingTask({ projectId, task });
+    setEditingTask({ projectId, task, scheduleOnSave: entryPoint === 'timeline' });
   };
 
-  const saveTask = (projectId: string, draft: Task): string | null => {
+  const saveTask = (projectId: string, draft: Task, scheduleOnSave = false): string | null => {
     if (!workspace) return '目前沒有可編輯的工作區。';
+    if (scheduleOnSave) {
+      const result = autoScheduleTaskOperation(workspace, projectId, draft.id, draft);
+      if (!result.ok) return result.error;
+      if (!result.changed) return 'Timeline Task 無法自動排程。';
+      commit(result.workspace);
+      setEditingTask(null);
+      return null;
+    }
     const error = commitOperation(saveTaskOperation(workspace, projectId, draft));
     if (error) return error;
     setEditingTask(null);
@@ -501,7 +509,7 @@ export default function App() {
       setNotice('已完成 Task 不可修改。');
       return;
     }
-    setEditingTask({ projectId, task });
+    setEditingTask({ projectId, task, scheduleOnSave: false });
   };
   return (
     <div
@@ -630,8 +638,9 @@ export default function App() {
           allocations={workspace.allocations.filter(
             allocation => allocation.taskId === editingTask.task.id,
           )}
+          scheduleOnSave={editingTask.scheduleOnSave}
           onClose={() => setEditingTask(null)}
-          onSave={task => saveTask(editingTask.projectId, task)}
+          onSave={task => saveTask(editingTask.projectId, task, editingTask.scheduleOnSave)}
           onAutoSchedule={draft => {
             if (autoScheduleTask(editingTask.projectId, editingTask.task.id, draft))
               setEditingTask(null);
@@ -713,11 +722,7 @@ function ProjectPanel({
   onTimelineScroll,
 }: ProjectPanelProps) {
   const allocatedHours = allocations.reduce((sum, item) => sum + item.allocatedHours, 0);
-  const {
-    backlog: backlogTasks,
-    scheduled: scheduledTasks,
-    pending: pendingTasks,
-  } = partitionProjectTasks(project, allocations);
+  const { backlog: backlogTasks, scheduled: scheduledTasks } = partitionProjectTasks(project);
   return (
     <article className={`project-card${expanded ? ' expanded' : ' collapsed'}`}>
       <div className="project-card-header">
@@ -747,9 +752,6 @@ function ProjectPanel({
         <div className="project-summary">
           <span>{project.tasks.length} 個 Task</span>
           <span>Backlog {backlogTasks.length}</span>
-          {pendingTasks.length > 0 && (
-            <span className="pending-badge">待處理 {pendingTasks.length}</span>
-          )}
           <span>
             已分配 {hoursLabel(allocatedHours)} / {hoursLabel(getProjectEstimatedHours(project))}
           </span>
@@ -784,7 +786,6 @@ function ProjectPanel({
             <Backlog
               projectId={project.id}
               tasks={backlogTasks}
-              pendingTasks={pendingTasks}
               draggingTaskId={
                 taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
               }
@@ -799,7 +800,7 @@ function ProjectPanel({
             <CapacityGantt
               projectId={project.id}
               tasks={scheduledTasks}
-              backlogTasks={[...backlogTasks, ...pendingTasks]}
+              backlogTasks={backlogTasks}
               allocations={allocations}
               capacityAllocations={allAllocations}
               capacities={capacities}
@@ -828,7 +829,6 @@ function ProjectPanel({
 function Backlog({
   projectId,
   tasks,
-  pendingTasks,
   draggingTaskId,
   onEdit,
   onAddTask,
@@ -838,7 +838,6 @@ function Backlog({
 }: {
   projectId: string;
   tasks: Task[];
-  pendingTasks: Task[];
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
   onAddTask: () => void;
@@ -888,17 +887,6 @@ function Backlog({
           ＋ 新增 Task
         </button>
       </div>
-      {pendingTasks.length > 0 && (
-        <div className="pending-tray">
-          <div className="section-heading">
-            <div>
-              <h3>待處理</h3>
-              <small>尚未安排工時的 Timeline Task</small>
-            </div>
-          </div>
-          <div className="backlog-list">{pendingTasks.map(renderTask)}</div>
-        </div>
-      )}
     </aside>
   );
 }
@@ -906,12 +894,14 @@ function Backlog({
 function TaskDialog({
   task,
   allocations,
+  scheduleOnSave,
   onClose,
   onSave,
   onAutoSchedule,
 }: {
   task: Task;
   allocations: Allocation[];
+  scheduleOnSave: boolean;
   onClose: () => void;
   onSave: (task: Task) => string | null;
   onAutoSchedule: (task: Task) => void;
@@ -1033,8 +1023,10 @@ function TaskDialog({
         </label>
         <p className="form-hint">
           {allocations.length
-            ? `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待處理 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
-            : '尚未產生 Allocation；按下自動排程或拖入 Allocation Timeline 後才會建立。'}
+            ? `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待安排 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
+            : scheduleOnSave
+              ? '儲存此 Timeline Task 時會自動建立 Allocation。'
+              : '尚未產生 Allocation；按下自動排程或拖入 Allocation Timeline 後才會建立。'}
         </p>
         {error && <p className="error">{error}</p>}
         <div className="dialog-actions">

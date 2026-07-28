@@ -714,25 +714,6 @@ h1 {
   background: #e8f0f5;
   color: #46677b;
 }
-.pending-badge {
-  border: 0;
-  background: #fff1e9;
-  color: #a34d2e;
-  padding: 3px 7px;
-  font-size: 10px;
-}
-.pending-badge:hover {
-  background: #ffe5d8;
-}
-.pending-tray {
-  border-top: 1px solid var(--line);
-  margin-top: 18px;
-  padding-top: 14px;
-}
-.pending-tray h3 {
-  font-size: 13px;
-  margin: 0;
-}
 .gantt-side-row.has-pending {
   background: #fffaf5;
 }

@@ -208,28 +208,18 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
   };
 }
 
-/**
- * Splits a Project's Tasks into the three places the UI shows them.
- * A Scheduled Task stays on the Allocation Timeline once it has an explicit scheduling
- * anchor, any Allocation record, a complete date range, or a zero-hour estimate; otherwise
- * it falls into the pending tray. The anchor keeps a no-capacity schedule visible with
- * its positive Pending Hours.
- */
-export function partitionProjectTasks(project: Project, allocations: Allocation[]) {
-  const allocatedTaskIds = new Set(allocations.map(allocation => allocation.taskId));
+/** Splits a Project's Tasks between the Backlog and Allocation Timeline. */
+export function partitionProjectTasks(project: Project) {
   const backlog: Task[] = [];
   const scheduled: Task[] = [];
-  const pending: Task[] = [];
   for (const task of project.tasks) {
     if (task.status === 'backlog') backlog.push(task);
-    else if (task.start || allocatedTaskIds.has(task.id) || task.estimatedHours === 0)
-      scheduled.push(task);
-    else pending.push(task);
+    else scheduled.push(task);
   }
   backlog.sort(
     (a, b) =>
       priorityOrder[a.priority] - priorityOrder[b.priority] ||
       a.createdAt.localeCompare(b.createdAt),
   );
-  return { backlog, scheduled, pending };
+  return { backlog, scheduled };
 }
