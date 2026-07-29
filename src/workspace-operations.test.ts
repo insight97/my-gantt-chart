@@ -94,6 +94,7 @@ describe('workspace operations', () => {
       workspace(
         task({
           status: 'scheduled',
+          parentId: 'parent',
           start: '2026-01-01',
           end: '2026-01-10',
           deadline: '2026-01-08',
@@ -107,11 +108,26 @@ describe('workspace operations', () => {
 
     expect(next.projects[0].tasks[0]).toMatchObject({
       status: 'backlog',
+      parentId: null,
       start: '2026-01-01',
       end: '2026-01-10',
       deadline: '2026-01-08',
     });
     expect(next.allocations).toEqual([]);
+  });
+
+  it('keeps the parent when a new backlog child is saved', () => {
+    const original = workspace(task({ id: 'parent', name: 'Parent' }));
+    const result = saveTask(
+      original,
+      'project-a',
+      task({ id: 'child', name: 'Child', parentId: 'parent' }),
+    );
+
+    const next = changed(result);
+    expect(next.projects[0].tasks).toContainEqual(
+      expect.objectContaining({ id: 'child', parentId: 'parent', status: 'backlog' }),
+    );
   });
 
   it('rejects invalid task metadata without changing the workspace', () => {
