@@ -31,10 +31,17 @@ import {
   TIMELINE_CONTEXT_ROW_HEIGHT,
   DROP_PREVIEW_TOP,
   TIMELINE_TASK_ROW_HEIGHT,
+  TIMELINE_MOUSE_WHEEL_ZOOM_SENSITIVITY,
+  TIMELINE_TRACKPAD_ZOOM_SENSITIVITY,
   weekendClass,
   zoomTimelineByWheelDelta,
 } from './timeline';
-import type { TimelineContextCell, TimelinePeriod, TimelineZoom } from './timeline';
+import type {
+  TimelineContextCell,
+  TimelineInputMode,
+  TimelinePeriod,
+  TimelineZoom,
+} from './timeline';
 
 type PanState = { startX: number; startScrollLeft: number; candidate: boolean; active: boolean };
 
@@ -46,6 +53,7 @@ export type CapacityGanttProps = {
   capacityAllocations: Allocation[];
   capacities: DailyCapacity[];
   timelineZoom: TimelineZoom;
+  timelineInputMode: TimelineInputMode;
   scrollLeft: number;
   taskDrag: TaskDragState | null;
   onZoomChange: (next: TimelineZoom) => void;
@@ -562,6 +570,7 @@ export default function CapacityGantt({
   capacityAllocations,
   capacities,
   timelineZoom,
+  timelineInputMode,
   scrollLeft,
   taskDrag,
   onZoomChange,
@@ -686,14 +695,20 @@ export default function CapacityGantt({
     const timeline = timelineRef.current;
     if (!timeline) return;
     const handleWheel = (event: globalThis.WheelEvent) => {
-      if (!event.deltaY) return;
+      const isZoomGesture = timelineInputMode === 'mouse' || event.ctrlKey;
+      if (!isZoomGesture || !event.deltaY) return;
       event.preventDefault();
       event.stopPropagation();
       const latest = latestRef.current;
       const deltaMultiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+      const sensitivity =
+        timelineInputMode === 'trackpad'
+          ? TIMELINE_TRACKPAD_ZOOM_SENSITIVITY
+          : TIMELINE_MOUSE_WHEEL_ZOOM_SENSITIVITY;
       const nextZoom = zoomTimelineByWheelDelta(
         latest.timelineZoom,
         event.deltaY * deltaMultiplier,
+        sensitivity,
       );
       if (nextZoom.pixelsPerDay === latest.timelineZoom.pixelsPerDay) return;
       const pointerOffset = event.clientX - timeline.getBoundingClientRect().left;
@@ -710,7 +725,7 @@ export default function CapacityGantt({
     };
     timeline.addEventListener('wheel', handleWheel, { passive: false });
     return () => timeline.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [timelineInputMode]);
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target;
@@ -799,7 +814,9 @@ export default function CapacityGantt({
           <h2>Capacity Allocation</h2>
           <small>
             日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation 範圍、深底＝實際工時、標題標記＝週末。
-            滾輪縮放、拖曳平移時間軸
+            {timelineInputMode === 'trackpad'
+              ? '兩指滑動捲動、兩指捏合縮放、拖曳平移時間軸'
+              : '滑鼠滾輪縮放、拖曳平移時間軸'}
           </small>
         </div>
       </div>

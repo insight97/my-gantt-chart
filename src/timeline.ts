@@ -24,10 +24,12 @@ const WEEK_TO_MONTH_ENTER = 4;
 const WEEK_TO_MONTH_EXIT = 5;
 const NOMINAL_DAYS: Record<ViewMode, number> = { day: 1, week: 7, month: 30 };
 const MIN_TIMELINE_PAST_DAYS = 90;
-const TIMELINE_WHEEL_ZOOM_SENSITIVITY = 0.0008;
+export const TIMELINE_MOUSE_WHEEL_ZOOM_SENSITIVITY = 0.0012;
+export const TIMELINE_TRACKPAD_ZOOM_SENSITIVITY = 0.0018;
 const MAX_TIMELINE_WHEEL_DELTA = 240;
 
 export type TimelineZoom = { view: ViewMode; pixelsPerDay: number };
+export type TimelineInputMode = 'trackpad' | 'mouse';
 export type TimelinePeriod = { start: string; end: string; dates: string[]; label: string };
 export type TimelineContextCell = {
   key: string;
@@ -72,13 +74,17 @@ export function zoomTimeline(current: TimelineZoom, factor: number): TimelineZoo
 }
 
 /** Converts continuous wheel input into a proportional zoom step. */
-export function zoomTimelineByWheelDelta(current: TimelineZoom, deltaY: number): TimelineZoom {
+export function zoomTimelineByWheelDelta(
+  current: TimelineZoom,
+  deltaY: number,
+  sensitivity = TIMELINE_MOUSE_WHEEL_ZOOM_SENSITIVITY,
+): TimelineZoom {
   if (!Number.isFinite(deltaY) || deltaY === 0) return { ...current };
   const boundedDelta = Math.max(
     -MAX_TIMELINE_WHEEL_DELTA,
     Math.min(MAX_TIMELINE_WHEEL_DELTA, deltaY),
   );
-  return zoomTimeline(current, Math.exp(-boundedDelta * TIMELINE_WHEEL_ZOOM_SENSITIVITY));
+  return zoomTimeline(current, Math.exp(-boundedDelta * sensitivity));
 }
 
 function startOfWeek(date: string) {

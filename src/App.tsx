@@ -40,7 +40,7 @@ import type {
   ViewMode,
   WorkspaceData,
 } from './types';
-import type { TimelineZoom } from './timeline';
+import type { TimelineInputMode, TimelineZoom } from './timeline';
 import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
@@ -70,6 +70,10 @@ function initialTimelineZoom(): TimelineZoom {
   return timelineZoomPreset('week');
 }
 
+function initialTimelineInputMode(): TimelineInputMode {
+  return localStorage.getItem('gantt-input-mode') === 'mouse' ? 'mouse' : 'trackpad';
+}
+
 function sameDropTarget(a: TaskDropTarget | null, b: TaskDropTarget | null) {
   if (!a || !b) return a === b;
   return (
@@ -89,6 +93,8 @@ export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoom>(initialTimelineZoom);
+  const [timelineInputMode, setTimelineInputMode] =
+    useState<TimelineInputMode>(initialTimelineInputMode);
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
   const [ready, setReady] = useState(false);
   const [editingTask, setEditingTask] = useState<EditingTask | null>(null);
@@ -133,6 +139,9 @@ export default function App() {
     localStorage.setItem('gantt-view', timelineZoom.view);
     localStorage.setItem('gantt-pixels-per-day', String(timelineZoom.pixelsPerDay));
   }, [timelineZoom]);
+  useEffect(() => {
+    localStorage.setItem('gantt-input-mode', timelineInputMode);
+  }, [timelineInputMode]);
 
   // One pass over allocations instead of a per-project scan with a nested task lookup.
   const allocationsByProject = useMemo(() => {
@@ -562,6 +571,25 @@ export default function App() {
               <p>{workspace.projects.length} 個 Project · 可在同一頁檢視、編輯與安排工作</p>
             </div>
             <div className="project-list-actions">
+              <div className="input-mode-switch" role="group" aria-label="時間軸操作模式">
+                <span>時間軸操作</span>
+                <div className="mode-switch">
+                  <button
+                    className={timelineInputMode === 'trackpad' ? 'active' : ''}
+                    aria-pressed={timelineInputMode === 'trackpad'}
+                    onClick={() => setTimelineInputMode('trackpad')}
+                  >
+                    觸控板
+                  </button>
+                  <button
+                    className={timelineInputMode === 'mouse' ? 'active' : ''}
+                    aria-pressed={timelineInputMode === 'mouse'}
+                    onClick={() => setTimelineInputMode('mouse')}
+                  >
+                    滑鼠
+                  </button>
+                </div>
+              </div>
               <button
                 onClick={allExpanded ? collapseAll : expandAll}
                 disabled={!workspace.projects.length}
@@ -591,6 +619,7 @@ export default function App() {
                   capacities={workspace.dailyCapacities}
                   view={view}
                   timelineZoom={timelineZoom}
+                  timelineInputMode={timelineInputMode}
                   timelineScrollLeft={timelineScrollLeft}
                   taskDrag={taskDrag}
                   expanded={expandedProjectIds.has(project.id)}
@@ -670,6 +699,7 @@ type ProjectPanelProps = {
   capacities: DailyCapacity[];
   view: ViewMode;
   timelineZoom: TimelineZoom;
+  timelineInputMode: TimelineInputMode;
   timelineScrollLeft: number;
   taskDrag: TaskDragState | null;
   expanded: boolean;
@@ -703,6 +733,7 @@ function ProjectPanel({
   capacities,
   view,
   timelineZoom,
+  timelineInputMode,
   timelineScrollLeft,
   taskDrag,
   expanded,
@@ -805,6 +836,7 @@ function ProjectPanel({
               capacityAllocations={allAllocations}
               capacities={capacities}
               timelineZoom={timelineZoom}
+              timelineInputMode={timelineInputMode}
               scrollLeft={timelineScrollLeft}
               taskDrag={taskDrag}
               onZoomChange={onZoomChange}

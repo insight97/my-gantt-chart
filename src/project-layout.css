@@ -29,6 +29,41 @@
   gap: 8px;
 }
 
+.input-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mode-switch {
+  display: flex;
+}
+
+.mode-switch button {
+  margin-left: -1px;
+  padding: 6px 9px;
+  border-radius: 0;
+  font-size: 11px;
+}
+
+.mode-switch button:first-child {
+  margin-left: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.mode-switch button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.mode-switch button.active {
+  background: #e7f0f7;
+  border-color: #8eb0c8;
+  color: #174f7c;
+  font-weight: 700;
+}
+
 .project-panels {
   display: grid;
   gap: 16px;
