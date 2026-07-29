@@ -310,11 +310,13 @@ export default function App() {
       if (!result.ok) return result.error;
       if (!result.changed) return 'Timeline Task 無法自動排程。';
       commit(result.workspace);
+      if (draft.parentId) setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
       setEditingTask(null);
       return null;
     }
     const error = commitOperation(saveTaskOperation(workspace, projectId, draft));
     if (error) return error;
+    if (draft.parentId) setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
     setEditingTask(null);
     return null;
   };
@@ -699,6 +701,7 @@ export default function App() {
       {editingTask && editingProject && (
         <TaskDialog
           task={editingTask.task}
+          tasks={editingProject.tasks}
           allocations={workspace.allocations.filter(
             allocation => allocation.taskId === editingTask.task.id,
           )}
@@ -948,6 +951,7 @@ function Backlog({
 
 function TaskDialog({
   task,
+  tasks,
   allocations,
   scheduleOnSave,
   onClose,
@@ -955,6 +959,7 @@ function TaskDialog({
   onAutoSchedule,
 }: {
   task: Task;
+  tasks: Task[];
   allocations: Allocation[];
   scheduleOnSave: boolean;
   onClose: () => void;
@@ -964,6 +969,13 @@ function TaskDialog({
   const [draft, setDraft] = useState(task);
   const [error, setError] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const descendantIds = taskDescendantIds(tasks, task.id);
+  const parentOptions = tasks.filter(
+    candidate =>
+      candidate.id !== task.id &&
+      !descendantIds.has(candidate.id) &&
+      taskDepth(tasks, candidate.id) < 3,
+  );
   useLayoutEffect(() => {
     nameInputRef.current?.focus();
   }, []);
@@ -1005,6 +1017,21 @@ function TaskDialog({
           />
         </label>
         <div className="form-grid">
+          <label>
+            父節點
+            <select
+              value={draft.parentId || ''}
+              onChange={event => setDraft({ ...draft, parentId: event.target.value || null })}
+            >
+              <option value="">無（根項目）</option>
+              {parentOptions.map(parent => (
+                <option key={parent.id} value={parent.id}>
+                  {'　'.repeat(Math.max(0, taskDepth(tasks, parent.id) - 1))}
+                  {parent.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             優先順序
             <select
