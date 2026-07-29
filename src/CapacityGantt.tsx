@@ -32,7 +32,7 @@ import {
   DROP_PREVIEW_TOP,
   TIMELINE_TASK_ROW_HEIGHT,
   weekendClass,
-  zoomTimeline,
+  zoomTimelineByWheelDelta,
 } from './timeline';
 import type { TimelineContextCell, TimelinePeriod, TimelineZoom } from './timeline';
 
@@ -690,7 +690,11 @@ export default function CapacityGantt({
       event.preventDefault();
       event.stopPropagation();
       const latest = latestRef.current;
-      const nextZoom = zoomTimeline(latest.timelineZoom, event.deltaY < 0 ? 1.12 : 0.88);
+      const deltaMultiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+      const nextZoom = zoomTimelineByWheelDelta(
+        latest.timelineZoom,
+        event.deltaY * deltaMultiplier,
+      );
       if (nextZoom.pixelsPerDay === latest.timelineZoom.pixelsPerDay) return;
       const pointerOffset = event.clientX - timeline.getBoundingClientRect().left;
       zoomAnchorRef.current = {
