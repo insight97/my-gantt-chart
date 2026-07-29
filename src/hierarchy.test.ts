@@ -7,7 +7,12 @@ import {
   taskDepth,
   taskHasChildren,
 } from './data';
-import { adjustAllocationDay, autoScheduleTask, moveTask } from './workspace-operations';
+import {
+  adjustAllocationDay,
+  autoScheduleTask,
+  moveTask,
+  moveTaskToTimelineAsChild,
+} from './workspace-operations';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 const workItem = (id: string, parentId: string | null = null, estimatedHours = 0): Task => ({
@@ -71,6 +76,26 @@ describe('階層工作項目', () => {
         expect.objectContaining({ id: 'root-a', parentId: 'root-b' }),
         expect.objectContaining({ id: 'child', parentId: 'root-a' }),
       ]),
+    );
+  });
+
+  it('從 Backlog 拖入 Timeline 的父項目時，會排程並保留在 Timeline', () => {
+    const parent = workItem('parent');
+    parent.status = 'scheduled';
+    const child = workItem('child', null, 4);
+    const result = moveTaskToTimelineAsChild(
+      workspace([parent, child]),
+      'workspace-root',
+      'child',
+      'parent',
+    );
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    const savedChild = result.workspace.projects[0].tasks.find(task => task.id === 'child');
+    expect(savedChild).toMatchObject({ parentId: 'parent', status: 'scheduled' });
+    expect(result.workspace.allocations.some(allocation => allocation.taskId === 'child')).toBe(
+      true,
     );
   });
 

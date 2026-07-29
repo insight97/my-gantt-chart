@@ -15,7 +15,7 @@ import {
   taskHasChildren,
 } from './data';
 import TaskCard from './TaskCard';
-import { pointerLeftElement } from './task-drag';
+import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
 import type { Allocation, DailyCapacity, Task, ViewMode } from './types';
 import {
@@ -524,7 +524,10 @@ function GanttSidebar({
 }) {
   const handleSidebarPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target;
-    if (!(target instanceof Element) || !target.closest('.gantt-side-row'))
+    if (
+      !(target instanceof Element) ||
+      (!target.closest('.gantt-side-row') && !target.closest('.gantt-add-row'))
+    )
       onTaskDropTarget({ kind: 'gantt-sidebar', projectId }, event.currentTarget);
   };
   const handleLeave = (event: PointerEvent<HTMLDivElement>) => {
@@ -554,23 +557,22 @@ function GanttSidebar({
           taskDrag?.projectId === projectId && taskDrag.target?.taskId === task.id
             ? taskDrag.target.relation
             : undefined;
-        const handleRowPointerMove = (event: PointerEvent<HTMLDivElement>) =>
+        const handleRowPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+          const bounds = event.currentTarget.getBoundingClientRect();
           onTaskDropTarget(
             {
               kind: 'gantt-row',
               projectId,
               taskId: task.id,
-              relation:
-                event.clientY - event.currentTarget.getBoundingClientRect().top <
-                event.currentTarget.getBoundingClientRect().height * 0.3
-                  ? 'before'
-                  : event.clientY - event.currentTarget.getBoundingClientRect().top >
-                      event.currentTarget.getBoundingClientRect().height * 0.7
-                    ? 'after'
-                    : 'inside',
+              relation: taskRowDropRelation(
+                event.clientY - bounds.top,
+                bounds.height,
+                task.id === tasks.at(-1)?.id,
+              ),
             },
             event.currentTarget,
           );
+        };
         return (
           <div
             className={`gantt-side-row${pending !== 0 ? ' has-pending' : ''}${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' has-deadline-warning' : ''}${dropRelation ? ` drop-target-${dropRelation}` : ''}`}
@@ -607,6 +609,15 @@ function GanttSidebar({
         type="button"
         aria-label="Allocation Timeline 新增 Task"
         onClick={onAddTask}
+        onPointerMove={event => {
+          const lastTask = tasks.at(-1);
+          onTaskDropTarget(
+            lastTask
+              ? { kind: 'gantt-row', projectId, taskId: lastTask.id, relation: 'after' }
+              : { kind: 'gantt-sidebar', projectId },
+            event.currentTarget,
+          );
+        }}
       >
         ＋ 新增 Task
       </button>

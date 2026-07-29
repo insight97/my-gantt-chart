@@ -117,34 +117,34 @@ export default function TaskCard({
           )}
         </div>
       )}
-      {!isGhost && onDelete && (
+      {!isGhost && (onDelete || onAddChild) && (
         <div className="task-card-actions">
-          <button
-            className="task-card-delete"
-            type="button"
-            aria-label={`刪除 ${task.name}`}
-            onClick={event => {
-              event.stopPropagation();
-              onDelete(task.id);
-            }}
-          >
-            ×
-          </button>
-        </div>
-      )}
-      {!isGhost && onAddChild && (
-        <div className="task-card-actions">
-          <button
-            className="task-card-add-child"
-            type="button"
-            aria-label={`新增 ${task.name} 的子任務`}
-            onClick={event => {
-              event.stopPropagation();
-              onAddChild(task);
-            }}
-          >
-            ＋
-          </button>
+          {onAddChild && (
+            <button
+              className="task-card-add-child"
+              type="button"
+              aria-label={`新增 ${task.name} 的子任務`}
+              onClick={event => {
+                event.stopPropagation();
+                onAddChild(task);
+              }}
+            >
+              ＋
+            </button>
+          )}
+          {onDelete && (
+            <button
+              className="task-card-delete"
+              type="button"
+              aria-label={`刪除 ${task.name}`}
+              onClick={event => {
+                event.stopPropagation();
+                onDelete(task.id);
+              }}
+            >
+              ×
+            </button>
+          )}
         </div>
       )}
     </article>
