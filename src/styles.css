@@ -911,7 +911,7 @@ h1 {
 }
 .task-card {
   position: relative;
-  margin-left: calc((var(--task-depth, 1) - 1) * 18px);
+  margin-left: calc((var(--task-depth, 1) - 1) * 24px);
 }
 .task-card-toggle {
   position: absolute;
@@ -928,9 +928,6 @@ h1 {
 .task-card-toggle:hover {
   border: 0;
   background: #eef4f7;
-}
-.task-card:has(.task-card-toggle) .task-card-info {
-  padding-left: 22px;
 }
 .task-card-actions {
   display: flex;
@@ -1020,6 +1017,9 @@ h1 {
   text-align: left;
   min-width: 0;
 }
+.task-card-gantt .task-card-info {
+  padding-left: 24px;
+}
 .task-card-gantt .task-card-info b {
   font-size: 12px;
 }
@@ -1060,7 +1060,6 @@ h1 {
   padding: 0;
   position: relative;
 }
-.gantt-side-row.drop-target-inside::after,
 .gantt-side-row.drop-target-before::after,
 .gantt-side-row.drop-target-after::after {
   position: absolute;
@@ -1080,16 +1079,12 @@ h1 {
   bottom: 0;
 }
 .gantt-side-row.drop-target-inside {
-  background: #eaf4f9;
-  animation: task-drop-inside-pulse 900ms ease-in-out infinite;
+  background: transparent;
 }
-.gantt-side-row.drop-target-inside::after {
-  top: 7px;
-  bottom: 7px;
-  right: auto;
-  width: 4px;
-  height: auto;
-  background: var(--blue);
+.gantt-side-row.drop-target-inside .task-card-gantt {
+  border-left: 3px solid var(--blue);
+  background: #eaf4f9;
+  animation: task-drop-card-pulse 900ms ease-in-out infinite;
 }
 @keyframes task-drop-line-pulse {
   0%,
@@ -1102,7 +1097,7 @@ h1 {
     opacity: 1;
   }
 }
-@keyframes task-drop-inside-pulse {
+@keyframes task-drop-card-pulse {
   0%,
   100% {
     background-color: #eaf4f9;
@@ -1113,7 +1108,7 @@ h1 {
 }
 @media (prefers-reduced-motion: reduce) {
   .gantt-side-row.drop-target-inside,
-  .gantt-side-row.drop-target-inside::after,
+  .gantt-side-row.drop-target-inside .task-card-gantt,
   .gantt-side-row.drop-target-before::after,
   .gantt-side-row.drop-target-after::after {
     animation: none;

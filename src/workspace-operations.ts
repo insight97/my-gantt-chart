@@ -118,7 +118,10 @@ export function saveTask(
   };
   let taskAllocations: Allocation[] | undefined;
   if (nextTask.status === 'backlog') {
-    const result = returnTaskToBacklog(nextTask);
+    const result = returnTaskToBacklog({
+      ...nextTask,
+      parentId: !existingTask || existingTask.status === 'backlog' ? nextTask.parentId : null,
+    });
     nextTask = result.task;
     taskAllocations = result.allocations;
   }
@@ -245,7 +248,7 @@ export function moveTaskToBacklog(
   const task = project && findTask(project, taskId);
   if (!project || !task || task.status === 'completed') return unchanged();
 
-  const result = returnTaskToBacklog(task);
+  const result = returnTaskToBacklog({ ...task, parentId: null });
   const nextTask: Task = { ...result.task, updatedAt: now() };
   return updated(replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations));
 }
