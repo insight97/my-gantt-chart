@@ -8,6 +8,7 @@ import {
   timelineScale,
   timelineZoomPreset,
   zoomTimeline,
+  zoomTimelineByWheelDelta,
 } from './timeline';
 import type { Task } from './types';
 
@@ -39,6 +40,16 @@ describe('語意時間軸', () => {
     expect(zoomTimeline({ view: 'week', pixelsPerDay: 4.1 }, 0.97).view).toBe('month');
     expect(zoomTimeline({ view: 'month', pixelsPerDay: 5 }, 1).view).toBe('week');
     expect(zoomTimeline({ view: 'week', pixelsPerDay: 20 }, 1).view).toBe('day');
+  });
+
+  it('uses wheel distance for proportional zoom instead of a fixed step per event', () => {
+    const current = timelineZoomPreset('week');
+    const smallDelta = zoomTimelineByWheelDelta(current, -10);
+    const largeDelta = zoomTimelineByWheelDelta(current, -100);
+
+    expect(smallDelta.pixelsPerDay).toBeGreaterThan(current.pixelsPerDay);
+    expect(largeDelta.pixelsPerDay).toBeGreaterThan(smallDelta.pixelsPerDay);
+    expect(largeDelta.pixelsPerDay).toBeCloseTo(current.pixelsPerDay * Math.exp(0.08), 3);
   });
 
   it('aligns week and month periods to calendar boundaries', () => {
