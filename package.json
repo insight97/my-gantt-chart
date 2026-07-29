@@ -10,6 +10,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "verify": "npm run lint && npm test && npm run build",
+    "prepare": "git config core.hooksPath .githooks",
     "preview": "vite preview"
   },
   "dependencies": {
