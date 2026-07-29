@@ -243,8 +243,7 @@ export default function App() {
       if (!result.ok) setNotice(result.error);
       else if (result.changed) {
         commit(result.workspace);
-        if (relation === 'inside')
-          setExpandedTaskIds(ids => new Set([...ids, targetTaskId]));
+        if (relation === 'inside') setExpandedTaskIds(ids => new Set([...ids, targetTaskId]));
       }
     },
     [workspace, commit],
