@@ -1,5 +1,5 @@
-import type { KeyboardEvent, PointerEvent } from 'react';
-import { formatRange, hoursLabel, priorityLabels } from './formatters';
+import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
+import { hoursLabel, priorityLabels } from './formatters';
 import type { Task } from './types';
 
 export type TaskCardVariant = 'backlog' | 'gantt';
@@ -13,6 +13,11 @@ type TaskCardProps = {
   isGhost?: boolean;
   onEdit?: (task: Task) => void;
   onDelete?: (taskId: string) => void;
+  onAddChild?: (task: Task) => void;
+  onToggle?: (task: Task) => void;
+  expanded?: boolean;
+  depth?: number;
+  hasChildren?: boolean;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
 };
 
@@ -25,6 +30,11 @@ export default function TaskCard({
   isGhost = false,
   onEdit,
   onDelete,
+  onAddChild,
+  onToggle,
+  expanded = true,
+  depth = 1,
+  hasChildren = false,
   onPointerDown,
 }: TaskCardProps) {
   const canEdit = !isGhost && Boolean(onEdit) && task.status !== 'completed';
@@ -54,6 +64,7 @@ export default function TaskCard({
   return (
     <article
       className={className}
+      style={{ '--task-depth': depth } as CSSProperties}
       draggable={false}
       tabIndex={isGhost ? undefined : 0}
       aria-hidden={isGhost || undefined}
@@ -61,6 +72,19 @@ export default function TaskCard({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
+      {hasChildren && onToggle && (
+        <button
+          className="task-card-toggle"
+          type="button"
+          aria-label={`${expanded ? '收合' : '展開'} ${task.name}`}
+          onClick={event => {
+            event.stopPropagation();
+            onToggle(task);
+          }}
+        >
+          {expanded ? '⌄' : '›'}
+        </button>
+      )}
       <div className={`task-card-info${variant === 'gantt' ? ' task-link' : ''}`} draggable={false}>
         <b>{task.name}</b>
         <small>
@@ -72,7 +96,11 @@ export default function TaskCard({
           ) : (
             <>
               {task.deadline ? `截止 ${task.deadline} · ` : ''}
-              {formatRange(task)}
+              {hasChildren
+                ? '子樹彙總'
+                : task.status === 'backlog'
+                  ? '尚未排程'
+                  : 'Allocation 由時間軸日期決定'}
             </>
           )}
         </small>
@@ -101,6 +129,21 @@ export default function TaskCard({
             }}
           >
             ×
+          </button>
+        </div>
+      )}
+      {!isGhost && onAddChild && (
+        <div className="task-card-actions">
+          <button
+            className="task-card-add-child"
+            type="button"
+            aria-label={`新增 ${task.name} 的子任務`}
+            onClick={event => {
+              event.stopPropagation();
+              onAddChild(task);
+            }}
+          >
+            ＋
           </button>
         </div>
       )}

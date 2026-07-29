@@ -10,7 +10,9 @@ export type TaskPriority = 'low' | 'medium' | 'high';
 export interface Task {
   id: string;
   name: string;
+  /** @deprecated Kept only so old exports can be migrated without data loss. */
   start: string | null;
+  /** @deprecated Kept only so old exports can be migrated without data loss. */
   end: string | null;
   deadline: string | null;
   estimatedHours: number;
@@ -21,6 +23,10 @@ export interface Task {
   color: string;
   createdAt: string;
   updatedAt: string;
+  /** Null means this is a root work item. */
+  parentId?: string | null;
+  /** Stable sibling ordering; old data falls back to array order. */
+  order?: number;
 }
 
 export interface Project {

@@ -8,6 +8,7 @@ export type TaskDropTarget = {
   projectId: string;
   taskId?: string;
   date?: string;
+  relation?: 'inside' | 'before' | 'after';
 };
 
 export type TaskDragState = {
