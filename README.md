@@ -54,12 +54,12 @@ npm install
 npm run dev
 ```
 
+`npm install` 會自動啟用 `.githooks/pre-push`。之後每次 push 前都會執行完整驗證；若格式檢查、測試或正式建置失敗，Git 會阻止 push。
+
 品質檢查及正式建置：
 
 ```bash
-npm run lint
-npm test
-npm run build
+npm run verify
 npm run preview
 ```
 
