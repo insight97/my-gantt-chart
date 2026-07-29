@@ -459,6 +459,7 @@ describe('Project arrangement', () => {
 
     const wheelEvent = createEvent.wheel(timeline, {
       deltaY: -100,
+      ctrlKey: true,
       clientX: 120,
       bubbles: true,
       cancelable: true,
@@ -493,6 +494,40 @@ describe('Project arrangement', () => {
     expect(timeline).not.toHaveClass('panning');
   });
 
+  it('separates trackpad scrolling from pinch zoom and supports mouse mode', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByDisplayValue('Alpha Project')).toBeInTheDocument());
+
+    const timeline = document.querySelector('.timeline') as HTMLElement;
+    const timelineGrid = document.querySelector('.timeline-grid') as HTMLElement;
+    const scrollEvent = createEvent.wheel(timeline, {
+      deltaY: 100,
+      clientX: 120,
+      bubbles: true,
+      cancelable: true,
+    });
+    timeline.dispatchEvent(scrollEvent);
+    expect(scrollEvent.defaultPrevented).toBe(false);
+    expect(timelineGrid.style.getPropertyValue('--scale')).toBe('64px');
+
+    fireEvent.click(screen.getByRole('button', { name: '滑鼠' }));
+    expect(localStorage.getItem('gantt-input-mode')).toBe('mouse');
+
+    const mouseWheelEvent = createEvent.wheel(timeline, {
+      deltaY: -100,
+      clientX: 120,
+      bubbles: true,
+      cancelable: true,
+    });
+    timeline.dispatchEvent(mouseWheelEvent);
+    expect(mouseWheelEvent.defaultPrevented).toBe(true);
+    await waitFor(() =>
+      expect(Number.parseInt(timelineGrid.style.getPropertyValue('--scale'), 10)).toBeGreaterThan(
+        64,
+      ),
+    );
+  });
+
   it('uses compact labels when the timeline is narrowed', async () => {
     loadWorkspaceMock.mockResolvedValue(structuredClone(denseWorkspace));
     render(<App />);
@@ -507,6 +542,7 @@ describe('Project arrangement', () => {
       if (currentView !== 'day' || currentScale < 24) break;
       const event = createEvent.wheel(timeline, {
         deltaY: 100,
+        ctrlKey: true,
         clientX: 120,
         bubbles: true,
         cancelable: true,
@@ -554,6 +590,7 @@ describe('Project arrangement', () => {
     );
     const wheelEvent = createEvent.wheel(timelines[0], {
       deltaY: 100,
+      ctrlKey: true,
       clientX: 120,
       bubbles: true,
       cancelable: true,

@@ -49,7 +49,7 @@ describe('語意時間軸', () => {
 
     expect(smallDelta.pixelsPerDay).toBeGreaterThan(current.pixelsPerDay);
     expect(largeDelta.pixelsPerDay).toBeGreaterThan(smallDelta.pixelsPerDay);
-    expect(largeDelta.pixelsPerDay).toBeCloseTo(current.pixelsPerDay * Math.exp(0.08), 3);
+    expect(largeDelta.pixelsPerDay).toBeCloseTo(current.pixelsPerDay * Math.exp(0.12), 3);
   });
 
   it('aligns week and month periods to calendar boundaries', () => {
