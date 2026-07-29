@@ -47,6 +47,7 @@ import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
   moveTaskToBacklog as moveTaskToBacklogOperation,
+  moveTaskToTimelineAsChild as moveTaskToTimelineAsChildOperation,
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
   moveTask as moveTaskOperation,
@@ -233,11 +234,18 @@ export default function App() {
       sourceTaskId: string,
       targetTaskId: string,
       relation: 'inside' | 'before' | 'after',
+      scheduleAsChild = false,
     ) => {
       if (!workspace) return;
-      const result = moveTaskOperation(workspace, projectId, sourceTaskId, targetTaskId, relation);
+      const result = scheduleAsChild
+        ? moveTaskToTimelineAsChildOperation(workspace, projectId, sourceTaskId, targetTaskId)
+        : moveTaskOperation(workspace, projectId, sourceTaskId, targetTaskId, relation);
       if (!result.ok) setNotice(result.error);
-      else if (result.changed) commit(result.workspace);
+      else if (result.changed) {
+        commit(result.workspace);
+        if (relation === 'inside')
+          setExpandedTaskIds(ids => new Set([...ids, targetTaskId]));
+      }
     },
     [workspace, commit],
   );
@@ -398,6 +406,7 @@ export default function App() {
               current.task.id,
               target.taskId,
               target.relation || 'before',
+              current.origin === 'backlog' && target.relation === 'inside',
             );
         }
         if (target.kind === 'gantt-sidebar' && current.origin === 'backlog')

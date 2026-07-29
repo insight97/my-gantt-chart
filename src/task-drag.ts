@@ -25,6 +25,21 @@ export type TaskDragState = {
 
 export type TaskDropTargetHandler = (target: TaskDropTarget | null, element?: HTMLElement) => void;
 
+/**
+ * Keep one ordering boundary between adjacent rows. The end of a row is a
+ * child target unless it is the last visible row, where it can append a sibling.
+ */
+export function taskRowDropRelation(
+  relativeY: number,
+  rowHeight: number,
+  isLastVisibleRow: boolean,
+): 'inside' | 'before' | 'after' {
+  const ratio = rowHeight > 0 ? relativeY / rowHeight : 0;
+  if (ratio < 0.4) return 'before';
+  if (isLastVisibleRow && ratio > 0.8) return 'after';
+  return 'inside';
+}
+
 /** True when the pointer actually left `currentTarget` rather than moving between its descendants. */
 export function pointerLeftElement(event: {
   relatedTarget: EventTarget | null;

@@ -312,3 +312,15 @@ export function moveTask(
     ),
   });
 }
+
+/** Move a backlog leaf under a timeline item and schedule it as part of that drop. */
+export function moveTaskToTimelineAsChild(
+  workspace: WorkspaceData,
+  projectId: string,
+  sourceId: string,
+  targetId: string,
+): WorkspaceOperationResult {
+  const moved = moveTask(workspace, projectId, sourceId, targetId, 'inside');
+  if (!moved.ok || !moved.changed) return moved;
+  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today());
+}
