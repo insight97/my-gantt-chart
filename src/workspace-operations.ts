@@ -64,6 +64,27 @@ function findTask(project: Project, taskId: string) {
   return project.tasks.find(task => task.id === taskId);
 }
 
+function parentValidationError(project: Project, draft: Task): string | null {
+  const parentId = draft.parentId ?? null;
+  if (!parentId) return null;
+  if (parentId === draft.id) return 'Task 不可成為自己的父節點。';
+  if (!findTask(project, parentId)) return '找不到父節點。';
+
+  const descendants = taskDescendantIds(project.tasks, draft.id);
+  if (descendants.has(parentId)) return '不可把 Task 移到自己的子樹內。';
+
+  const sourceDepth = taskDepth(project.tasks, draft.id);
+  const subtreeDepth = Math.max(
+    0,
+    ...project.tasks
+      .filter(task => task.id === draft.id || descendants.has(task.id))
+      .map(task => taskDepth(project.tasks, task.id) - sourceDepth),
+  );
+  if (taskDepth(project.tasks, parentId) + 1 + subtreeDepth > 3)
+    return '任務階層最多三層。請先調整父項目或排序位置。';
+  return null;
+}
+
 export function saveTask(
   workspace: WorkspaceData,
   projectId: string,
@@ -74,6 +95,8 @@ export function saveTask(
   if (!draft.name.trim()) return invalid('請輸入 Task 名稱。');
   if (!Number.isFinite(draft.estimatedHours) || draft.estimatedHours < 0)
     return invalid('請輸入有效的預估工時。');
+  const parentError = parentValidationError(project, draft);
+  if (parentError) return invalid(parentError);
   if (taskHasChildren(project.tasks, draft.id)) {
     draft = {
       ...draft,
@@ -123,6 +146,8 @@ export function autoScheduleTask(
     ? { ...draft, name: draft.name.trim(), updatedAt: now() }
     : findTask(project, taskId);
   if (!task || task.status === 'completed') return unchanged();
+  const parentError = parentValidationError(project, task);
+  if (parentError) return invalid(parentError);
   if (taskHasChildren(project.tasks, task.id)) return invalid('有子任務的工作項目不可直接排程。');
   if (!task.name.trim() || !Number.isFinite(task.estimatedHours) || task.estimatedHours < 0)
     return invalid('請先輸入有效的 Task 名稱與預估工時。');

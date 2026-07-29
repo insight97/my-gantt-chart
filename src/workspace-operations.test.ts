@@ -125,4 +125,15 @@ describe('workspace operations', () => {
     expect(result).toEqual({ ok: false, error: '請輸入 Task 名稱。' });
     expect(original.projects[0].tasks[0].name).toBe('Task A');
   });
+
+  it('rejects a parent change that would create a hierarchy cycle', () => {
+    const parent = task({ id: 'parent', name: 'Parent' });
+    const child = task({ id: 'child', name: 'Child', parentId: 'parent' });
+    const original = workspace(parent);
+    original.projects[0].tasks.push(child);
+
+    const result = saveTask(original, 'project-a', { ...parent, parentId: 'child' });
+
+    expect(result).toEqual({ ok: false, error: '不可把 Task 移到自己的子樹內。' });
+  });
 });

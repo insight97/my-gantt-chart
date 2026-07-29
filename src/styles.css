@@ -976,6 +976,9 @@ h1 {
   text-align: left;
   min-width: 0;
 }
+.backlog .task-card {
+  margin-left: 0;
+}
 .backlog .task-card-backlog .task-card-info {
   min-width: 0;
 }
@@ -1078,7 +1081,6 @@ h1 {
 }
 .gantt-side-row.drop-target-inside {
   background: #eaf4f9;
-  box-shadow: inset 3px 0 var(--blue);
   animation: task-drop-inside-pulse 900ms ease-in-out infinite;
 }
 .gantt-side-row.drop-target-inside::after {
@@ -1104,11 +1106,9 @@ h1 {
   0%,
   100% {
     background-color: #eaf4f9;
-    box-shadow: inset 3px 0 #2f75bb;
   }
   50% {
     background-color: #d5edf7;
-    box-shadow: inset 5px 0 #7cc7eb;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -142,4 +142,36 @@ describe('Work Item hierarchy UI', () => {
       expect.stringContaining('不可修改'),
     );
   });
+
+  it('allows editing a task parent from the detail editor', async () => {
+    const parent = workItem('parent', '原父節點');
+    const nextParent = workItem('next-parent', '新父節點');
+    const child = workItem('child', '子工作', { parentId: 'parent' });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, nextParent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('子工作'));
+
+    const parentSelect = screen.getByLabelText('父節點');
+    expect(parentSelect).toHaveValue('parent');
+    fireEvent.change(parentSelect, { target: { value: 'next-parent' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '收合 新父節點' })).toBeInTheDocument(),
+    );
+  });
+
+  it('does not indent a child task while it is shown in Backlog', async () => {
+    const parent = workItem('parent', '父工作');
+    const child = workItem('child', 'Backlog 子工作', { parentId: 'parent' });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Backlog 子工作')).toBeInTheDocument());
+    const card = document.querySelector('.backlog .task-card-backlog');
+    expect(card).not.toBeNull();
+    expect(getComputedStyle(card!).marginLeft).toMatch(/^0(?:px)?$/);
+  });
 });
