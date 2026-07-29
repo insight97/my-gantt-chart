@@ -912,6 +912,42 @@ h1 {
 .task-card {
   position: relative;
   padding-right: 36px;
+  margin-left: calc((var(--task-depth, 1) - 1) * 18px);
+}
+.task-card-toggle {
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  z-index: 1;
+}
+.task-card-toggle:hover {
+  border: 0;
+  background: #eef4f7;
+}
+.task-card:has(.task-card-toggle) .task-card-info {
+  padding-left: 22px;
+}
+.task-card-add-child {
+  position: absolute;
+  top: 6px;
+  right: 25px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: #8a9aa5;
+  font-size: 12px;
+  line-height: 1;
+}
+.task-card-add-child:hover {
+  border: 0;
+  background: #e8f1f6;
+  color: var(--blue);
 }
 .task-card-delete {
   position: absolute;
@@ -1011,6 +1047,41 @@ h1 {
   display: block;
   height: 70px;
   padding: 0;
+  position: relative;
+}
+.gantt-side-row.drop-target-inside::after,
+.gantt-side-row.drop-target-before::after,
+.gantt-side-row.drop-target-after::after {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  z-index: 3;
+  height: 2px;
+  background: var(--blue);
+  color: var(--blue);
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+}
+.gantt-side-row.drop-target-before::after {
+  top: 0;
+  content: '插入此處';
+}
+.gantt-side-row.drop-target-after::after {
+  bottom: 0;
+  content: '插入此處';
+}
+.gantt-side-row.drop-target-inside {
+  background: #eaf4f9;
+  box-shadow: inset 3px 0 var(--blue);
+}
+.gantt-side-row.drop-target-inside::after {
+  top: 4px;
+  right: auto;
+  width: 64px;
+  height: auto;
+  background: transparent;
+  content: '加入子任務';
 }
 .gantt-head {
   grid-template-columns: minmax(0, 1fr) auto;

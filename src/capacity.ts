@@ -30,7 +30,21 @@ export function normalizeCapacity(capacity: DailyCapacity): DailyCapacity {
 }
 
 export function getProjectEstimatedHours(project: { tasks: Task[] }) {
-  return project.tasks.reduce((sum, task) => sum + Math.max(0, task.estimatedHours), 0);
+  const parentIds = new Set(
+    project.tasks
+      .map(task => task.parentId)
+      .filter((parentId): parentId is string => typeof parentId === 'string'),
+  );
+  return project.tasks
+    .filter(task => !parentIds.has(task.id))
+    .reduce((sum, task) => sum + Math.max(0, task.estimatedHours), 0);
+}
+
+export function getTaskScheduleDates(taskId: string, allocations: Allocation[]) {
+  return allocations
+    .filter(item => item.taskId === taskId && item.allocatedHours > 0)
+    .map(item => item.date)
+    .sort();
 }
 
 export function isTaskOverdue(task: Task, allocations: Allocation[]) {

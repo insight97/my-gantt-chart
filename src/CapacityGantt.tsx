@@ -2,13 +2,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import {
   allocatedHoursByDate,
-  allocationsByTask,
   capacityAvailableByDate,
   isTaskOverdue,
   scheduleTaskAt,
   today,
 } from './capacity';
 import { hoursLabel } from './formatters';
+import {
+  aggregateTaskAllocations,
+  aggregateTaskEstimate,
+  taskDepth,
+  taskHasChildren,
+} from './data';
 import TaskCard from './TaskCard';
 import { pointerLeftElement } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
@@ -48,6 +53,8 @@ type PanState = { startX: number; startScrollLeft: number; candidate: boolean; a
 export type CapacityGanttProps = {
   projectId: string;
   tasks: Task[];
+  allTasks: Task[];
+  expandedTaskIds: Set<string>;
   backlogTasks: Task[];
   allocations: Allocation[];
   capacityAllocations: Allocation[];
@@ -68,6 +75,8 @@ export type CapacityGanttProps = {
   onTaskDropTarget: TaskDropTargetHandler;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
   onDelete: (taskId: string) => void;
+  onAddChild: (task: Task) => void;
+  onToggleTask: (taskId: string) => void;
   onEditCapacity: (date: string) => void;
   onTimelineScroll: (left: number) => void;
 };
@@ -279,6 +288,7 @@ function AllocationSummaries({
   view,
   allocationWindow,
   onAdjustAllocation,
+  editable = true,
 }: {
   task: Task;
   hoursByDate: Map<string, number>;
@@ -287,8 +297,8 @@ function AllocationSummaries({
   view: ViewMode;
   allocationWindow: AllocationWindow;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
+  editable?: boolean;
 }) {
-  const editable = task.status !== 'completed';
   const taskStyle = { '--task-color': task.color } as CSSProperties;
   return (
     <div className={`allocation-summaries ${view === 'day' ? 'editable' : ''}`} style={taskStyle}>
@@ -345,6 +355,7 @@ const EMPTY_HOURS_BY_DATE = new Map<string, number>();
 
 function TimelineTaskRows({
   tasks,
+  allTasks,
   hoursByTask,
   allocationsByTask,
   periods,
@@ -353,6 +364,7 @@ function TimelineTaskRows({
   onAdjustAllocation,
 }: {
   tasks: Task[];
+  allTasks: Task[];
   hoursByTask: Map<string, Map<string, number>>;
   allocationsByTask: Map<string, Allocation[]>;
   periods: TimelinePeriod[];
@@ -382,6 +394,7 @@ function TimelineTaskRows({
               scale={scale}
               view={view}
               allocationWindow={taskAllocationWindow}
+              editable={task.status !== 'completed' && !taskHasChildren(allTasks, task.id)}
               onAdjustAllocation={onAdjustAllocation}
             />
           </div>
@@ -425,6 +438,7 @@ function TimelineGrid({
   view,
   scale,
   tasks,
+  allTasks,
   hoursByTask,
   allocationsByTask,
   dropPreview,
@@ -434,6 +448,7 @@ function TimelineGrid({
   view: ViewMode;
   scale: number;
   tasks: Task[];
+  allTasks: Task[];
   hoursByTask: Map<string, Map<string, number>>;
   allocationsByTask: Map<string, Allocation[]>;
   dropPreview: Task | null;
@@ -448,6 +463,7 @@ function TimelineGrid({
     <div className="timeline-grid" style={style}>
       <TimelineTaskRows
         tasks={tasks}
+        allTasks={allTasks}
         hoursByTask={hoursByTask}
         allocationsByTask={allocationsByTask}
         periods={periods}
@@ -471,6 +487,8 @@ function TimelineGrid({
 function GanttSidebar({
   projectId,
   tasks,
+  allTasks,
+  expandedTaskIds,
   allocatedByTask,
   allocationsByTask,
   headerHeight,
@@ -478,11 +496,15 @@ function GanttSidebar({
   onEdit,
   onAddTask,
   onDelete,
+  onAddChild,
+  onToggleTask,
   onBeginTaskDrag,
   onTaskDropTarget,
 }: {
   projectId: string;
   tasks: Task[];
+  allTasks: Task[];
+  expandedTaskIds: Set<string>;
   allocatedByTask: Map<string, number>;
   allocationsByTask: Map<string, Allocation[]>;
   headerHeight: number;
@@ -490,6 +512,8 @@ function GanttSidebar({
   onEdit: (task: Task) => void;
   onAddTask: () => void;
   onDelete: (taskId: string) => void;
+  onAddChild: (task: Task) => void;
+  onToggleTask: (taskId: string) => void;
   onBeginTaskDrag: (
     task: Task,
     event: PointerEvent<HTMLElement>,
@@ -521,12 +545,35 @@ function GanttSidebar({
       </div>
       {tasks.map(task => {
         const allocated = allocatedByTask.get(task.id) || 0;
-        const pending = task.estimatedHours - allocated;
+        const hasChildren = taskHasChildren(allTasks, task.id);
+        const estimated = hasChildren
+          ? aggregateTaskEstimate(task.id, allTasks)
+          : task.estimatedHours;
+        const pending = estimated - allocated;
+        const dropRelation =
+          taskDrag?.projectId === projectId && taskDrag.target?.taskId === task.id
+            ? taskDrag.target.relation
+            : undefined;
         const handleRowPointerMove = (event: PointerEvent<HTMLDivElement>) =>
-          onTaskDropTarget({ kind: 'gantt-row', projectId, taskId: task.id }, event.currentTarget);
+          onTaskDropTarget(
+            {
+              kind: 'gantt-row',
+              projectId,
+              taskId: task.id,
+              relation:
+                event.clientY - event.currentTarget.getBoundingClientRect().top <
+                event.currentTarget.getBoundingClientRect().height * 0.3
+                  ? 'before'
+                  : event.clientY - event.currentTarget.getBoundingClientRect().top >
+                      event.currentTarget.getBoundingClientRect().height * 0.7
+                    ? 'after'
+                    : 'inside',
+            },
+            event.currentTarget,
+          );
         return (
           <div
-            className={`gantt-side-row${pending !== 0 ? ' has-pending' : ''}${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' has-deadline-warning' : ''}`}
+            className={`gantt-side-row${pending !== 0 ? ' has-pending' : ''}${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' has-deadline-warning' : ''}${dropRelation ? ` drop-target-${dropRelation}` : ''}`}
             key={task.id}
             onPointerMove={handleRowPointerMove}
             onPointerLeave={handleLeave}
@@ -536,6 +583,11 @@ function GanttSidebar({
               variant="gantt"
               allocatedHours={allocated}
               pendingHours={pending}
+              hasChildren={hasChildren}
+              depth={taskDepth(allTasks, task.id)}
+              expanded={expandedTaskIds.has(task.id)}
+              onToggle={hasChildren ? item => onToggleTask(item.id) : undefined}
+              onAddChild={onAddChild}
               isDragging={
                 taskDrag?.projectId === projectId && taskDrag.active && taskDrag.task.id === task.id
               }
@@ -565,6 +617,8 @@ function GanttSidebar({
 export default function CapacityGantt({
   projectId,
   tasks,
+  allTasks,
+  expandedTaskIds,
   backlogTasks,
   allocations,
   capacityAllocations,
@@ -580,6 +634,8 @@ export default function CapacityGantt({
   onTaskDropTarget,
   onAdjustAllocation,
   onDelete,
+  onAddChild,
+  onToggleTask,
   onEditCapacity,
   onTimelineScroll,
 }: CapacityGanttProps) {
@@ -607,7 +663,12 @@ export default function CapacityGantt({
     () => allocatedHoursByDate(capacityAllocations),
     [capacityAllocations],
   );
-  const taskAllocations = useMemo(() => allocationsByTask(allocations), [allocations]);
+  const taskAllocations = useMemo(() => {
+    const index = new Map<string, Allocation[]>();
+    for (const task of tasks)
+      index.set(task.id, aggregateTaskAllocations(task.id, allTasks, allocations));
+    return index;
+  }, [tasks, allTasks, allocations]);
   const allocatedByTask = useMemo(() => {
     const index = new Map<string, number>();
     for (const [taskId, items] of taskAllocations)
@@ -824,6 +885,8 @@ export default function CapacityGantt({
         <GanttSidebar
           projectId={projectId}
           tasks={tasks}
+          allTasks={allTasks}
+          expandedTaskIds={expandedTaskIds}
           allocatedByTask={allocatedByTask}
           allocationsByTask={taskAllocations}
           headerHeight={headerHeight}
@@ -831,6 +894,8 @@ export default function CapacityGantt({
           onEdit={onEdit}
           onAddTask={onAddTask}
           onDelete={onDelete}
+          onAddChild={onAddChild}
+          onToggleTask={onToggleTask}
           onBeginTaskDrag={onBeginTaskDrag}
           onTaskDropTarget={onTaskDropTarget}
         />
@@ -871,6 +936,7 @@ export default function CapacityGantt({
               view={view}
               scale={scale}
               tasks={tasks}
+              allTasks={allTasks}
               hoursByTask={hoursByTask}
               allocationsByTask={taskAllocations}
               dropPreview={dropPreview}

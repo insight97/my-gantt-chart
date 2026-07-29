@@ -30,6 +30,8 @@ export const emptyTask = (): Task => ({
   color: '#2f75bb',
   createdAt: now(),
   updatedAt: now(),
+  parentId: null,
+  order: 0,
 });
 
 export const sampleProject = (): Project => {
@@ -189,13 +191,15 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
     ...value,
     projects: value.projects.map(project => ({
       ...project,
-      tasks: project.tasks.map(task => {
+      tasks: project.tasks.map((task, index) => {
         const currentTask = { ...(task as Task & { allocationStrategy?: unknown }) };
         delete currentTask.allocationStrategy;
         return {
           ...currentTask,
           deadline: task.deadline ?? null,
           priority: task.priority ?? 'medium',
+          parentId: task.parentId ?? null,
+          order: Number.isFinite(task.order) ? task.order : index,
         };
       }),
     })),
@@ -208,13 +212,83 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
   };
 }
 
+export const taskChildren = (tasks: Task[], parentId: string | null) =>
+  tasks
+    .filter(task => (task.parentId ?? null) === parentId)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+export function taskDepth(tasks: Task[], taskId: string): number {
+  let depth = 0;
+  let current = tasks.find(task => task.id === taskId);
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    depth += 1;
+    current = current.parentId ? tasks.find(task => task.id === current?.parentId) : undefined;
+  }
+  return depth;
+}
+
+export function taskDescendantIds(tasks: Task[], taskId: string): Set<string> {
+  const result = new Set<string>();
+  const pending = [taskId];
+  while (pending.length) {
+    const parentId = pending.shift()!;
+    for (const child of tasks.filter(task => (task.parentId ?? null) === parentId)) {
+      if (result.has(child.id)) continue;
+      result.add(child.id);
+      pending.push(child.id);
+    }
+  }
+  return result;
+}
+
+export const taskHasChildren = (tasks: Task[], taskId: string) =>
+  tasks.some(task => (task.parentId ?? null) === taskId);
+
+export function aggregateTaskAllocations(taskId: string, tasks: Task[], allocations: Allocation[]) {
+  const ids = taskDescendantIds(tasks, taskId);
+  ids.add(taskId);
+  return allocations.filter(allocation => ids.has(allocation.taskId));
+}
+
+export function aggregateTaskHours(taskId: string, tasks: Task[], allocations: Allocation[]) {
+  const ids = taskDescendantIds(tasks, taskId);
+  ids.add(taskId);
+  return allocations
+    .filter(allocation => ids.has(allocation.taskId))
+    .reduce((sum, allocation) => sum + allocation.allocatedHours, 0);
+}
+
+export function aggregateTaskEstimate(taskId: string, tasks: Task[]) {
+  const ids = taskDescendantIds(tasks, taskId);
+  ids.add(taskId);
+  return tasks
+    .filter(task => ids.has(task.id) && !taskHasChildren(tasks, task.id))
+    .reduce((sum, task) => sum + Math.max(0, task.estimatedHours), 0);
+}
+
+/** Pre-order tree used by both Backlog and Timeline. */
+export function flattenTaskTree(tasks: Task[], expandedIds: Set<string>) {
+  const result: Array<{ task: Task; depth: number }> = [];
+  const visit = (parentId: string | null, depth: number) => {
+    for (const task of taskChildren(tasks, parentId)) {
+      result.push({ task, depth });
+      if (expandedIds.has(task.id)) visit(task.id, depth + 1);
+    }
+  };
+  visit(null, 1);
+  return result;
+}
+
 /** Splits a Project's Tasks between the Backlog and Allocation Timeline. */
-export function partitionProjectTasks(project: Project) {
+export function partitionProjectTasks(project: Project, expandedIds = new Set<string>()) {
   const backlog: Task[] = [];
   const scheduled: Task[] = [];
-  for (const task of project.tasks) {
-    if (task.status === 'backlog') backlog.push(task);
-    else scheduled.push(task);
+  for (const { task } of flattenTaskTree(project.tasks, expandedIds)) {
+    const hasChildren = taskHasChildren(project.tasks, task.id);
+    if (!hasChildren && task.status === 'backlog') backlog.push(task);
+    else if (hasChildren || task.status !== 'backlog') scheduled.push(task);
   }
   backlog.sort(
     (a, b) =>

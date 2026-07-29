@@ -2,9 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   emptyTask,
+  taskDescendantIds,
+  taskHasChildren,
+  taskDepth,
   now,
   partitionProjectTasks,
-  uid,
   validateImport,
   validWorkspaceData,
 } from './data';
@@ -18,7 +20,7 @@ import {
 } from './capacity';
 import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } from './db';
 import CapacityGantt from './CapacityGantt';
-import { hourValueLabel, hoursLabel, priorityLabels, weekdayDateLabel } from './formatters';
+import { hourValueLabel, priorityLabels, weekdayDateLabel } from './formatters';
 import TaskCard from './TaskCard';
 import { pointerLeftElement } from './task-drag';
 import type {
@@ -47,6 +49,7 @@ import {
   moveTaskToBacklog as moveTaskToBacklogOperation,
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
+  moveTask as moveTaskOperation,
 } from './workspace-operations';
 import type { WorkspaceOperationResult } from './workspace-operations';
 
@@ -77,7 +80,11 @@ function initialTimelineInputMode(): TimelineInputMode {
 function sameDropTarget(a: TaskDropTarget | null, b: TaskDropTarget | null) {
   if (!a || !b) return a === b;
   return (
-    a.kind === b.kind && a.projectId === b.projectId && a.taskId === b.taskId && a.date === b.date
+    a.kind === b.kind &&
+    a.projectId === b.projectId &&
+    a.taskId === b.taskId &&
+    a.date === b.date &&
+    a.relation === b.relation
   );
 }
 
@@ -92,6 +99,7 @@ function download(data: string, name: string, type: string) {
 export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(() => new Set());
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoom>(initialTimelineZoom);
   const [timelineInputMode, setTimelineInputMode] =
     useState<TimelineInputMode>(initialTimelineInputMode);
@@ -114,9 +122,18 @@ export default function App() {
     loadWorkspace()
       .then(value => {
         if (!mounted) return;
-        const next = value || createEmptyWorkspace();
+        const next = migrateWorkspace(value || createEmptyWorkspace());
         setWorkspace(next);
         setExpandedProjectIds(new Set(next.projects.slice(0, 1).map(item => item.id)));
+        setExpandedTaskIds(
+          new Set(
+            next.projects.flatMap(project =>
+              project.tasks
+                .filter(task => taskHasChildren(project.tasks, task.id))
+                .map(task => task.id),
+            ),
+          ),
+        );
         setReady(true);
       })
       .catch(() => setNotice('無法開啟瀏覽器本機資料庫。'));
@@ -210,33 +227,17 @@ export default function App() {
     taskDragRef.current = next;
     setTaskDrag(next);
   };
-  const patchProject = (projectId: string, fn: (value: Project) => Project) => {
-    if (!workspace) return;
-    commit({
-      ...workspace,
-      projects: workspace.projects.map(item =>
-        item.id === projectId ? { ...fn(item), updatedAt: now() } : item,
-      ),
-    });
-  };
-  const reorderTasks = useCallback(
-    (projectId: string, sourceTaskId: string, targetTaskId: string) => {
-      if (!workspace || sourceTaskId === targetTaskId) return;
-      const project = workspace.projects.find(item => item.id === projectId);
-      if (!project) return;
-      const sourceIndex = project.tasks.findIndex(task => task.id === sourceTaskId);
-      const targetIndex = project.tasks.findIndex(task => task.id === targetTaskId);
-      if (sourceIndex < 0 || targetIndex < 0) return;
-      const tasks = [...project.tasks];
-      const [moved] = tasks.splice(sourceIndex, 1);
-      const insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-      tasks.splice(insertionIndex, 0, moved);
-      commit({
-        ...workspace,
-        projects: workspace.projects.map(item =>
-          item.id === projectId ? { ...item, tasks, updatedAt: now() } : item,
-        ),
-      });
+  const moveTask = useCallback(
+    (
+      projectId: string,
+      sourceTaskId: string,
+      targetTaskId: string,
+      relation: 'inside' | 'before' | 'after',
+    ) => {
+      if (!workspace) return;
+      const result = moveTaskOperation(workspace, projectId, sourceTaskId, targetTaskId, relation);
+      if (!result.ok) setNotice(result.error);
+      else if (result.changed) commit(result.workspace);
     },
     [workspace, commit],
   );
@@ -257,44 +258,42 @@ export default function App() {
 
   const addProject = () => {
     if (!workspace) return;
-    const timestamp = now();
-    const next: Project = {
-      id: uid(),
-      name: '未命名專案',
+    const project = workspace.projects[0] || {
+      id: 'workspace-root',
+      name: '工作項目',
       description: '',
-      createdAt: timestamp,
-      updatedAt: timestamp,
+      createdAt: now(),
+      updatedAt: now(),
       tasks: [],
     };
-    commit({ ...workspace, projects: [...workspace.projects, next] });
-    setExpandedProjectIds(ids => new Set([...ids, next.id]));
+    if (!workspace.projects.length) commit({ ...workspace, projects: [project] });
+    const task = emptyTask();
+    setEditingTask({ projectId: project.id, task, scheduleOnSave: false });
   };
 
-  const deleteProject = (projectId: string) => {
+  const addTask = (
+    projectId: string,
+    entryPoint: 'backlog' | 'timeline' = 'backlog',
+    parentId: string | null = null,
+  ) => {
+    if (!workspace || !workspace.projects.some(project => project.id === projectId)) return;
+    const task = emptyTask();
+    task.parentId = parentId;
+    task.order = workspace.projects.find(project => project.id === projectId)?.tasks.length || 0;
+    if (entryPoint === 'timeline') task.status = 'scheduled';
+    setEditingTask({ projectId, task, scheduleOnSave: entryPoint === 'timeline' });
+  };
+
+  const addChildTask = (projectId: string, parent: Task) => {
     if (!workspace) return;
     const project = workspace.projects.find(item => item.id === projectId);
     if (!project) return;
-    if (workspace.projects.length === 1) return setNotice('至少需要保留一個專案。');
-    if (!confirm(`確定刪除「${project.name}」及其所有 Task？`)) return;
-    const taskIds = new Set(project.tasks.map(task => task.id));
-    const nextProjects = workspace.projects.filter(item => item.id !== project.id);
-    commit({
-      ...workspace,
-      projects: nextProjects,
-      allocations: workspace.allocations.filter(allocation => !taskIds.has(allocation.taskId)),
-    });
-    setExpandedProjectIds(ids => {
-      const next = new Set(ids);
-      next.delete(projectId);
-      return next;
-    });
-  };
-
-  const addTask = (projectId: string, entryPoint: 'backlog' | 'timeline' = 'backlog') => {
-    if (!workspace || !workspace.projects.some(project => project.id === projectId)) return;
-    const task = emptyTask();
-    if (entryPoint === 'timeline') task.status = 'scheduled';
-    setEditingTask({ projectId, task, scheduleOnSave: entryPoint === 'timeline' });
+    if (taskDepth(project.tasks, parent.id) >= 3) {
+      setNotice('任務階層最多三層。');
+      return;
+    }
+    addTask(projectId, 'backlog', parent.id);
+    setExpandedTaskIds(ids => new Set([...ids, parent.id]));
   };
 
   const saveTask = (projectId: string, draft: Task, scheduleOnSave = false): string | null => {
@@ -393,10 +392,13 @@ export default function App() {
         if (target.kind === 'backlog' && current.origin === 'gantt')
           moveTaskToBacklog(current.projectId, current.task.id);
         if (target.kind === 'gantt-row') {
-          if (current.origin === 'gantt' && target.taskId)
-            reorderTasks(current.projectId, current.task.id, target.taskId);
-          if (current.origin === 'backlog')
-            scheduleTaskAtDate(current.projectId, current.task.id, today());
+          if (target.taskId)
+            moveTask(
+              current.projectId,
+              current.task.id,
+              target.taskId,
+              target.relation || 'before',
+            );
         }
         if (target.kind === 'gantt-sidebar' && current.origin === 'backlog')
           scheduleTaskAtDate(current.projectId, current.task.id, today());
@@ -424,7 +426,7 @@ export default function App() {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [hasTaskDrag, moveTaskToBacklog, reorderTasks, scheduleTaskAtDate]);
+  }, [hasTaskDrag, moveTaskToBacklog, moveTask, scheduleTaskAtDate]);
 
   const saveCapacity = (date: string, total: number, unavailable: number): string | null => {
     if (
@@ -453,14 +455,21 @@ export default function App() {
     if (!workspace || !confirm('確定刪除這個 Task 及其 Allocation？')) return;
     const project = workspace.projects.find(item => item.id === projectId);
     if (!project) return;
+    const removedIds = taskDescendantIds(project.tasks, taskId);
+    removedIds.add(taskId);
     commit({
       ...workspace,
-      projects: workspace.projects.map(item =>
-        item.id === project.id
-          ? { ...item, tasks: item.tasks.filter(task => task.id !== taskId), updatedAt: now() }
-          : item,
-      ),
-      allocations: workspace.allocations.filter(allocation => allocation.taskId !== taskId),
+      projects: workspace.projects.map(item => {
+        if (item.id !== project.id) return item;
+        const removedIds = taskDescendantIds(item.tasks, taskId);
+        removedIds.add(taskId);
+        return {
+          ...item,
+          tasks: item.tasks.filter(task => !removedIds.has(task.id)),
+          updatedAt: now(),
+        };
+      }),
+      allocations: workspace.allocations.filter(allocation => !removedIds.has(allocation.taskId)),
     });
   };
 
@@ -500,17 +509,28 @@ export default function App() {
 
   const allExpanded =
     workspace.projects.length > 0 &&
-    workspace.projects.every(project => expandedProjectIds.has(project.id));
-  const toggleProject = (projectId: string) =>
-    setExpandedProjectIds(ids => {
-      const next = new Set(ids);
-      if (next.has(projectId)) next.delete(projectId);
-      else next.add(projectId);
-      return next;
-    });
-  const expandAll = () =>
+    workspace.projects.every(project => expandedProjectIds.has(project.id)) &&
+    workspace.projects.every(project =>
+      project.tasks
+        .filter(task => taskHasChildren(project.tasks, task.id))
+        .every(task => expandedTaskIds.has(task.id)),
+    );
+  const expandAll = () => {
     setExpandedProjectIds(new Set(workspace.projects.map(project => project.id)));
-  const collapseAll = () => setExpandedProjectIds(new Set());
+    setExpandedTaskIds(
+      new Set(
+        workspace.projects.flatMap(project =>
+          project.tasks
+            .filter(task => taskHasChildren(project.tasks, task.id))
+            .map(task => task.id),
+        ),
+      ),
+    );
+  };
+  const collapseAll = () => {
+    setExpandedProjectIds(new Set());
+    setExpandedTaskIds(new Set());
+  };
   const editingProject =
     editingTask && workspace.projects.find(project => project.id === editingTask.projectId);
   const editTask = (projectId: string, task: Task) => {
@@ -567,8 +587,8 @@ export default function App() {
         <section className="project-list">
           <div className="project-list-toolbar">
             <div>
-              <h1>Projects</h1>
-              <p>{workspace.projects.length} 個 Project · 可在同一頁檢視、編輯與安排工作</p>
+              <h1>工作項目</h1>
+              <p>所有工作項目使用同一種階層物件；根項目沒有父項目，最多三層</p>
             </div>
             <div className="project-list-actions">
               <div className="input-mode-switch" role="group" aria-label="時間軸操作模式">
@@ -597,15 +617,15 @@ export default function App() {
                 {allExpanded ? '全部收合' : '全部展開'}
               </button>
               <button className="primary" onClick={addProject}>
-                ＋ 新增 Project
+                ＋ 新增工作項目
               </button>
             </div>
           </div>
           {workspace.projects.length === 0 ? (
             <div className="empty-projects">
-              <p>目前還沒有 Project。</p>
+              <p>目前還沒有工作項目。</p>
               <button className="primary" onClick={addProject}>
-                ＋ 建立第一個 Project
+                ＋ 建立第一個工作項目
               </button>
             </div>
           ) : (
@@ -622,12 +642,11 @@ export default function App() {
                   timelineInputMode={timelineInputMode}
                   timelineScrollLeft={timelineScrollLeft}
                   taskDrag={taskDrag}
+                  expandedTaskIds={expandedTaskIds}
                   expanded={expandedProjectIds.has(project.id)}
-                  onToggle={() => toggleProject(project.id)}
-                  onChange={fn => patchProject(project.id, fn)}
-                  onDelete={() => deleteProject(project.id)}
                   onAddTask={() => addTask(project.id, 'backlog')}
                   onAddTimelineTask={() => addTask(project.id, 'timeline')}
+                  onAddChild={task => addChildTask(project.id, task)}
                   onEditTask={task => editTask(project.id, task)}
                   onBeginTaskDrag={beginTaskDrag}
                   onTaskDropTarget={updateTaskDropTarget}
@@ -636,6 +655,14 @@ export default function App() {
                     if (error) setNotice(error);
                   }}
                   onDeleteTask={taskId => deleteTask(project.id, taskId)}
+                  onToggleTask={taskId =>
+                    setExpandedTaskIds(ids => {
+                      const next = new Set(ids);
+                      if (next.has(taskId)) next.delete(taskId);
+                      else next.add(taskId);
+                      return next;
+                    })
+                  }
                   onEditCapacity={setCapacityDate}
                   onViewChange={value => setTimelineZoom(timelineZoomPreset(value))}
                   onZoomChange={setTimelineZoom}
@@ -702,12 +729,11 @@ type ProjectPanelProps = {
   timelineInputMode: TimelineInputMode;
   timelineScrollLeft: number;
   taskDrag: TaskDragState | null;
+  expandedTaskIds: Set<string>;
   expanded: boolean;
-  onToggle: () => void;
-  onChange: (fn: (value: Project) => Project) => void;
-  onDelete: () => void;
   onAddTask: () => void;
   onAddTimelineTask: () => void;
+  onAddChild: (task: Task) => void;
   onEditTask: (task: Task) => void;
   onBeginTaskDrag: (
     projectId: string,
@@ -720,6 +746,7 @@ type ProjectPanelProps = {
   onTaskDropTarget: TaskDropTargetHandler;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
   onDeleteTask: (taskId: string) => void;
+  onToggleTask: (taskId: string) => void;
   onEditCapacity: (date: string) => void;
   onViewChange: (view: ViewMode) => void;
   onZoomChange: (next: TimelineZoom) => void;
@@ -736,72 +763,39 @@ function ProjectPanel({
   timelineInputMode,
   timelineScrollLeft,
   taskDrag,
+  expandedTaskIds,
   expanded,
-  onToggle,
-  onChange,
-  onDelete,
   onAddTask,
   onAddTimelineTask,
+  onAddChild,
   onEditTask,
   onBeginTaskDrag,
   onTaskDropTarget,
   onAdjustAllocation,
   onDeleteTask,
+  onToggleTask,
   onEditCapacity,
   onViewChange,
   onZoomChange,
   onTimelineScroll,
 }: ProjectPanelProps) {
-  const allocatedHours = allocations.reduce((sum, item) => sum + item.allocatedHours, 0);
-  const { backlog: backlogTasks, scheduled: scheduledTasks } = partitionProjectTasks(project);
+  const { backlog: backlogTasks, scheduled: scheduledTasks } = partitionProjectTasks(
+    project,
+    expandedTaskIds,
+  );
   return (
-    <article className={`project-card${expanded ? ' expanded' : ' collapsed'}`}>
-      <div className="project-card-header">
-        <button
-          className="project-toggle"
-          type="button"
-          aria-expanded={expanded}
-          aria-label={`${expanded ? '收合' : '展開'} ${project.name}`}
-          onClick={onToggle}
-        >
-          <span aria-hidden="true">{expanded ? '⌄' : '›'}</span>
-          <small>Project</small>
-        </button>
-        <div className="project-identity">
-          <input
-            aria-label={`${project.name} Project 名稱`}
-            value={project.name}
-            onChange={event => onChange(value => ({ ...value, name: event.target.value }))}
-          />
-          <input
-            aria-label={`${project.name} Project 說明`}
-            value={project.description}
-            placeholder="Project 說明…"
-            onChange={event => onChange(value => ({ ...value, description: event.target.value }))}
-          />
-        </div>
-        <div className="project-summary">
-          <span>{project.tasks.length} 個 Task</span>
-          <span>Backlog {backlogTasks.length}</span>
-          <span>
-            已分配 {hoursLabel(allocatedHours)} / {hoursLabel(getProjectEstimatedHours(project))}
-          </span>
-        </div>
-        <button className="danger project-delete" type="button" onClick={onDelete}>
-          刪除
-        </button>
-      </div>
+    <article className={`project-card workspace-card${expanded ? ' expanded' : ' collapsed'}`}>
       {expanded && (
         <div className="project-card-content">
           <div className="workspace-title">
             <div>
-              <h2>{project.name}</h2>
+              <h2>工作項目</h2>
               <p>
-                {project.tasks.length} 個 Task · 預估{' '}
+                {project.tasks.length} 個項目 · 預估{' '}
                 {hourValueLabel(getProjectEstimatedHours(project))} 小時
               </p>
             </div>
-            <div className="view-switch" aria-label={`${project.name} 時間檢視`}>
+            <div className="view-switch" aria-label="工作項目時間檢視">
               {(['day', 'week', 'month'] as const).map(value => (
                 <button
                   key={value}
@@ -817,12 +811,16 @@ function ProjectPanel({
             <Backlog
               projectId={project.id}
               tasks={backlogTasks}
+              allTasks={project.tasks}
+              expandedTaskIds={expandedTaskIds}
               draggingTaskId={
                 taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
               }
               onEdit={onEditTask}
               onAddTask={onAddTask}
               onDelete={onDeleteTask}
+              onAddChild={onAddChild}
+              onToggleTask={onToggleTask}
               onTaskPointerDown={(task, event) =>
                 onBeginTaskDrag(project.id, task, 'backlog', event)
               }
@@ -831,6 +829,8 @@ function ProjectPanel({
             <CapacityGantt
               projectId={project.id}
               tasks={scheduledTasks}
+              allTasks={project.tasks}
+              expandedTaskIds={expandedTaskIds}
               backlogTasks={backlogTasks}
               allocations={allocations}
               capacityAllocations={allAllocations}
@@ -848,6 +848,8 @@ function ProjectPanel({
               onTaskDropTarget={onTaskDropTarget}
               onAdjustAllocation={onAdjustAllocation}
               onDelete={onDeleteTask}
+              onAddChild={onAddChild}
+              onToggleTask={onToggleTask}
               onEditCapacity={onEditCapacity}
               onTimelineScroll={onTimelineScroll}
             />
@@ -861,19 +863,27 @@ function ProjectPanel({
 function Backlog({
   projectId,
   tasks,
+  allTasks,
+  expandedTaskIds,
   draggingTaskId,
   onEdit,
   onAddTask,
   onDelete,
+  onAddChild,
+  onToggleTask,
   onTaskPointerDown,
   onTaskDropTarget,
 }: {
   projectId: string;
   tasks: Task[];
+  allTasks: Task[];
+  expandedTaskIds: Set<string>;
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
   onAddTask: () => void;
   onDelete: (taskId: string) => void;
+  onAddChild: (task: Task) => void;
+  onToggleTask: (taskId: string) => void;
   onTaskPointerDown: (task: Task, event: ReactPointerEvent<HTMLElement>) => void;
   onTaskDropTarget: TaskDropTargetHandler;
 }) {
@@ -890,6 +900,11 @@ function Backlog({
       isDragging={draggingTaskId === task.id}
       onEdit={onEdit}
       onDelete={onDelete}
+      hasChildren={taskHasChildren(allTasks, task.id)}
+      depth={taskDepth(allTasks, task.id)}
+      onAddChild={task => onAddChild(task)}
+      onToggle={task => onToggleTask(task.id)}
+      expanded={expandedTaskIds.has(task.id)}
       onPointerDown={event => onTaskPointerDown(task, event)}
     />
   );
@@ -982,22 +997,6 @@ function TaskDialog({
           />
         </label>
         <div className="form-grid">
-          <label>
-            開始日期
-            <input
-              type="date"
-              value={draft.start || ''}
-              onChange={event => setDraft({ ...draft, start: event.target.value || null })}
-            />
-          </label>
-          <label>
-            結束日期
-            <input
-              type="date"
-              value={draft.end || ''}
-              onChange={event => setDraft({ ...draft, end: event.target.value || null })}
-            />
-          </label>
           <label>
             優先順序
             <select

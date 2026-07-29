@@ -52,7 +52,7 @@ function readOne<T>(db: IDBDatabase, storeName: string, key: string) {
   });
 }
 
-function migrateTask(value: Partial<Task> & Record<string, unknown>): Task {
+function migrateTask(value: Partial<Task> & Record<string, unknown>, order = 0): Task {
   const timestamp = now();
   return {
     id: typeof value.id === 'string' ? value.id : uid(),
@@ -68,19 +68,26 @@ function migrateTask(value: Partial<Task> & Record<string, unknown>): Task {
       value.priority === 'low' || value.priority === 'high' || value.priority === 'medium'
         ? value.priority
         : 'medium',
-    status: 'backlog',
+    status:
+      value.status === 'scheduled' || value.status === 'in_progress' || value.status === 'completed'
+        ? value.status
+        : 'backlog',
     notes: typeof value.notes === 'string' ? value.notes : '',
     owner: typeof value.owner === 'string' ? value.owner : '',
     color: typeof value.color === 'string' ? value.color : '#2f75bb',
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : timestamp,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : timestamp,
+    parentId: typeof value.parentId === 'string' ? value.parentId : null,
+    order: typeof value.order === 'number' && Number.isFinite(value.order) ? value.order : order,
   };
 }
 
 function migrateProject(value: Record<string, unknown>): Project {
   const timestamp = now();
   const tasks = Array.isArray(value.tasks)
-    ? value.tasks.map(task => migrateTask((task || {}) as Partial<Task> & Record<string, unknown>))
+    ? value.tasks.map((task, index) =>
+        migrateTask((task || {}) as Partial<Task> & Record<string, unknown>, index),
+      )
     : [];
   return {
     id: typeof value.id === 'string' ? value.id : uid(),
@@ -106,17 +113,41 @@ function migrationCapacities(projects: Project[]): DailyCapacity[] {
 }
 
 function migrateLegacyProjects(value: unknown): WorkspaceData {
-  const projects = Array.isArray(value)
+  const sourceProjects = Array.isArray(value)
     ? value
         .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
         .map(migrateProject)
     : [];
+  const projects = mergeProjects(sourceProjects);
   return {
     version: CURRENT_WORKSPACE_VERSION,
     projects,
     dailyCapacities: migrationCapacities(projects),
     allocations: [],
   };
+}
+
+/** Projects were only a storage grouping. The current model has one invisible workspace root. */
+function mergeProjects(projects: Project[]): Project[] {
+  const tasks = projects
+    .flatMap(project => project.tasks)
+    .map((task, index) => ({
+      ...task,
+      parentId: task.parentId ?? null,
+      order: index,
+    }));
+  if (!tasks.length && !projects.length) return [];
+  const timestamp = now();
+  return [
+    {
+      id: 'workspace-root',
+      name: '工作項目',
+      description: '',
+      createdAt: projects[0]?.createdAt || timestamp,
+      updatedAt: timestamp,
+      tasks,
+    },
+  ];
 }
 
 /**
@@ -131,9 +162,12 @@ function migrateLegacyProjects(value: unknown): WorkspaceData {
 export function migrateWorkspace(raw: unknown): WorkspaceData {
   if (Array.isArray(raw)) return migrateLegacyProjects(raw);
   const value = (raw && typeof raw === 'object' ? raw : {}) as Partial<WorkspaceData>;
+  const projects = Array.isArray(value.projects)
+    ? value.projects.map(project => migrateProject(project as unknown as Record<string, unknown>))
+    : [];
   return normalizeWorkspaceData({
     version: CURRENT_WORKSPACE_VERSION,
-    projects: Array.isArray(value.projects) ? value.projects : [],
+    projects: mergeProjects(projects),
     dailyCapacities: Array.isArray(value.dailyCapacities)
       ? value.dailyCapacities.map(normalizeCapacity)
       : [],

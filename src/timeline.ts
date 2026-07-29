@@ -181,9 +181,7 @@ export function buildTimelinePeriods(start: string, end: string, view: ViewMode)
 
 export function timelineRange(tasks: Task[], view: ViewMode, allocations: Allocation[] = []) {
   const dated = tasks
-    .flatMap(task =>
-      [task.start, task.end, task.deadline].filter((date): date is string => Boolean(date)),
-    )
+    .flatMap(task => [task.deadline].filter((date): date is string => Boolean(date)))
     .concat(allocations.map(allocation => allocation.date))
     .sort();
   const min = dated[0] || today();
