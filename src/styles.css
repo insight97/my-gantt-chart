@@ -717,6 +717,12 @@ h1 {
 .task-card:active {
   cursor: grabbing;
 }
+.task-card-group {
+  cursor: default;
+}
+.task-card-group:active {
+  cursor: default;
+}
 .priority {
   display: inline-block;
   padding: 1px 4px;
@@ -1023,6 +1029,10 @@ h1 {
   position: relative;
   text-align: left;
   min-width: 0;
+}
+.backlog .task-card-backlog.task-card-group {
+  border-color: #cbdce6;
+  background: #f3f8fb;
 }
 .backlog .task-card {
   margin-left: 0;

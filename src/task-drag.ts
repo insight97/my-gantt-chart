@@ -40,7 +40,7 @@ export function taskRowDropRelation(
   return 'inside';
 }
 
-/** Backlog is a flat list, so a card only exposes before/after sorting targets. */
+/** Backlog leaf rows expose before/after sorting targets within their visible hierarchy context. */
 export function backlogDropRelation(relativeY: number, rowHeight: number): 'before' | 'after' {
   return relativeY < rowHeight / 2 ? 'before' : 'after';
 }

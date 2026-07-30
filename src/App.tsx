@@ -362,10 +362,17 @@ export default function App() {
   );
 
   const moveTaskToBacklog = useCallback(
-    (projectId: string, taskId: string) => {
+    (projectId: string, taskId: string, targetTaskId?: string, relation?: 'before' | 'after') => {
       if (!workspace) return;
-      const result = moveTaskToBacklogOperation(workspace, projectId, taskId);
-      if (result.ok && result.changed) commit(result.workspace);
+      const result = moveTaskToBacklogOperation(
+        workspace,
+        projectId,
+        taskId,
+        targetTaskId,
+        relation,
+      );
+      if (!result.ok) setNotice(result.error);
+      else if (result.changed) commit(result.workspace);
     },
     [workspace, commit],
   );
@@ -407,7 +414,12 @@ export default function App() {
       const target = tracked && (!hit || tracked.element.contains(hit)) ? tracked.target : null;
       if (target?.projectId === current.projectId) {
         if (target.kind === 'backlog') {
-          if (current.origin === 'gantt') moveTaskToBacklog(current.projectId, current.task.id);
+          const relation =
+            target.relation === 'before' || target.relation === 'after'
+              ? target.relation
+              : undefined;
+          if (current.origin === 'gantt')
+            moveTaskToBacklog(current.projectId, current.task.id, target.taskId, relation);
           else if (target.taskId && target.relation)
             moveTask(current.projectId, current.task.id, target.taskId, target.relation);
         }
@@ -829,7 +841,6 @@ function ProjectPanel({
               projectId={project.id}
               tasks={backlogTasks}
               allTasks={project.tasks}
-              expandedTaskIds={expandedTaskIds}
               taskDrag={taskDrag}
               draggingTaskId={
                 taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
@@ -838,7 +849,6 @@ function ProjectPanel({
               onAddTask={onAddTask}
               onDelete={onDeleteTask}
               onAddChild={onAddChild}
-              onToggleTask={onToggleTask}
               onTaskPointerDown={(task, event) =>
                 onBeginTaskDrag(project.id, task, 'backlog', event)
               }
@@ -882,28 +892,24 @@ function Backlog({
   projectId,
   tasks,
   allTasks,
-  expandedTaskIds,
   taskDrag,
   draggingTaskId,
   onEdit,
   onAddTask,
   onDelete,
   onAddChild,
-  onToggleTask,
   onTaskPointerDown,
   onTaskDropTarget,
 }: {
   projectId: string;
   tasks: Task[];
   allTasks: Task[];
-  expandedTaskIds: Set<string>;
   taskDrag: TaskDragState | null;
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
   onAddTask: () => void;
   onDelete: (taskId: string) => void;
   onAddChild: (task: Task) => void;
-  onToggleTask: (taskId: string) => void;
   onTaskPointerDown: (task: Task, event: ReactPointerEvent<HTMLElement>) => void;
   onTaskDropTarget: TaskDropTargetHandler;
 }) {
@@ -916,6 +922,7 @@ function Backlog({
     if (pointerLeftElement(event)) onTaskDropTarget(null);
   };
   const renderTask = (task: Task) => {
+    const isGroup = taskHasChildren(allTasks, task.id);
     const dropRelation =
       taskDrag?.projectId === projectId &&
       taskDrag.target?.kind === 'backlog' &&
@@ -923,6 +930,7 @@ function Backlog({
         ? taskDrag.target.relation
         : undefined;
     const handleRowPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (isGroup) return;
       const bounds = event.currentTarget.getBoundingClientRect();
       onTaskDropTarget(
         {
@@ -947,12 +955,11 @@ function Backlog({
           isDragging={draggingTaskId === task.id}
           onEdit={onEdit}
           onDelete={onDelete}
-          hasChildren={taskHasChildren(allTasks, task.id)}
+          hasChildren={isGroup}
+          isGroup={isGroup}
           depth={taskDepth(allTasks, task.id)}
           onAddChild={task => onAddChild(task)}
-          onToggle={task => onToggleTask(task.id)}
-          expanded={expandedTaskIds.has(task.id)}
-          onPointerDown={event => onTaskPointerDown(task, event)}
+          onPointerDown={isGroup ? undefined : event => onTaskPointerDown(task, event)}
         />
       </div>
     );
@@ -966,7 +973,13 @@ function Backlog({
       <div className="section-heading">
         <div>
           <h2>Backlog</h2>
-          <small>{tasks.length} 個待排程 Task</small>
+          <small>
+            {
+              tasks.filter(task => !taskHasChildren(allTasks, task.id) && task.status === 'backlog')
+                .length
+            }{' '}
+            個待排程 Task
+          </small>
         </div>
       </div>
       {tasks.length === 0 && (
