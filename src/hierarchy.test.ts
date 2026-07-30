@@ -151,8 +151,8 @@ describe('階層工作項目', () => {
     expect(nextTasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: child.id })]));
   });
 
-  it('父項目沒有工時時新增子任務不建立未拆分工作', () => {
-    const parent = workItem('parent', null, 0);
+  it('父項目只有預估工時但尚未分配時新增子任務不建立未拆分工作', () => {
+    const parent = workItem('parent', null, 12);
     const child = workItem('new-child', parent.id, 4);
     const zeroAllocation = {
       id: 'zero-allocation',
@@ -227,5 +227,35 @@ describe('階層工作項目', () => {
         expect.objectContaining({ id: sourceAllocation.id, taskId: source.id }),
       ]),
     );
+  });
+
+  it('拖曳工作到尚未分配工時的父節點時不建立未拆分工作', () => {
+    const parent = workItem('parent', null, 8);
+    parent.status = 'scheduled';
+    const source = workItem('source', null, 4);
+    const zeroAllocation = {
+      id: 'zero-allocation',
+      taskId: parent.id,
+      date: '2026-02-03',
+      allocatedHours: 0,
+    };
+
+    const result = moveTask(
+      workspace([parent, source], [zeroAllocation]),
+      'workspace-root',
+      source.id,
+      parent.id,
+      'inside',
+    );
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    const nextTasks = result.workspace.projects[0].tasks;
+    expect(nextTasks).toHaveLength(2);
+    expect(nextTasks.some(task => task.name === '未拆分工作')).toBe(false);
+    expect(nextTasks).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: source.id, parentId: parent.id })]),
+    );
+    expect(result.workspace.allocations).toEqual([zeroAllocation]);
   });
 });
