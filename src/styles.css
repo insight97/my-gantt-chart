@@ -936,29 +936,45 @@ h1 {
 }
 .task-card-toggle {
   position: absolute;
-  left: 4px;
-  top: 8px;
+  left: 6px;
+  top: 10px;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 1px solid #cbd9e1;
+  border: 0;
   border-radius: 6px;
-  background: #f4f8fa;
+  background: transparent;
   color: #527085;
-  font-size: 16px;
   line-height: 1;
   z-index: 1;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
 }
-.task-card-toggle:hover {
-  border-color: #9db9c8;
+.task-card-toggle:hover,
+.task-card-toggle:focus-visible {
   background: #e8f1f6;
   color: var(--navy);
 }
 .task-card-toggle:focus-visible {
   outline: 2px solid #77b9d7;
   outline-offset: 1px;
+}
+.task-card-toggle-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 160ms ease;
+}
+.task-card-toggle-icon.is-expanded {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-card-toggle,
+  .task-card-toggle-icon {
+    transition: none;
+  }
 }
 .backlog .task-card-backlog:has(.task-card-toggle) .task-card-info {
   padding-left: 36px;
