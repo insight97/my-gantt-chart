@@ -143,6 +143,20 @@ describe('Work Item hierarchy UI', () => {
     expect(screen.getByText('新子工作')).toBeInTheDocument();
   });
 
+  it('does not create an unsplit child when the parent has zero work', async () => {
+    const parent = workItem('parent', '零工時父工作', { estimatedHours: 0 });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('零工時父工作')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '新增 零工時父工作 的子任務' }));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '新子工作' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(screen.getByText('新子工作')).toBeInTheDocument());
+    expect(screen.queryByText('未拆分工作')).not.toBeInTheDocument();
+  });
+
   it('removes start and end inputs from the editor', async () => {
     loadWorkspaceMock.mockResolvedValue(
       workspace([

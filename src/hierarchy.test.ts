@@ -151,6 +151,27 @@ describe('階層工作項目', () => {
     expect(nextTasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: child.id })]));
   });
 
+  it('父項目沒有工時時新增子任務不建立未拆分工作', () => {
+    const parent = workItem('parent', null, 0);
+    const child = workItem('new-child', parent.id, 4);
+    const zeroAllocation = {
+      id: 'zero-allocation',
+      taskId: parent.id,
+      date: '2026-02-03',
+      allocatedHours: 0,
+    };
+
+    const result = saveTask(workspace([parent], [zeroAllocation]), 'workspace-root', child);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    const nextTasks = result.workspace.projects[0].tasks;
+    expect(nextTasks).toHaveLength(2);
+    expect(nextTasks.some(task => task.name === '未拆分工作')).toBe(false);
+    expect(result.workspace.allocations).toEqual([zeroAllocation]);
+    expect(nextTasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: child.id })]));
+  });
+
   it('父節點截止日期不可晚於子任務截止日期', () => {
     const parent = workItem('parent');
     parent.deadline = '2026-02-10';
