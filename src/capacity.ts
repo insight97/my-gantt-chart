@@ -50,7 +50,7 @@ export function getTaskScheduleDates(taskId: string, allocations: Allocation[]) 
 export function isTaskOverdue(task: Task, allocations: Allocation[]) {
   if (!task.deadline) return false;
   const latestAllocation = allocations
-    .filter(item => item.taskId === task.id && item.allocatedHours > 0)
+    .filter(item => item.allocatedHours > 0)
     .map(item => item.date)
     .sort()
     .at(-1);

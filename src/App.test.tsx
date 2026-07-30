@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyTask } from './data';
-import type { Project, Task, WorkspaceData } from './types';
+import type { Allocation, Project, Task, WorkspaceData } from './types';
 import './styles.css';
 import './capacity-header.css';
 
@@ -39,7 +39,11 @@ const workItem = (id: string, name: string, overrides: Partial<Task> = {}): Task
   ...overrides,
 });
 
-const workspace = (tasks: Task[], extraProjects: Project[] = []): WorkspaceData => ({
+const workspace = (
+  tasks: Task[],
+  extraProjects: Project[] = [],
+  allocations: Allocation[] = [],
+): WorkspaceData => ({
   version: 3,
   projects: [
     {
@@ -53,7 +57,7 @@ const workspace = (tasks: Task[], extraProjects: Project[] = []): WorkspaceData 
     ...extraProjects,
   ],
   dailyCapacities: [],
-  allocations: [],
+  allocations,
 });
 
 describe('Work Item hierarchy UI', () => {
@@ -105,6 +109,38 @@ describe('Work Item hierarchy UI', () => {
 
     await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: '收合 根工作' })).toBeInTheDocument();
+  });
+
+  it('inherits the parent deadline when creating a child', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([workItem('root', '根工作', { deadline: '2026-02-01' })]),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('根工作')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '新增 根工作 的子任務' }));
+    expect(screen.getByLabelText('截止日期')).toHaveValue('2026-02-01');
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  });
+
+  it('preserves scheduled parent work as an unsplit child when adding a child', async () => {
+    const parent = workItem('parent', '父工作', { status: 'scheduled', estimatedHours: 12 });
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [parent],
+        [],
+        [{ id: 'parent-allocation', taskId: parent.id, date: '2026-02-03', allocatedHours: 4 }],
+      ),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '新增 父工作 的子任務' }));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '新子工作' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(screen.getByText('未拆分工作')).toBeInTheDocument());
+    expect(screen.getByText('新子工作')).toBeInTheDocument();
   });
 
   it('removes start and end inputs from the editor', async () => {

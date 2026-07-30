@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from '
 import {
   emptyTask,
   taskDescendantIds,
+  taskDeadlineConstraint,
   taskHasChildren,
   taskDepth,
   now,
@@ -284,9 +285,11 @@ export default function App() {
     parentId: string | null = null,
   ) => {
     if (!workspace || !workspace.projects.some(project => project.id === projectId)) return;
+    const project = workspace.projects.find(item => item.id === projectId)!;
     const task = emptyTask();
     task.parentId = parentId;
-    task.order = workspace.projects.find(project => project.id === projectId)?.tasks.length || 0;
+    task.order = project.tasks.filter(item => (item.parentId ?? null) === parentId).length;
+    if (parentId) task.deadline = taskDeadlineConstraint(project.tasks, parentId);
     if (entryPoint === 'timeline') task.status = 'scheduled';
     setEditingTask({ projectId, task, scheduleOnSave: entryPoint === 'timeline' });
   };
@@ -295,6 +298,10 @@ export default function App() {
     if (!workspace) return;
     const project = workspace.projects.find(item => item.id === projectId);
     if (!project) return;
+    if (parent.status === 'completed') {
+      setNotice('已完成工作不可新增子任務。');
+      return;
+    }
     if (taskDepth(project.tasks, parent.id) >= 3) {
       setNotice('任務階層最多三層。');
       return;
@@ -705,6 +712,7 @@ export default function App() {
           allocations={workspace.allocations.filter(
             allocation => allocation.taskId === editingTask.task.id,
           )}
+          hasChildren={taskHasChildren(editingProject.tasks, editingTask.task.id)}
           scheduleOnSave={editingTask.scheduleOnSave}
           onClose={() => setEditingTask(null)}
           onSave={task => saveTask(editingTask.projectId, task, editingTask.scheduleOnSave)}
@@ -953,6 +961,7 @@ function TaskDialog({
   task,
   tasks,
   allocations,
+  hasChildren,
   scheduleOnSave,
   onClose,
   onSave,
@@ -961,6 +970,7 @@ function TaskDialog({
   task: Task;
   tasks: Task[];
   allocations: Allocation[];
+  hasChildren: boolean;
   scheduleOnSave: boolean;
   onClose: () => void;
   onSave: (task: Task) => string | null;
@@ -1088,11 +1098,13 @@ function TaskDialog({
           />
         </label>
         <p className="form-hint">
-          {allocations.length
-            ? `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待安排 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
-            : scheduleOnSave
-              ? '儲存此 Timeline Task 時會自動建立 Allocation。'
-              : '尚未產生 Allocation；按下自動排程或拖入 Allocation Timeline 後才會建立。'}
+          {hasChildren
+            ? '此父任務的截止日期會限制整個子樹；預估工時與 Allocation 由子任務彙總。'
+            : allocations.length
+              ? `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待安排 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
+              : scheduleOnSave
+                ? '儲存此 Timeline Task 時會自動建立 Allocation。'
+                : '尚未產生 Allocation；按下自動排程或拖入 Allocation Timeline 後才會建立。'}
         </p>
         {error && <p className="error">{error}</p>}
         <div className="dialog-actions">

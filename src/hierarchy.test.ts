@@ -12,6 +12,7 @@ import {
   autoScheduleTask,
   moveTask,
   moveTaskToTimelineAsChild,
+  saveTask,
 } from './workspace-operations';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
@@ -117,5 +118,93 @@ describe('階層工作項目', () => {
     expect(
       adjustAllocationDay(workspace(tasks), 'workspace-root', 'parent', '2026-01-01', 1),
     ).toMatchObject({ ok: false });
+  });
+
+  it('新增子任務時將父項目既有工作保留為未拆分工作', () => {
+    const parent = workItem('parent', null, 12);
+    parent.status = 'scheduled';
+    parent.deadline = '2026-02-10';
+    const allocation = {
+      id: 'parent-allocation',
+      taskId: parent.id,
+      date: '2026-02-03',
+      allocatedHours: 4,
+    };
+    const child = workItem('new-child', parent.id, 4);
+    child.deadline = parent.deadline;
+
+    const result = saveTask(workspace([parent], [allocation]), 'workspace-root', child);
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    const nextTasks = result.workspace.projects[0].tasks;
+    const unsplit = nextTasks.find(task => task.name === '未拆分工作');
+    expect(unsplit).toMatchObject({
+      parentId: parent.id,
+      estimatedHours: parent.estimatedHours,
+      deadline: parent.deadline,
+      status: parent.status,
+    });
+    expect(result.workspace.allocations).toEqual([
+      expect.objectContaining({ id: allocation.id, taskId: unsplit?.id }),
+    ]);
+    expect(nextTasks).toEqual(expect.arrayContaining([expect.objectContaining({ id: child.id })]));
+  });
+
+  it('父節點截止日期不可晚於子任務截止日期', () => {
+    const parent = workItem('parent');
+    parent.deadline = '2026-02-10';
+    const child = workItem('child', parent.id);
+    child.deadline = '2026-02-11';
+
+    expect(saveTask(workspace([parent], []), 'workspace-root', child)).toMatchObject({
+      ok: false,
+      error: '「child」的截止日期不可晚於父任務「parent」。',
+    });
+  });
+
+  it('拖曳工作到父節點時同樣保留父節點既有工作', () => {
+    const parent = workItem('parent', null, 8);
+    parent.status = 'scheduled';
+    const source = workItem('source', null, 4);
+    source.status = 'scheduled';
+    const parentAllocation = {
+      id: 'parent-allocation',
+      taskId: parent.id,
+      date: '2026-02-03',
+      allocatedHours: 2,
+    };
+    const sourceAllocation = {
+      id: 'source-allocation',
+      taskId: source.id,
+      date: '2026-02-04',
+      allocatedHours: 4,
+    };
+
+    const result = moveTask(
+      workspace([parent, source], [parentAllocation, sourceAllocation]),
+      'workspace-root',
+      source.id,
+      parent.id,
+      'inside',
+    );
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    const nextTasks = result.workspace.projects[0].tasks;
+    const unsplit = nextTasks.find(task => task.name === '未拆分工作');
+    expect(unsplit).toMatchObject({ parentId: parent.id, estimatedHours: parent.estimatedHours });
+    expect(nextTasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: source.id, parentId: parent.id }),
+        expect.objectContaining({ id: unsplit?.id, parentId: parent.id }),
+      ]),
+    );
+    expect(result.workspace.allocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: parentAllocation.id, taskId: unsplit?.id }),
+        expect.objectContaining({ id: sourceAllocation.id, taskId: source.id }),
+      ]),
+    );
   });
 });
