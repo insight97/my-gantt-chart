@@ -71,13 +71,15 @@ function findTask(project: Project, taskId: string) {
   return project.tasks.find(task => task.id === taskId);
 }
 
+function positiveHours(value: number) {
+  return Number.isFinite(value) && value > 0;
+}
+
 function parentHasDirectWork(workspace: WorkspaceData, parent: Task) {
-  return (
-    parent.estimatedHours > 0 ||
-    workspace.allocations.some(
-      allocation => allocation.taskId === parent.id && allocation.allocatedHours > 0,
-    )
-  );
+  const directAllocatedHours = workspace.allocations
+    .filter(allocation => allocation.taskId === parent.id)
+    .reduce((sum, allocation) => sum + Math.max(0, allocation.allocatedHours), 0);
+  return positiveHours(parent.estimatedHours) || positiveHours(directAllocatedHours);
 }
 
 /** Moves a leaf parent's existing work into a real child before adding a new child. */
