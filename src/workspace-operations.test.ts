@@ -6,6 +6,7 @@ import {
   autoScheduleTask,
   moveTaskGroupToBacklog,
   moveTaskGroupToTimeline,
+  moveTask,
   moveTaskToBacklog,
   saveTask,
   scheduleTaskAtDate,
@@ -244,5 +245,37 @@ describe('workspace operations', () => {
     const result = saveTask(original, 'project-a', { ...parent, parentId: 'child' });
 
     expect(result).toEqual({ ok: false, error: '不可把 Task 移到自己的子樹內。' });
+  });
+
+  it('rejects saving a task under a completed parent', () => {
+    const original = workspace(
+      task({ id: 'completed-parent', name: 'Completed Parent', status: 'completed' }),
+    );
+    original.projects[0].tasks.push(task({ id: 'child', name: 'Child' }));
+
+    const result = saveTask(
+      original,
+      'project-a',
+      task({ id: 'child', name: 'Child', parentId: 'completed-parent' }),
+    );
+
+    expect(result).toEqual({ ok: false, error: '已完成工作不可作為父節點。' });
+    expect(original.projects[0].tasks.find(item => item.id === 'child')).toMatchObject({
+      parentId: null,
+    });
+  });
+
+  it('rejects dragging a task inside a completed parent', () => {
+    const original = workspace(
+      task({ id: 'completed-parent', name: 'Completed Parent', status: 'completed' }),
+    );
+    original.projects[0].tasks.push(task({ id: 'child', name: 'Child' }));
+
+    const result = moveTask(original, 'project-a', 'child', 'completed-parent', 'inside');
+
+    expect(result).toEqual({ ok: false, error: '已完成工作不可作為父節點。' });
+    expect(original.projects[0].tasks.find(item => item.id === 'child')).toMatchObject({
+      parentId: null,
+    });
   });
 });
