@@ -4,7 +4,14 @@ import {
   scheduleTaskAt,
   today,
 } from './capacity';
-import { now, taskHasChildren, taskDescendantIds } from './data';
+import {
+  now,
+  taskDeadlineConstraint,
+  taskHasChildren,
+  taskDescendantIds,
+  uid,
+  validateDeadlineHierarchy,
+} from './data';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 export type WorkspaceOperationResult =
@@ -64,6 +71,50 @@ function findTask(project: Project, taskId: string) {
   return project.tasks.find(task => task.id === taskId);
 }
 
+function parentHasDirectWork(workspace: WorkspaceData, parent: Task) {
+  return (
+    parent.estimatedHours > 0 ||
+    workspace.allocations.some(
+      allocation => allocation.taskId === parent.id && allocation.allocatedHours > 0,
+    )
+  );
+}
+
+/** Moves a leaf parent's existing work into a real child before adding a new child. */
+function preserveParentWorkAsUnsplit(
+  workspace: WorkspaceData,
+  projectId: string,
+  parent: Task,
+): WorkspaceData {
+  const project = findProject(workspace, projectId);
+  if (
+    !project ||
+    taskHasChildren(project.tasks, parent.id) ||
+    !parentHasDirectWork(workspace, parent)
+  )
+    return workspace;
+
+  const unsplitTask: Task = {
+    ...parent,
+    id: uid(),
+    name: '未拆分工作',
+    parentId: parent.id,
+    order: 0,
+    updatedAt: now(),
+  };
+  return {
+    ...workspace,
+    projects: workspace.projects.map(item =>
+      item.id === projectId
+        ? { ...item, tasks: [...item.tasks, unsplitTask], updatedAt: now() }
+        : item,
+    ),
+    allocations: workspace.allocations.map(allocation =>
+      allocation.taskId === parent.id ? { ...allocation, taskId: unsplitTask.id } : allocation,
+    ),
+  };
+}
+
 function parentValidationError(project: Project, draft: Task): string | null {
   const parentId = draft.parentId ?? null;
   if (!parentId) return null;
@@ -90,32 +141,49 @@ export function saveTask(
   projectId: string,
   draft: Task,
 ): WorkspaceOperationResult {
-  const project = findProject(workspace, projectId);
+  let project = findProject(workspace, projectId);
   if (!project) return invalid('找不到 Project。');
   if (!draft.name.trim()) return invalid('請輸入 Task 名稱。');
   if (!Number.isFinite(draft.estimatedHours) || draft.estimatedHours < 0)
     return invalid('請輸入有效的預估工時。');
   const parentError = parentValidationError(project, draft);
   if (parentError) return invalid(parentError);
-  if (taskHasChildren(project.tasks, draft.id)) {
+  const initialProject = project;
+  if (taskHasChildren(initialProject.tasks, draft.id)) {
     draft = {
       ...draft,
-      estimatedHours: project.tasks
+      estimatedHours: initialProject.tasks
         .filter(
           task =>
-            taskDescendantIds(project.tasks, draft.id).has(task.id) &&
-            !taskHasChildren(project.tasks, task.id),
+            taskDescendantIds(initialProject.tasks, draft.id).has(task.id) &&
+            !taskHasChildren(initialProject.tasks, task.id),
         )
         .reduce((sum, task) => sum + task.estimatedHours, 0),
     };
   }
 
   const existingTask = findTask(project, draft.id);
+  let nextWorkspace = workspace;
+  if (!existingTask && draft.parentId) {
+    const parent = findTask(project, draft.parentId)!;
+    nextWorkspace = preserveParentWorkAsUnsplit(workspace, project.id, parent);
+    project = findProject(nextWorkspace, project.id)!;
+  }
+
   let nextTask: Task = {
     ...draft,
     name: draft.name.trim(),
     updatedAt: now(),
   };
+  if (!existingTask && nextTask.parentId && !nextTask.deadline)
+    nextTask.deadline = taskDeadlineConstraint(project.tasks, nextTask.parentId);
+
+  const candidateTasks = project.tasks.some(task => task.id === nextTask.id)
+    ? project.tasks.map(task => (task.id === nextTask.id ? nextTask : task))
+    : [...project.tasks, nextTask];
+  const deadlineError = validateDeadlineHierarchy(candidateTasks);
+  if (deadlineError) return invalid(deadlineError);
+
   let taskAllocations: Allocation[] | undefined;
   if (nextTask.status === 'backlog') {
     const result = returnTaskToBacklog({
@@ -128,7 +196,7 @@ export function saveTask(
 
   return updated(
     replaceTaskAndAllocations(
-      workspace,
+      nextWorkspace,
       project.id,
       nextTask,
       taskAllocations,
@@ -262,7 +330,9 @@ function taskDepth(tasks: Task[], taskId: string, parentOverride?: Map<string, s
   while (current && !seen.has(current.id)) {
     seen.add(current.id);
     depth += 1;
-    const parentId = parentOverride?.get(current.id) ?? current.parentId ?? null;
+    const parentId = parentOverride?.has(current.id)
+      ? parentOverride.get(current.id)!
+      : (current.parentId ?? null);
     current = parentId ? tasks.find(task => task.id === parentId) : undefined;
   }
   return depth;
@@ -276,7 +346,7 @@ export function moveTask(
   targetId: string,
   relation: TaskMoveRelation,
 ): WorkspaceOperationResult {
-  const project = findProject(workspace, projectId);
+  let project = findProject(workspace, projectId);
   if (!project) return invalid('找不到工作區。');
   if (sourceId === targetId) return unchanged();
   const source = findTask(project, sourceId);
@@ -284,6 +354,12 @@ export function moveTask(
   if (!source || !target) return unchanged();
   const descendants = taskDescendantIds(project.tasks, sourceId);
   if (descendants.has(targetId)) return invalid('不可把工作項目移到自己的子樹內。');
+
+  let nextWorkspace = workspace;
+  if (relation === 'inside' && !taskHasChildren(project.tasks, target.id)) {
+    nextWorkspace = preserveParentWorkAsUnsplit(workspace, project.id, target);
+    project = findProject(nextWorkspace, project.id)!;
+  }
 
   const nextParentId = relation === 'inside' ? target.id : (target.parentId ?? null);
   const override = new Map<string, string | null>([[source.id, nextParentId]]);
@@ -333,9 +409,11 @@ export function moveTask(
       ? { ...task, order: task.order ?? 0 }
       : task,
   );
+  const deadlineError = validateDeadlineHierarchy(normalized);
+  if (deadlineError) return invalid(deadlineError);
   return updated({
-    ...workspace,
-    projects: workspace.projects.map(item =>
+    ...nextWorkspace,
+    projects: nextWorkspace.projects.map(item =>
       item.id === projectId ? { ...item, tasks: normalized, updatedAt: now() } : item,
     ),
   });

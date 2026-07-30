@@ -15,6 +15,8 @@
 - **Allocation**：Task 在特定日期上的工時，可由使用者指定或 Automatic Scheduling 產生；不區分來源。
 - **Allocation Timeline**：唯一的時間軸畫面，保留日／週／月容量摘要、Allocation 編輯、縮放、平移與 Task card 拖曳。
 - **Deadline**：Task 必須完成的日期；只有實際 Allocation 日期超過時顯示逾期警告。
+- 父 Work Item 的 Deadline 代表整個子樹的完成期限；新增子項目時預設繼承，子項目不可晚於已設定的父項目期限。
+- 若父 Work Item 原本已有預估工時或 Allocation，加入子項目時會保留為 `未拆分工作` 葉節點，避免原有排程消失或被重複計算。
 - **Pending Hours**：估計工時與目前 Allocation 總和的有號差額；正值代表待安排，負值代表需要釋放。
 
 Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`）；日層級點擊日期即可編輯總容量與不可用時間，超載日期會以紅色警告。

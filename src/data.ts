@@ -243,6 +243,40 @@ export function taskDescendantIds(tasks: Task[], taskId: string): Set<string> {
   return result;
 }
 
+/** Returns the strictest deadline inherited from the ancestors of a work item. */
+export function taskDeadlineConstraint(tasks: Task[], parentId: string | null) {
+  let currentId = parentId;
+  let constraint: string | null = null;
+  const visited = new Set<string>();
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const parent = tasks.find(task => task.id === currentId);
+    if (!parent) break;
+    if (parent.deadline && (!constraint || parent.deadline < constraint))
+      constraint = parent.deadline;
+    currentId = parent.parentId ?? null;
+  }
+  return constraint;
+}
+
+/** Ensures every explicitly dated descendant completes by each dated ancestor. */
+export function validateDeadlineHierarchy(tasks: Task[]) {
+  for (const task of tasks) {
+    if (!task.deadline) continue;
+    let currentId = task.parentId ?? null;
+    const visited = new Set<string>();
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const parent = tasks.find(value => value.id === currentId);
+      if (!parent) break;
+      if (parent.deadline && task.deadline > parent.deadline)
+        return `「${task.name}」的截止日期不可晚於父任務「${parent.name}」。`;
+      currentId = parent.parentId ?? null;
+    }
+  }
+  return null;
+}
+
 export const taskHasChildren = (tasks: Task[], taskId: string) =>
   tasks.some(task => (task.parentId ?? null) === taskId);
 
