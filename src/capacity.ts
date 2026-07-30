@@ -262,6 +262,6 @@ export function adjustAllocationDay(
   const next = allocations.map(item => ({ ...item }));
   const current = next.find(item => item.taskId === task.id && item.date === date);
   if (current) current.allocatedHours = Math.max(0, current.allocatedHours + delta);
-  else next.push(createAllocation(task.id, date, Math.max(0, delta)));
+  else if (delta > 0) next.push(createAllocation(task.id, date, delta));
   return { allocations: next };
 }

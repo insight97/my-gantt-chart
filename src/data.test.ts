@@ -185,6 +185,16 @@ describe('容量 domain', () => {
     ]);
   });
 
+  it('空白日期負向調整不建立 0h Allocation', () => {
+    const allocations: Allocation[] = [
+      { id: 'a', taskId: 'task', date: '2026-01-01', allocatedHours: 2 },
+    ];
+
+    expect(adjustAllocationDay(task({ id: 'task' }), allocations, '2026-01-02', -1)).toEqual({
+      allocations,
+    });
+  });
+
   it('拖回 Backlog 只清除 Allocation，保留日期與 deadline metadata', () => {
     const result = returnTaskToBacklog(
       task({ id: 'task', start: '2026-01-01', end: '2026-01-10', deadline: '2026-01-08' }),

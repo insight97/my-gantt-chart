@@ -316,6 +316,11 @@ export function adjustAllocationDay(
   if (taskHasChildren(project.tasks, task.id))
     return invalid('有子任務的工作項目只能檢視彙總工時。');
   if (task.status === 'completed') return invalid('已完成 Task 不可修改。');
+  if (
+    delta < 0 &&
+    !workspace.allocations.some(item => item.taskId === task.id && item.date === date)
+  )
+    return unchanged();
 
   try {
     const result = adjustAllocationDayEngine(task, workspace.allocations, date, delta);
