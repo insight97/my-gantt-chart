@@ -275,6 +275,27 @@ h1 {
   display: grid;
   gap: 8px;
 }
+.backlog-drop-row {
+  position: relative;
+}
+.backlog-drop-row.drop-target-before::before,
+.backlog-drop-row.drop-target-after::after {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 2px;
+  background: var(--blue);
+  content: '';
+  pointer-events: none;
+  animation: task-drop-line-pulse 900ms ease-in-out infinite;
+}
+.backlog-drop-row.drop-target-before::before {
+  top: -5px;
+}
+.backlog-drop-row.drop-target-after::after {
+  bottom: -5px;
+}
 .backlog-item {
   border: 1px solid #e1e7eb;
   border-radius: 8px;
@@ -1111,6 +1132,10 @@ h1 {
   .gantt-side-row.drop-target-inside .task-card-gantt,
   .gantt-side-row.drop-target-before::after,
   .gantt-side-row.drop-target-after::after {
+    animation: none;
+  }
+  .backlog-drop-row.drop-target-before::before,
+  .backlog-drop-row.drop-target-after::after {
     animation: none;
   }
 }

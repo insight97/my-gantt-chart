@@ -23,7 +23,7 @@ import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } 
 import CapacityGantt from './CapacityGantt';
 import { hourValueLabel, priorityLabels, weekdayDateLabel } from './formatters';
 import TaskCard from './TaskCard';
-import { pointerLeftElement } from './task-drag';
+import { backlogDropRelation, pointerLeftElement } from './task-drag';
 import type {
   TaskDragOrigin,
   TaskDragState,
@@ -405,8 +405,11 @@ export default function App() {
           : null;
       const target = tracked && (!hit || tracked.element.contains(hit)) ? tracked.target : null;
       if (target?.projectId === current.projectId) {
-        if (target.kind === 'backlog' && current.origin === 'gantt')
-          moveTaskToBacklog(current.projectId, current.task.id);
+        if (target.kind === 'backlog') {
+          if (current.origin === 'gantt') moveTaskToBacklog(current.projectId, current.task.id);
+          else if (target.taskId && target.relation)
+            moveTask(current.projectId, current.task.id, target.taskId, target.relation);
+        }
         if (target.kind === 'gantt-row') {
           if (target.taskId)
             moveTask(
@@ -832,6 +835,7 @@ function ProjectPanel({
               tasks={backlogTasks}
               allTasks={project.tasks}
               expandedTaskIds={expandedTaskIds}
+              taskDrag={taskDrag}
               draggingTaskId={
                 taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
               }
@@ -884,6 +888,7 @@ function Backlog({
   tasks,
   allTasks,
   expandedTaskIds,
+  taskDrag,
   draggingTaskId,
   onEdit,
   onAddTask,
@@ -897,6 +902,7 @@ function Backlog({
   tasks: Task[];
   allTasks: Task[];
   expandedTaskIds: Set<string>;
+  taskDrag: TaskDragState | null;
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
   onAddTask: () => void;
@@ -906,27 +912,56 @@ function Backlog({
   onTaskPointerDown: (task: Task, event: ReactPointerEvent<HTMLElement>) => void;
   onTaskDropTarget: TaskDropTargetHandler;
 }) {
-  const handleTaskPointerMove = (event: ReactPointerEvent<HTMLElement>) =>
-    onTaskDropTarget({ kind: 'backlog', projectId }, event.currentTarget);
+  const handleTaskPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest('.backlog-drop-row'))
+      onTaskDropTarget({ kind: 'backlog', projectId }, event.currentTarget);
+  };
   const handleTaskPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
     if (pointerLeftElement(event)) onTaskDropTarget(null);
   };
-  const renderTask = (task: Task) => (
-    <TaskCard
-      key={task.id}
-      task={task}
-      variant="backlog"
-      isDragging={draggingTaskId === task.id}
-      onEdit={onEdit}
-      onDelete={onDelete}
-      hasChildren={taskHasChildren(allTasks, task.id)}
-      depth={taskDepth(allTasks, task.id)}
-      onAddChild={task => onAddChild(task)}
-      onToggle={task => onToggleTask(task.id)}
-      expanded={expandedTaskIds.has(task.id)}
-      onPointerDown={event => onTaskPointerDown(task, event)}
-    />
-  );
+  const renderTask = (task: Task) => {
+    const dropRelation =
+      taskDrag?.projectId === projectId &&
+      taskDrag.target?.kind === 'backlog' &&
+      taskDrag.target.taskId === task.id
+        ? taskDrag.target.relation
+        : undefined;
+    const handleRowPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      onTaskDropTarget(
+        {
+          kind: 'backlog',
+          projectId,
+          taskId: task.id,
+          relation: backlogDropRelation(event.clientY - bounds.top, bounds.height),
+        },
+        event.currentTarget,
+      );
+    };
+    return (
+      <div
+        className={`backlog-drop-row${dropRelation ? ` drop-target-${dropRelation}` : ''}`}
+        key={task.id}
+        onPointerMove={handleRowPointerMove}
+        onPointerLeave={handleTaskPointerLeave}
+      >
+        <TaskCard
+          task={task}
+          variant="backlog"
+          isDragging={draggingTaskId === task.id}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          hasChildren={taskHasChildren(allTasks, task.id)}
+          depth={taskDepth(allTasks, task.id)}
+          onAddChild={task => onAddChild(task)}
+          onToggle={task => onToggleTask(task.id)}
+          expanded={expandedTaskIds.has(task.id)}
+          onPointerDown={event => onTaskPointerDown(task, event)}
+        />
+      </div>
+    );
+  };
   return (
     <aside
       className="backlog"

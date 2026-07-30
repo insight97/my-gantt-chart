@@ -105,6 +105,14 @@ describe('容量 domain', () => {
     expect(result.scheduled.map(item => item.id)).toEqual(['task']);
   });
 
+  it('Backlog 優先依 stable order 排序，並以優先級作為 fallback', () => {
+    const first = task({ id: 'first', order: 2, priority: 'high' });
+    const second = task({ id: 'second', order: 1, priority: 'low' });
+    const result = partitionProjectTasks({ tasks: [first, second] } as Project);
+
+    expect(result.backlog.map(item => item.id)).toEqual(['second', 'first']);
+  });
+
   it('排程保留 end metadata，end 不限制實際 Allocation 日期', () => {
     const result = scheduleTaskAt(
       task({ id: 'task', end: '2026-01-01', estimatedHours: 12 }),

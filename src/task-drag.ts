@@ -40,6 +40,11 @@ export function taskRowDropRelation(
   return 'inside';
 }
 
+/** Backlog is a flat list, so a card only exposes before/after sorting targets. */
+export function backlogDropRelation(relativeY: number, rowHeight: number): 'before' | 'after' {
+  return relativeY < rowHeight / 2 ? 'before' : 'after';
+}
+
 /** True when the pointer actually left `currentTarget` rather than moving between its descendants. */
 export function pointerLeftElement(event: {
   relatedTarget: EventTarget | null;
