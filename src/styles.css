@@ -1015,8 +1015,9 @@ h1 {
   border: 1px solid #e1e7eb;
   border-radius: 8px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  row-gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
   padding: 10px;
   background: #fbfcfd;
   position: relative;
@@ -1030,8 +1031,7 @@ h1 {
   min-width: 0;
 }
 .backlog .task-card-backlog .task-card-actions {
-  border-top: 1px solid #e7edf0;
-  padding-top: 6px;
+  align-self: center;
 }
 .task-card-info {
   display: grid;

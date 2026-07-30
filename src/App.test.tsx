@@ -111,6 +111,22 @@ describe('Work Item hierarchy UI', () => {
     expect(screen.getByRole('button', { name: '收合 根工作' })).toBeInTheDocument();
   });
 
+  it('expands and collapses child tasks without hiding the work-item panel', async () => {
+    const parent = workItem('parent', '父工作');
+    const child = workItem('child', '子工作', { parentId: 'parent' });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '全部收合' }));
+    await waitFor(() => expect(screen.queryByText('子工作')).not.toBeInTheDocument());
+    expect(screen.getByText('父工作')).toBeInTheDocument();
+    expect(document.querySelector('.project-card')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '全部展開' }));
+    expect(await screen.findByText('子工作')).toBeInTheDocument();
+  });
+
   it('inherits the parent deadline when creating a child', async () => {
     loadWorkspaceMock.mockResolvedValue(
       workspace([workItem('root', '根工作', { deadline: '2026-02-01' })]),
