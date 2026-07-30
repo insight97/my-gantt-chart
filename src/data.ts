@@ -326,6 +326,7 @@ export function partitionProjectTasks(project: Project, expandedIds = new Set<st
   }
   backlog.sort(
     (a, b) =>
+      (a.order ?? 0) - (b.order ?? 0) ||
       priorityOrder[a.priority] - priorityOrder[b.priority] ||
       a.createdAt.localeCompare(b.createdAt),
   );
