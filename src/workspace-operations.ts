@@ -177,7 +177,9 @@ function parentValidationError(project: Project, draft: Task): string | null {
   const parentId = draft.parentId ?? null;
   if (!parentId) return null;
   if (parentId === draft.id) return 'Task 不可成為自己的父節點。';
-  if (!findTask(project, parentId)) return '找不到父節點。';
+  const parent = findTask(project, parentId);
+  if (!parent) return '找不到父節點。';
+  if (parent.status === 'completed') return '已完成工作不可作為父節點。';
 
   const descendants = taskDescendantIds(project.tasks, draft.id);
   if (descendants.has(parentId)) return '不可把 Task 移到自己的子樹內。';
@@ -497,6 +499,8 @@ export function moveTask(
   const source = findTask(project, sourceId);
   const target = findTask(project, targetId);
   if (!source || !target) return unchanged();
+  if (relation === 'inside' && target.status === 'completed')
+    return invalid('已完成工作不可作為父節點。');
   const descendants = taskDescendantIds(project.tasks, sourceId);
   if (descendants.has(targetId)) return invalid('不可把工作項目移到自己的子樹內。');
 

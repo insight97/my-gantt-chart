@@ -1087,6 +1087,7 @@ function TaskDialog({
   const parentOptions = tasks.filter(
     candidate =>
       candidate.id !== task.id &&
+      candidate.status !== 'completed' &&
       !descendantIds.has(candidate.id) &&
       taskDepth(tasks, candidate.id) < 3,
   );

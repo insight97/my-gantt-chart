@@ -400,6 +400,18 @@ describe('Work Item hierarchy UI', () => {
     await waitFor(() => expect(screen.getByText('新父節點')).toBeInTheDocument());
   });
 
+  it('does not offer a completed task as a parent option', async () => {
+    const completedParent = workItem('completed-parent', '已完成父項目', { status: 'completed' });
+    const child = workItem('child', '可編輯子項目');
+    loadWorkspaceMock.mockResolvedValue(workspace([completedParent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('可編輯子項目')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('可編輯子項目'));
+
+    expect(screen.queryByRole('option', { name: '已完成父項目' })).not.toBeInTheDocument();
+  });
+
   it('indents a child task in Backlog to preserve its hierarchy context', async () => {
     const parent = workItem('parent', '父工作');
     const child = workItem('child', 'Backlog 子工作', { parentId: 'parent' });
