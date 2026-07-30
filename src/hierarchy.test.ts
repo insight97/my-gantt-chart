@@ -11,6 +11,7 @@ import {
   adjustAllocationDay,
   autoScheduleTask,
   moveTask,
+  moveTaskToTimeline,
   moveTaskToTimelineAsChild,
 } from './workspace-operations';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
@@ -95,6 +96,34 @@ describe('階層工作項目', () => {
     const savedChild = result.workspace.projects[0].tasks.find(task => task.id === 'child');
     expect(savedChild).toMatchObject({ parentId: 'parent', status: 'scheduled' });
     expect(result.workspace.allocations.some(allocation => allocation.taskId === 'child')).toBe(
+      true,
+    );
+  });
+
+  it('從 Backlog 拖到 Timeline 前後落點時，也會排程並保留排序位置', () => {
+    const target = workItem('target');
+    target.status = 'scheduled';
+    target.order = 4;
+    const source = workItem('source', null, 4);
+    source.order = 8;
+    const result = moveTaskToTimeline(
+      workspace([target, source]),
+      'workspace-root',
+      'source',
+      'target',
+      'before',
+    );
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    if (!result.ok || !result.changed) return;
+    const tasks = result.workspace.projects[0].tasks;
+    expect(tasks.find(task => task.id === 'source')).toMatchObject({
+      status: 'scheduled',
+      parentId: null,
+      order: 0,
+    });
+    expect(tasks.find(task => task.id === 'target')).toMatchObject({ order: 1 });
+    expect(result.workspace.allocations.some(allocation => allocation.taskId === 'source')).toBe(
       true,
     );
   });

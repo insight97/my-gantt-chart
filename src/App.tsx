@@ -47,7 +47,7 @@ import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
   moveTaskToBacklog as moveTaskToBacklogOperation,
-  moveTaskToTimelineAsChild as moveTaskToTimelineAsChildOperation,
+  moveTaskToTimeline as moveTaskToTimelineOperation,
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
   moveTask as moveTaskOperation,
@@ -234,11 +234,11 @@ export default function App() {
       sourceTaskId: string,
       targetTaskId: string,
       relation: 'inside' | 'before' | 'after',
-      scheduleAsChild = false,
+      scheduleFromBacklog = false,
     ) => {
       if (!workspace) return;
-      const result = scheduleAsChild
-        ? moveTaskToTimelineAsChildOperation(workspace, projectId, sourceTaskId, targetTaskId)
+      const result = scheduleFromBacklog
+        ? moveTaskToTimelineOperation(workspace, projectId, sourceTaskId, targetTaskId, relation)
         : moveTaskOperation(workspace, projectId, sourceTaskId, targetTaskId, relation);
       if (!result.ok) setNotice(result.error);
       else if (result.changed) {
@@ -407,7 +407,7 @@ export default function App() {
               current.task.id,
               target.taskId,
               target.relation || 'before',
-              current.origin === 'backlog' && target.relation === 'inside',
+              current.origin === 'backlog',
             );
         }
         if (target.kind === 'gantt-sidebar' && current.origin === 'backlog')

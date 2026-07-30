@@ -341,14 +341,25 @@ export function moveTask(
   });
 }
 
-/** Move a backlog leaf under a timeline item and schedule it as part of that drop. */
+/** Move a backlog leaf to a timeline relation and schedule it as part of that drop. */
+export function moveTaskToTimeline(
+  workspace: WorkspaceData,
+  projectId: string,
+  sourceId: string,
+  targetId: string,
+  relation: TaskMoveRelation,
+): WorkspaceOperationResult {
+  const moved = moveTask(workspace, projectId, sourceId, targetId, relation);
+  if (!moved.ok || !moved.changed) return moved;
+  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today());
+}
+
+/** Move a backlog leaf under a timeline item and schedule it as a child. */
 export function moveTaskToTimelineAsChild(
   workspace: WorkspaceData,
   projectId: string,
   sourceId: string,
   targetId: string,
 ): WorkspaceOperationResult {
-  const moved = moveTask(workspace, projectId, sourceId, targetId, 'inside');
-  if (!moved.ok || !moved.changed) return moved;
-  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today());
+  return moveTaskToTimeline(workspace, projectId, sourceId, targetId, 'inside');
 }
