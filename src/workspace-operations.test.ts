@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { addDays, today } from './capacity';
 import { emptyTask } from './data';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 import {
@@ -53,11 +54,23 @@ describe('workspace operations', () => {
     );
     const next = changed(result);
 
-    expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: '2026-01-01' });
+    expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: today() });
     expect(next.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
-      ['2026-01-01', 8],
-      ['2026-01-02', 2],
+      [today(), 8],
+      [addDays(today(), 1), 2],
     ]);
+  });
+
+  it('keeps an existing Timeline start when automatically rescheduling it', () => {
+    const result = autoScheduleTask(
+      workspace(task({ status: 'scheduled', start: '2026-01-01', estimatedHours: 10 })),
+      'project-a',
+      'task-a',
+    );
+    const next = changed(result);
+
+    expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: '2026-01-01' });
+    expect(next.allocations[0]).toMatchObject({ date: '2026-01-01', allocatedHours: 8 });
   });
 
   it('uses the explicit drop date when scheduling a backlog task', () => {

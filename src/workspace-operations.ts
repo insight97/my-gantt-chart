@@ -285,7 +285,7 @@ export function autoScheduleTask(
       task,
       workspace.allocations,
       workspace.dailyCapacities,
-      task.start || today(),
+      task.status === 'backlog' ? today() : task.start || today(),
     );
     const nextTask: Task = { ...result.task, updatedAt: now() };
     return updated(
