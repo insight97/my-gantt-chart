@@ -535,28 +535,15 @@ export default function App() {
 
   if (!ready || !workspace) return <main className="loading">正在開啟本機工作區…</main>;
 
+  const expandableTaskIds = workspace.projects.flatMap(project =>
+    project.tasks.filter(task => taskHasChildren(project.tasks, task.id)).map(task => task.id),
+  );
   const allExpanded =
-    workspace.projects.length > 0 &&
-    workspace.projects.every(project => expandedProjectIds.has(project.id)) &&
-    workspace.projects.every(project =>
-      project.tasks
-        .filter(task => taskHasChildren(project.tasks, task.id))
-        .every(task => expandedTaskIds.has(task.id)),
-    );
+    expandableTaskIds.length > 0 && expandableTaskIds.every(taskId => expandedTaskIds.has(taskId));
   const expandAll = () => {
-    setExpandedProjectIds(new Set(workspace.projects.map(project => project.id)));
-    setExpandedTaskIds(
-      new Set(
-        workspace.projects.flatMap(project =>
-          project.tasks
-            .filter(task => taskHasChildren(project.tasks, task.id))
-            .map(task => task.id),
-        ),
-      ),
-    );
+    setExpandedTaskIds(new Set(expandableTaskIds));
   };
   const collapseAll = () => {
-    setExpandedProjectIds(new Set());
     setExpandedTaskIds(new Set());
   };
   const editingProject =
@@ -640,7 +627,7 @@ export default function App() {
               </div>
               <button
                 onClick={allExpanded ? collapseAll : expandAll}
-                disabled={!workspace.projects.length}
+                disabled={!expandableTaskIds.length}
               >
                 {allExpanded ? '全部收合' : '全部展開'}
               </button>
