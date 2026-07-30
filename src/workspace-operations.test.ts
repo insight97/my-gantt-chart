@@ -92,6 +92,13 @@ describe('workspace operations', () => {
     ]);
   });
 
+  it('does not create a history-changing workspace update for an empty negative adjustment', () => {
+    const original = workspace(task({ status: 'scheduled' }));
+    const result = adjustAllocationDay(original, 'project-a', 'task-a', '2026-01-01', -1);
+
+    expect(result).toEqual({ ok: true, changed: false });
+  });
+
   it('returns a leaf to backlog while preserving hierarchy, metadata, and clearing allocations', () => {
     const result = moveTaskToBacklog(
       workspace(
