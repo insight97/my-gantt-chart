@@ -289,6 +289,7 @@ function AllocationSummaries({
   allocationWindow,
   onAdjustAllocation,
   editable = true,
+  readOnlyReason,
 }: {
   task: Task;
   hoursByDate: Map<string, number>;
@@ -298,8 +299,11 @@ function AllocationSummaries({
   allocationWindow: AllocationWindow;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
   editable?: boolean;
+  readOnlyReason?: AllocationReadOnlyReason;
 }) {
   const taskStyle = { '--task-color': task.color } as CSSProperties;
+  const readOnlyLabel =
+    readOnlyReason === 'completed' ? '已完成，不可修改' : '父任務工時由子任務彙總，不可直接修改';
   return (
     <div className={`allocation-summaries ${view === 'day' ? 'editable' : ''}`} style={taskStyle}>
       {periods.map((period, index) => {
@@ -321,8 +325,8 @@ function AllocationSummaries({
               className={className}
               disabled={!editable}
               style={{ left: index * scale, width: scale }}
-              title={`${period.label} · ${hoursLabel(hours)}${editable ? ' · 左鍵 +1h，右鍵 -1h' : ' · 已完成，不可修改'}`}
-              aria-label={`${task.name} ${period.label} ${hoursLabel(hours)}${editable ? '，左鍵增加一小時，右鍵減少一小時' : '，已完成不可修改'}`}
+              title={`${period.label} · ${hoursLabel(hours)}${editable ? ' · 左鍵 +1h，右鍵 -1h' : ` · ${readOnlyLabel}`}`}
+              aria-label={`${task.name} ${period.label} ${hoursLabel(hours)}${editable ? '，左鍵增加一小時，右鍵減少一小時' : `，${readOnlyLabel}`}`}
               onClick={event => {
                 event.stopPropagation();
                 onAdjustAllocation(task.id, period.start, 1);
@@ -352,6 +356,7 @@ function AllocationSummaries({
 }
 
 const EMPTY_HOURS_BY_DATE = new Map<string, number>();
+type AllocationReadOnlyReason = 'completed' | 'parent';
 
 function TimelineTaskRows({
   tasks,
@@ -376,6 +381,7 @@ function TimelineTaskRows({
     <>
       {tasks.map(task => {
         const taskAllocationWindow = allocationWindow(allocationsByTask.get(task.id) || []);
+        const hasChildren = taskHasChildren(allTasks, task.id);
         return (
           <div
             className={`timeline-row${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' deadline-overdue' : ''}`}
@@ -394,7 +400,10 @@ function TimelineTaskRows({
               scale={scale}
               view={view}
               allocationWindow={taskAllocationWindow}
-              editable={task.status !== 'completed' && !taskHasChildren(allTasks, task.id)}
+              editable={task.status !== 'completed' && !hasChildren}
+              readOnlyReason={
+                task.status === 'completed' ? 'completed' : hasChildren ? 'parent' : undefined
+              }
               onAdjustAllocation={onAdjustAllocation}
             />
           </div>

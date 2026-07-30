@@ -189,8 +189,24 @@ describe('Work Item hierarchy UI', () => {
     expect(rows[0].querySelector('.allocation-cell')).toBeDisabled();
     expect(rows[0].querySelector('.allocation-cell')).toHaveAttribute(
       'title',
-      expect.stringContaining('不可修改'),
+      expect.stringContaining('父任務工時由子任務彙總，不可直接修改'),
     );
+    expect(rows[0].querySelector('.allocation-cell')).not.toHaveAttribute(
+      'title',
+      expect.stringContaining('已完成'),
+    );
+  });
+
+  it('explains why completed task allocation cells are read-only', async () => {
+    const task = workItem('completed', '已完成工作', { status: 'completed' });
+    loadWorkspaceMock.mockResolvedValue(workspace([task]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('已完成工作')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '日' }));
+
+    const cell = document.querySelector('.allocation-cell');
+    expect(cell).toBeDisabled();
+    expect(cell).toHaveAttribute('title', expect.stringContaining('已完成，不可修改'));
   });
 
   it('keeps Timeline controls in their columns while indenting only the task label', async () => {
