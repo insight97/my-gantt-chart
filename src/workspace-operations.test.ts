@@ -73,6 +73,38 @@ describe('workspace operations', () => {
     expect(next.allocations[0]).toMatchObject({ date: '2026-01-01', allocatedHours: 8 });
   });
 
+  it('puts an automatically scheduled Backlog task at the end of its sibling order', () => {
+    const original = workspace(task({ id: 'first', name: 'First', order: 0 }));
+    original.projects[0].tasks.push(
+      task({ id: 'second', name: 'Second', order: 1, status: 'scheduled' }),
+      task({ id: 'incoming', name: 'Incoming', order: 0, status: 'backlog' }),
+    );
+
+    const next = changed(autoScheduleTask(original, 'project-a', 'incoming'));
+    const roots = next.projects[0].tasks
+      .filter(item => item.parentId === null)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    expect(roots.map(item => item.id)).toEqual(['first', 'second', 'incoming']);
+    expect(roots.map(item => item.order)).toEqual([0, 1, 2]);
+  });
+
+  it('puts a Backlog task dropped on a Timeline date at the end of its sibling order', () => {
+    const original = workspace(task({ id: 'first', name: 'First', order: 0 }));
+    original.projects[0].tasks.push(
+      task({ id: 'second', name: 'Second', order: 1, status: 'scheduled' }),
+      task({ id: 'incoming', name: 'Incoming', order: 0, status: 'backlog' }),
+    );
+
+    const next = changed(scheduleTaskAtDate(original, 'project-a', 'incoming', '2026-01-05'));
+    const roots = next.projects[0].tasks
+      .filter(item => item.parentId === null)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    expect(roots.map(item => item.id)).toEqual(['first', 'second', 'incoming']);
+    expect(roots.map(item => item.order)).toEqual([0, 1, 2]);
+  });
+
   it('uses the explicit drop date when scheduling a backlog task', () => {
     const result = scheduleTaskAtDate(
       workspace(task({ status: 'backlog', estimatedHours: 10 })),
