@@ -193,6 +193,36 @@ describe('Work Item hierarchy UI', () => {
     );
   });
 
+  it('keeps Timeline controls in their columns while indenting only the task label', async () => {
+    const parent = workItem('parent', '父工作', { status: 'scheduled' });
+    const child = workItem('child', '子工作', {
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
+    const rows = document.querySelectorAll('.gantt-side-row');
+    const childCard = rows[1].querySelector('.task-card-gantt');
+    expect(childCard).not.toBeNull();
+    expect(getComputedStyle(childCard!).marginLeft).toMatch(/^0(?:px)?$/);
+    expect(childCard).toHaveStyle('--task-depth: 2');
+  });
+
+  it('renders a larger, styled hierarchy toggle button', async () => {
+    const parent = workItem('parent', '父工作', { status: 'scheduled' });
+    const child = workItem('child', '子工作', {
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    const toggle = await screen.findByRole('button', { name: '收合 父工作' });
+    expect(toggle).toHaveClass('task-card-toggle');
+  });
+
   it('allows editing a task parent from the detail editor', async () => {
     const parent = workItem('parent', '原父節點');
     const nextParent = workItem('next-parent', '新父節點');
