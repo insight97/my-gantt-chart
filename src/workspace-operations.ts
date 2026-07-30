@@ -48,7 +48,7 @@ function replaceTaskAndAllocations(
         ? {
             ...project,
             tasks: moveTaskToEnd
-              ? [...project.tasks.filter(value => value.id !== task.id), task]
+              ? appendTaskToSiblingEnd(project.tasks, task)
               : project.tasks.some(value => value.id === task.id)
                 ? project.tasks.map(value => (value.id === task.id ? task : value))
                 : [...project.tasks, task],
@@ -64,6 +64,20 @@ function replaceTaskAndAllocations(
       : workspace.allocations,
   };
   return syncParentEstimatedHours(nextWorkspace, projectId);
+}
+
+function appendTaskToSiblingEnd(tasks: Task[], task: Task): Task[] {
+  const remaining = tasks.filter(value => value.id !== task.id);
+  const siblings = remaining
+    .filter(value => (value.parentId ?? null) === (task.parentId ?? null))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const orderById = new Map(siblings.map((value, index) => [value.id, index]));
+  return [
+    ...remaining.map(value =>
+      orderById.has(value.id) ? { ...value, order: orderById.get(value.id)! } : value,
+    ),
+    { ...task, order: siblings.length },
+  ];
 }
 
 function findProject(workspace: WorkspaceData, projectId: string) {
@@ -340,6 +354,7 @@ export function scheduleTaskAtDate(
   projectId: string,
   taskId: string,
   date: string,
+  moveToSiblingEnd = true,
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
   const task = project && findTask(project, taskId);
@@ -362,7 +377,13 @@ export function scheduleTaskAtDate(
     );
     const nextTask: Task = { ...result.task, updatedAt: now() };
     return updated(
-      replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations, true),
+      replaceTaskAndAllocations(
+        workspace,
+        projectId,
+        nextTask,
+        result.allocations,
+        moveToSiblingEnd,
+      ),
     );
   } catch (error) {
     return invalid(error instanceof Error ? error.message : '自動分配失敗。');
@@ -588,7 +609,7 @@ export function moveTaskToTimeline(
 ): WorkspaceOperationResult {
   const moved = moveTask(workspace, projectId, sourceId, targetId, relation);
   if (!moved.ok || !moved.changed) return moved;
-  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today());
+  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today(), false);
 }
 
 /** Move a backlog leaf under a timeline item and schedule it as a child. */
