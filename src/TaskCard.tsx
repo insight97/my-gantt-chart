@@ -87,23 +87,12 @@ export default function TaskCard({
       )}
       <div className={`task-card-info${variant === 'gantt' ? ' task-link' : ''}`} draggable={false}>
         <b>{task.name}</b>
-        <small>
-          {variant === 'backlog' ? (
-            <>
-              <em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> ·
-              預估 {hoursLabel(task.estimatedHours)}
-            </>
-          ) : (
-            <>
-              {task.deadline ? `截止 ${task.deadline} · ` : ''}
-              {hasChildren
-                ? '子樹彙總'
-                : task.status === 'backlog'
-                  ? '尚未排程'
-                  : 'Allocation 由時間軸日期決定'}
-            </>
-          )}
-        </small>
+        {variant === 'backlog' && (
+          <small>
+            <em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> · 預估{' '}
+            {hoursLabel(task.estimatedHours)}
+          </small>
+        )}
       </div>
       {variant === 'gantt' && (
         <div className="task-card-hours hours">

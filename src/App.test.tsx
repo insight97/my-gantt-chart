@@ -223,6 +223,17 @@ describe('Work Item hierarchy UI', () => {
     expect(toggle).toHaveClass('task-card-toggle');
   });
 
+  it('removes the secondary explanation from Timeline task cards', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([workItem('scheduled', '已排程工作', { status: 'scheduled' })]),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('已排程工作')).toBeInTheDocument());
+    expect(screen.queryByText('Allocation 由時間軸日期決定')).not.toBeInTheDocument();
+    expect(screen.queryByText('尚未排程')).not.toBeInTheDocument();
+  });
+
   it('allows editing a task parent from the detail editor', async () => {
     const parent = workItem('parent', '原父節點');
     const nextParent = workItem('next-parent', '新父節點');
