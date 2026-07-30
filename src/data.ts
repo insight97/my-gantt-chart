@@ -9,7 +9,6 @@ import type {
 } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, datesBetween, defaultDailyCapacity, today } from './capacity';
-import { priorityOrder } from './formatters';
 
 export const uid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
@@ -315,20 +314,59 @@ export function flattenTaskTree(tasks: Task[], expandedIds: Set<string>) {
   return result;
 }
 
-/** Splits a Project's Tasks between the Backlog and Allocation Timeline. */
-export function partitionProjectTasks(project: Project, expandedIds = new Set<string>()) {
-  const backlog: Task[] = [];
-  const scheduled: Task[] = [];
-  for (const { task } of flattenTaskTree(project.tasks, expandedIds)) {
-    const hasChildren = taskHasChildren(project.tasks, task.id);
-    if (!hasChildren && task.status === 'backlog') backlog.push(task);
-    else if (hasChildren || task.status !== 'backlog') scheduled.push(task);
+/**
+ * Builds the context chain for leaf tasks selected by a view predicate.
+ *
+ * A parent is an aggregate, not a schedulable item. It is still projected beside each
+ * matching leaf so a child is never shown without its hierarchy context. A parent may
+ * therefore be present in both projections while remaining one persisted Task.
+ */
+function projectedTaskIds(tasks: Task[], includesLeaf: (task: Task) => boolean) {
+  const byId = new Map(tasks.map(task => [task.id, task]));
+  const result = new Set<string>();
+  for (const task of tasks) {
+    if (taskHasChildren(tasks, task.id) || !includesLeaf(task)) continue;
+    let current: Task | undefined = task;
+    const visited = new Set<string>();
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      result.add(current.id);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
   }
-  backlog.sort(
-    (a, b) =>
-      (a.order ?? 0) - (b.order ?? 0) ||
-      priorityOrder[a.priority] - priorityOrder[b.priority] ||
-      a.createdAt.localeCompare(b.createdAt),
-  );
-  return { backlog, scheduled };
+  return result;
+}
+
+function flattenProjectedTaskTree(
+  tasks: Task[],
+  includedIds: Set<string>,
+  expandedIds: Set<string>,
+) {
+  const result: Task[] = [];
+  const visit = (parentId: string | null) => {
+    for (const task of taskChildren(tasks, parentId)) {
+      if (!includedIds.has(task.id)) continue;
+      result.push(task);
+      if (expandedIds.has(task.id)) visit(task.id);
+    }
+  };
+  visit(null);
+  return result;
+}
+
+/**
+ * Projects the one task tree into Backlog and Allocation Timeline views.
+ *
+ * Leaf status decides the destination. Every selected leaf brings its full ancestor
+ * chain with it; Backlog always exposes that chain, while Timeline respects its own
+ * expand/collapse state. Parents cannot appear by themselves merely because they
+ * have children.
+ */
+export function partitionProjectTasks(project: Project, timelineExpandedIds = new Set<string>()) {
+  const backlogIds = projectedTaskIds(project.tasks, task => task.status === 'backlog');
+  const scheduledIds = projectedTaskIds(project.tasks, task => task.status !== 'backlog');
+  return {
+    backlog: flattenProjectedTaskTree(project.tasks, backlogIds, backlogIds),
+    scheduled: flattenProjectedTaskTree(project.tasks, scheduledIds, timelineExpandedIds),
+  };
 }

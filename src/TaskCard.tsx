@@ -18,6 +18,7 @@ type TaskCardProps = {
   expanded?: boolean;
   depth?: number;
   hasChildren?: boolean;
+  isGroup?: boolean;
   onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
 };
 
@@ -35,12 +36,14 @@ export default function TaskCard({
   expanded = true,
   depth = 1,
   hasChildren = false,
+  isGroup = false,
   onPointerDown,
 }: TaskCardProps) {
   const canEdit = !isGhost && Boolean(onEdit) && task.status !== 'completed';
   const className = [
     'task-card',
     `task-card-${variant}`,
+    isGroup ? 'task-card-group' : '',
     isDragging ? 'dragging-source' : '',
     isGhost ? 'task-card-ghost' : '',
   ]
@@ -103,8 +106,14 @@ export default function TaskCard({
         <b>{task.name}</b>
         {variant === 'backlog' && (
           <small>
-            <em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> · 預估{' '}
-            {hoursLabel(task.estimatedHours)}
+            {isGroup ? (
+              <>子項目彙總 · 預估 {hoursLabel(task.estimatedHours)}</>
+            ) : (
+              <>
+                <em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> ·
+                預估 {hoursLabel(task.estimatedHours)}
+              </>
+            )}
           </small>
         )}
       </div>

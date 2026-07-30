@@ -105,12 +105,32 @@ describe('容量 domain', () => {
     expect(result.scheduled.map(item => item.id)).toEqual(['task']);
   });
 
-  it('Backlog 優先依 stable order 排序，並以優先級作為 fallback', () => {
-    const first = task({ id: 'first', order: 2, priority: 'high' });
-    const second = task({ id: 'second', order: 1, priority: 'low' });
-    const result = partitionProjectTasks({ tasks: [first, second] } as Project);
+  it('以葉節點狀態投影兩個視圖，並在每個視圖保留完整祖先鏈', () => {
+    const parent = task({ id: 'parent', status: 'backlog' });
+    const backlogChild = task({ id: 'backlog-child', parentId: 'parent', status: 'backlog' });
+    const scheduledChild = task({
+      id: 'scheduled-child',
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    const project = { tasks: [parent, backlogChild, scheduledChild] } as Project;
 
-    expect(result.backlog.map(item => item.id)).toEqual(['second', 'first']);
+    expect(partitionProjectTasks(project).backlog.map(item => item.id)).toEqual([
+      'parent',
+      'backlog-child',
+    ]);
+    expect(
+      partitionProjectTasks(project, new Set(['parent'])).scheduled.map(item => item.id),
+    ).toEqual(['parent', 'scheduled-child']);
+  });
+
+  it('Backlog 完整顯示祖先鏈，不受 Timeline 收合狀態影響', () => {
+    const parent = task({ id: 'parent' });
+    const child = task({ id: 'child', parentId: 'parent' });
+    const result = partitionProjectTasks({ tasks: [parent, child] } as Project);
+
+    expect(result.backlog.map(item => item.id)).toEqual(['parent', 'child']);
+    expect(result.scheduled).toEqual([]);
   });
 
   it('排程保留 end metadata，end 不限制實際 Allocation 日期', () => {

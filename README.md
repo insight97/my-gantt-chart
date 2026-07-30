@@ -4,13 +4,14 @@
 
 > 目前的可用容量，是否足以承擔這些 Task？
 
-以下 Backlog／Allocation Timeline 互動規則是目前產品實作的行為；共同語言請參考 [`CONTEXT.md`](./CONTEXT.md)，重大取捨請參考 [`docs/adr/0002-allocation-timeline-explicit-scheduling.md`](./docs/adr/0002-allocation-timeline-explicit-scheduling.md)。
+以下 Backlog／Allocation Timeline 互動規則是目前產品實作的行為；共同語言請參考 [`CONTEXT.md`](./CONTEXT.md)，重大取捨請參考 [`docs/adr/0004-leaf-driven-backlog-timeline-projections.md`](./docs/adr/0004-leaf-driven-backlog-timeline-projections.md)。
 
 ## 核心概念
 
 - **Work Item**：唯一的工作物件；根項目與子項目使用相同資料結構，`parentId` 決定階層。
 - **Hierarchy**：根項目沒有父項目，最多允許三層；有子項目的 Work Item 不可直接分配工時。
-- **Backlog**：尚未被使用者放入 Allocation Timeline 的 Task；通常沒有 Allocation。
+- **Leaf Task**：沒有子項目的 Work Item；只有 Leaf Task 可決定 Backlog／Timeline 狀態與直接分配工時。
+- **Backlog**：尚未被使用者放入 Allocation Timeline 的 Leaf Task；通常沒有 Allocation。
 - **Daily Capacity**：每天的總容量、不可用時間與可用容量。
 - **Allocation**：Task 在特定日期上的工時，可由使用者指定或 Automatic Scheduling 產生；不區分來源。
 - **Allocation Timeline**：唯一的時間軸畫面，保留日／週／月容量摘要、Allocation 編輯、縮放、平移與 Task card 拖曳。
@@ -23,11 +24,11 @@ Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（
 
 ## Backlog 與 Allocation Timeline 流程
 
-- Work Item 只有一份資料；Backlog 與 Allocation Timeline 是同一工作區內的兩個排程狀態，不會同時顯示同一個項目。
-- Backlog 卡片只需顯示名稱、優先順序與估計工時；點擊卡片開啟編輯，按住並移動可拖曳。
+- Work Item 只有一份資料；Leaf Task 的狀態決定它在 Backlog 或 Allocation Timeline 的位置。每個可見 Leaf 都會帶著完整祖先鏈，所以子項目不會單獨出現；同一父項目可在兩邊作為群組內容出現。
+- Backlog 卡片顯示名稱、優先順序與估計工時；祖先列是不可直接排程的群組內容。Leaf 卡片可點擊編輯，按住並移動可拖曳。
 - 拖曳 Backlog 卡片到 Allocation Timeline 後立即執行 fastest Automatic Scheduling，不需要確認按鈕；放下位置是起始日期，新 Task 放到清單最下方。
 - 按下 Work Item 的「自動排程」也會讓 Backlog Work Item 進入 Allocation Timeline；排程起點由 Allocation 日期決定。
-- 拖曳 Timeline 的 Work Item card 回 Backlog，或在 editor 切換狀態，會清除所有 Allocation，但保留截止日期與其他 metadata。
+- 拖曳 Timeline 的 Leaf Task card 回 Backlog，或在 editor 切換狀態，會清除所有 Allocation，但保留 `parentId`、截止日期與其他 metadata；放在同一父項目的 Backlog Leaf 前後時會保留插入順序。
 - Task card 不再提供開始／結束日期；時間軸範圍由 Allocation 日期與 Deadline 推導。
 - 收合有子項目的 Work Item 時，Timeline 顯示所有後代 Allocation 的彙總，摘要格不可編輯。
 

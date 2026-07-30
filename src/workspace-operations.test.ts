@@ -89,7 +89,7 @@ describe('workspace operations', () => {
     ]);
   });
 
-  it('returns a task to backlog while preserving metadata and clearing allocations', () => {
+  it('returns a leaf to backlog while preserving hierarchy, metadata, and clearing allocations', () => {
     const result = moveTaskToBacklog(
       workspace(
         task({
@@ -108,12 +108,37 @@ describe('workspace operations', () => {
 
     expect(next.projects[0].tasks[0]).toMatchObject({
       status: 'backlog',
-      parentId: null,
+      parentId: 'parent',
       start: '2026-01-01',
       end: '2026-01-10',
       deadline: '2026-01-08',
     });
     expect(next.allocations).toEqual([]);
+  });
+
+  it('keeps a returned leaf in its sibling order when dropped before a backlog sibling', () => {
+    const original = workspace(task({ id: 'parent', name: 'Parent' }));
+    original.projects[0].tasks.push(
+      task({
+        id: 'scheduled',
+        name: 'Scheduled',
+        parentId: 'parent',
+        order: 1,
+        status: 'scheduled',
+      }),
+      task({ id: 'backlog', name: 'Backlog', parentId: 'parent', order: 0, status: 'backlog' }),
+    );
+
+    const result = moveTaskToBacklog(original, 'project-a', 'scheduled', 'backlog', 'before');
+    const next = changed(result);
+    const children = next.projects[0].tasks
+      .filter(item => item.parentId === 'parent')
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    expect(children.map(item => [item.id, item.status])).toEqual([
+      ['scheduled', 'backlog'],
+      ['backlog', 'backlog'],
+    ]);
   });
 
   it('keeps the parent when a new backlog child is saved', () => {

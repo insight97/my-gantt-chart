@@ -108,16 +108,18 @@ describe('Work Item hierarchy UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
 
     await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: '收合 根工作' })).toBeInTheDocument();
+    expect(document.querySelector('.backlog .task-card-group')).toHaveTextContent('根工作');
   });
 
-  it('expands and collapses child tasks without hiding the work-item panel', async () => {
+  it('expands and collapses Timeline child tasks without changing Backlog projection', async () => {
     const parent = workItem('parent', '父工作');
-    const child = workItem('child', '子工作', { parentId: 'parent' });
+    const child = workItem('child', '子工作', { parentId: 'parent', status: 'scheduled' });
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '收合 父工作' })).toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole('button', { name: '全部收合' }));
     await waitFor(() => expect(screen.queryByText('子工作')).not.toBeInTheDocument());
     expect(screen.getByText('父工作')).toBeInTheDocument();
@@ -283,9 +285,7 @@ describe('Work Item hierarchy UI', () => {
     fireEvent.change(parentSelect, { target: { value: 'next-parent' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '收合 新父節點' })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('新父節點')).toBeInTheDocument());
   });
 
   it('does not indent a child task while it is shown in Backlog', async () => {

@@ -595,6 +595,7 @@ function GanttSidebar({
               allocatedHours={allocated}
               pendingHours={pending}
               hasChildren={hasChildren}
+              isGroup={hasChildren}
               depth={taskDepth(allTasks, task.id)}
               expanded={expandedTaskIds.has(task.id)}
               onToggle={hasChildren ? item => onToggleTask(item.id) : undefined}
@@ -605,7 +606,7 @@ function GanttSidebar({
               onEdit={onEdit}
               onDelete={task.status !== 'completed' ? onDelete : undefined}
               onPointerDown={
-                task.status !== 'completed'
+                task.status !== 'completed' && !hasChildren
                   ? event => onBeginTaskDrag(task, event, allocated, pending)
                   : undefined
               }

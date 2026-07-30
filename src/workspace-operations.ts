@@ -208,10 +208,7 @@ export function saveTask(
 
   let taskAllocations: Allocation[] | undefined;
   if (nextTask.status === 'backlog') {
-    const result = returnTaskToBacklog({
-      ...nextTask,
-      parentId: !existingTask || existingTask.status === 'backlog' ? nextTask.parentId : null,
-    });
+    const result = returnTaskToBacklog(nextTask);
     nextTask = result.task;
     taskAllocations = result.allocations;
   }
@@ -333,14 +330,32 @@ export function moveTaskToBacklog(
   workspace: WorkspaceData,
   projectId: string,
   taskId: string,
+  targetId?: string,
+  relation?: Exclude<TaskMoveRelation, 'inside'>,
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
   const task = project && findTask(project, taskId);
   if (!project || !task || task.status === 'completed') return unchanged();
 
-  const result = returnTaskToBacklog({ ...task, parentId: null });
-  const nextTask: Task = { ...result.task, updatedAt: now() };
-  return updated(replaceTaskAndAllocations(workspace, projectId, nextTask, result.allocations));
+  if (taskHasChildren(project.tasks, task.id))
+    return invalid('有子任務的工作項目不可直接移回 Backlog。');
+
+  let nextWorkspace = workspace;
+  if (targetId && relation) {
+    const target = findTask(project, targetId);
+    if (target && (target.parentId ?? null) === (task.parentId ?? null)) {
+      const moved = moveTask(workspace, projectId, taskId, targetId, relation);
+      if (!moved.ok) return moved;
+      if (moved.changed) nextWorkspace = moved.workspace;
+    }
+  }
+  const nextProject = findProject(nextWorkspace, projectId)!;
+  const nextTask = findTask(nextProject, taskId)!;
+  const result = returnTaskToBacklog(nextTask);
+  const returnedTask: Task = { ...result.task, updatedAt: now() };
+  return updated(
+    replaceTaskAndAllocations(nextWorkspace, projectId, returnedTask, result.allocations),
+  );
 }
 
 export type TaskMoveRelation = 'inside' | 'before' | 'after';
