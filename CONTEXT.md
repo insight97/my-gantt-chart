@@ -50,7 +50,7 @@
 
 **Backlog to Allocation Timeline**：同一份 Leaf Task 資料在兩個位置之間移動，不建立副本。拖曳到時間軸空白區會觸發 Automatic Scheduling；拖曳到另一個 Work Item 則依落點加入子項目或改變同層順序。拖曳群組時改用 Group Transfer，一次排程其中所有 Backlog Leaf；祖先不因此獲得可分配工時。
 
-**Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Leaf Task card 拖回 Backlog，或在 editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `parentId`、Deadline 與其他 metadata；若放在同一父項目的 Backlog 同層項目前後，則一併更新其同層順序。拖曳群組回 Backlog 時，以 Group Transfer 一次移回其中所有未完成 Timeline Leaf；已完成 Leaf 保留在 Timeline。
+**Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Leaf Task card 拖回 Backlog，或在 editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `parentId`、Deadline 與其他 metadata；若放在同一父項目的 Backlog 同層項目前後，則一併更新其同層順序。Backlog 中的群組也可在同層項目前後重排，並連同完整子樹一起移動。拖曳群組回 Backlog 時，以 Group Transfer 一次移回其中所有未完成 Timeline Leaf；已完成 Leaf 保留在 Timeline。
 
 ## 視圖與操作模式
 
@@ -66,4 +66,4 @@
 
 ## 排程範圍
 
-本階段不處理跨 Work Item 相依關係、全域自動排序或多 Task 一次重排。排序只作用於同一父項目的兄弟節點；重新掛載時來源的整個子樹一起移動。
+本階段不處理跨 Work Item 相依關係、全域自動排序或多 Task 一次重排。Backlog 與 Timeline 都可在同一父項目的兄弟節點間排序；重新掛載時來源的整個子樹一起移動。

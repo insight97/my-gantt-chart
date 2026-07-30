@@ -438,7 +438,22 @@ export default function App() {
         if (current.isGroup) {
           if (current.origin === 'gantt' && target.kind === 'backlog')
             moveTaskGroupToBacklog(current.projectId, current.task.id);
-          if (current.origin === 'backlog') {
+          if (
+            current.origin === 'gantt' &&
+            target.kind === 'gantt-row' &&
+            target.taskId &&
+            target.relation
+          ) {
+            moveTask(current.projectId, current.task.id, target.taskId, target.relation);
+          }
+          if (
+            current.origin === 'backlog' &&
+            target.kind === 'backlog' &&
+            target.taskId &&
+            (target.relation === 'before' || target.relation === 'after')
+          ) {
+            moveTask(current.projectId, current.task.id, target.taskId, target.relation);
+          } else if (current.origin === 'backlog') {
             if (target.kind === 'gantt-timeline' && target.date)
               moveTaskGroupToTimeline(current.projectId, current.task.id, target.date);
             else if (target.kind === 'gantt-row' || target.kind === 'gantt-sidebar')
@@ -962,7 +977,7 @@ function Backlog({
 }) {
   const handleTaskPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const target = event.target;
-    if (taskDrag?.isGroup || !(target instanceof Element) || !target.closest('.backlog-drop-row'))
+    if (!(target instanceof Element) || !target.closest('.backlog-drop-row'))
       onTaskDropTarget({ kind: 'backlog', projectId }, event.currentTarget);
   };
   const handleTaskPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
@@ -977,7 +992,6 @@ function Backlog({
         ? taskDrag.target.relation
         : undefined;
     const handleRowPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (isGroup) return;
       const bounds = event.currentTarget.getBoundingClientRect();
       onTaskDropTarget(
         {

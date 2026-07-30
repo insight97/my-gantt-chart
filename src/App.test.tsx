@@ -8,7 +8,7 @@ import './capacity-header.css';
 
 const { loadWorkspaceMock, saveWorkspaceMock } = vi.hoisted(() => ({
   loadWorkspaceMock: vi.fn(),
-  saveWorkspaceMock: vi.fn(async () => undefined),
+  saveWorkspaceMock: vi.fn<(workspace: WorkspaceData) => Promise<void>>(async () => undefined),
 }));
 
 vi.mock('./db', () => ({
@@ -227,6 +227,104 @@ describe('Work Item hierarchy UI', () => {
 
     await waitFor(() => expect(screen.getByText('Timeline 子工作')).toBeInTheDocument());
     expect(document.querySelectorAll('.task-card-group.task-card-draggable')).toHaveLength(2);
+  });
+
+  it('reorders a Backlog parent together with its subtree', async () => {
+    const firstParent = workItem('first-parent', '第一個父項目', { order: 0 });
+    const firstChild = workItem('first-child', '第一個子項目', {
+      parentId: 'first-parent',
+      order: 0,
+    });
+    const secondParent = workItem('second-parent', '第二個父項目', { order: 1 });
+    const secondChild = workItem('second-child', '第二個子項目', {
+      parentId: 'second-parent',
+      order: 0,
+    });
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([firstParent, firstChild, secondParent, secondChild]),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('第二個父項目')).toBeInTheDocument());
+    saveWorkspaceMock.mockClear();
+    const source = screen.getByText('第一個父項目').closest('.task-card')!;
+    const targetRow = screen.getByText('第二個父項目').closest('.backlog-drop-row')!;
+    vi.spyOn(targetRow, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(source, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(targetRow, { clientX: 10, clientY: 80 });
+    fireEvent.pointerUp(window, { clientX: 10, clientY: 80 });
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalledTimes(1));
+    const saved = saveWorkspaceMock.mock.calls.at(-1)![0];
+    const roots = saved.projects[0].tasks
+      .filter(task => task.parentId === null)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    expect(roots.map(task => task.id)).toEqual(['second-parent', 'first-parent']);
+    expect(saved.projects[0].tasks.find(task => task.id === 'first-child')).toMatchObject({
+      parentId: 'first-parent',
+    });
+  });
+
+  it('reorders a Timeline parent together with its subtree', async () => {
+    const firstParent = workItem('first-parent', '第一個 Timeline 父項目', { order: 0 });
+    const firstChild = workItem('first-child', '第一個 Timeline 子項目', {
+      parentId: 'first-parent',
+      order: 0,
+      status: 'scheduled',
+    });
+    const secondParent = workItem('second-parent', '第二個 Timeline 父項目', { order: 1 });
+    const secondChild = workItem('second-child', '第二個 Timeline 子項目', {
+      parentId: 'second-parent',
+      order: 0,
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([firstParent, firstChild, secondParent, secondChild]),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('第二個 Timeline 父項目')).toBeInTheDocument());
+    saveWorkspaceMock.mockClear();
+    const source = screen.getByText('第二個 Timeline 父項目').closest('.task-card')!;
+    const targetRow = screen.getByText('第一個 Timeline 父項目').closest('.gantt-side-row')!;
+    vi.spyOn(targetRow, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(source, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(targetRow, { clientX: 10, clientY: 20 });
+    fireEvent.pointerUp(window, { clientX: 10, clientY: 20 });
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalledTimes(1));
+    const saved = saveWorkspaceMock.mock.calls.at(-1)![0];
+    const roots = saved.projects[0].tasks
+      .filter(task => task.parentId === null)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    expect(roots.map(task => task.id)).toEqual(['second-parent', 'first-parent']);
+    expect(saved.projects[0].tasks.find(task => task.id === 'first-child')).toMatchObject({
+      parentId: 'first-parent',
+    });
   });
 
   it('explains why completed task allocation cells are read-only', async () => {
