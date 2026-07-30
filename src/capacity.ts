@@ -214,7 +214,8 @@ export function recalculateTaskSchedule(
   const scheduledTask: Task = {
     ...task,
     start: task.start || startDate,
-    status: task.status === 'completed' ? 'completed' : 'scheduled',
+    status:
+      task.status === 'completed' || task.status === 'in_progress' ? task.status : 'scheduled',
   };
   const result = recalculateAutomaticAllocations(
     scheduledTask,
@@ -234,13 +235,7 @@ export function scheduleTaskAt(
   date: string,
   options: RecalculateOptions = {},
 ): ScheduleResult {
-  return recalculateTaskSchedule(
-    { ...task, start: date, status: 'scheduled' },
-    allocations,
-    capacities,
-    date,
-    options,
-  );
+  return recalculateTaskSchedule({ ...task, start: date }, allocations, capacities, date, options);
 }
 
 /** Clears a Task's current Allocation while preserving its card metadata. */
