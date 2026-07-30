@@ -210,7 +210,7 @@ describe('Work Item hierarchy UI', () => {
     expect(childCard).toHaveStyle('--task-depth: 2');
   });
 
-  it('renders a larger, styled hierarchy toggle button', async () => {
+  it('renders an accessible icon hierarchy toggle button', async () => {
     const parent = workItem('parent', '父工作', { status: 'scheduled' });
     const child = workItem('child', '子工作', {
       parentId: 'parent',
@@ -221,6 +221,8 @@ describe('Work Item hierarchy UI', () => {
 
     const toggle = await screen.findByRole('button', { name: '收合 父工作' });
     expect(toggle).toHaveClass('task-card-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle.querySelector('svg')).toHaveClass('task-card-toggle-icon', 'is-expanded');
   });
 
   it('removes the secondary explanation from Timeline task cards', async () => {

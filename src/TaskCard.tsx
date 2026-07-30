@@ -77,12 +77,26 @@ export default function TaskCard({
           className="task-card-toggle"
           type="button"
           aria-label={`${expanded ? '收合' : '展開'} ${task.name}`}
+          aria-expanded={expanded}
           onClick={event => {
             event.stopPropagation();
             onToggle(task);
           }}
         >
-          {expanded ? '⌄' : '›'}
+          <svg
+            className={`task-card-toggle-icon${expanded ? ' is-expanded' : ''}`}
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
+            <path
+              d="m6 3 5 5-5 5"
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.75"
+            />
+          </svg>
         </button>
       )}
       <div className={`task-card-info${variant === 'gantt' ? ' task-link' : ''}`} draggable={false}>
