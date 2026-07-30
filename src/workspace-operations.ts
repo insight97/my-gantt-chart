@@ -5,6 +5,7 @@ import {
   today,
 } from './capacity';
 import {
+  aggregateTaskEstimate,
   now,
   taskDeadlineConstraint,
   taskHasChildren,
@@ -39,7 +40,7 @@ function replaceTaskAndAllocations(
   moveTaskToEnd = false,
 ): WorkspaceData {
   const replacementAllocations = taskAllocations?.filter(item => item.taskId === task.id);
-  return {
+  const nextWorkspace = {
     ...workspace,
     projects: workspace.projects.map(project =>
       project.id === projectId
@@ -61,6 +62,7 @@ function replaceTaskAndAllocations(
         ]
       : workspace.allocations,
   };
+  return syncParentEstimatedHours(nextWorkspace, projectId);
 }
 
 function findProject(workspace: WorkspaceData, projectId: string) {
@@ -69,6 +71,27 @@ function findProject(workspace: WorkspaceData, projectId: string) {
 
 function findTask(project: Project, taskId: string) {
   return project.tasks.find(task => task.id === taskId);
+}
+
+/** Keep every persisted parent estimate equal to the sum of its leaf estimates. */
+export function syncParentEstimatedHours(workspace: WorkspaceData, projectId: string) {
+  const project = findProject(workspace, projectId);
+  if (!project) return workspace;
+  let changed = false;
+  const tasks = project.tasks.map(task => {
+    if (!taskHasChildren(project.tasks, task.id)) return task;
+    const estimatedHours = aggregateTaskEstimate(task.id, project.tasks);
+    if (task.estimatedHours === estimatedHours) return task;
+    changed = true;
+    return { ...task, estimatedHours, updatedAt: now() };
+  });
+  if (!changed) return workspace;
+  return {
+    ...workspace,
+    projects: workspace.projects.map(item =>
+      item.id === projectId ? { ...item, tasks, updatedAt: now() } : item,
+    ),
+  };
 }
 
 function parentHasDirectWork(workspace: WorkspaceData, parent: Task) {
@@ -410,12 +433,17 @@ export function moveTask(
   );
   const deadlineError = validateDeadlineHierarchy(normalized);
   if (deadlineError) return invalid(deadlineError);
-  return updated({
-    ...nextWorkspace,
-    projects: nextWorkspace.projects.map(item =>
-      item.id === projectId ? { ...item, tasks: normalized, updatedAt: now() } : item,
+  return updated(
+    syncParentEstimatedHours(
+      {
+        ...nextWorkspace,
+        projects: nextWorkspace.projects.map(item =>
+          item.id === projectId ? { ...item, tasks: normalized, updatedAt: now() } : item,
+        ),
+      },
+      projectId,
     ),
-  });
+  );
 }
 
 /** Move a backlog leaf to a timeline relation and schedule it as part of that drop. */

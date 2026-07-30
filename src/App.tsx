@@ -52,6 +52,7 @@ import {
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
   moveTask as moveTaskOperation,
+  syncParentEstimatedHours,
 } from './workspace-operations';
 import type { WorkspaceOperationResult } from './workspace-operations';
 
@@ -477,20 +478,27 @@ export default function App() {
     if (!project) return;
     const removedIds = taskDescendantIds(project.tasks, taskId);
     removedIds.add(taskId);
-    commit({
-      ...workspace,
-      projects: workspace.projects.map(item => {
-        if (item.id !== project.id) return item;
-        const removedIds = taskDescendantIds(item.tasks, taskId);
-        removedIds.add(taskId);
-        return {
-          ...item,
-          tasks: item.tasks.filter(task => !removedIds.has(task.id)),
-          updatedAt: now(),
-        };
-      }),
-      allocations: workspace.allocations.filter(allocation => !removedIds.has(allocation.taskId)),
-    });
+    commit(
+      syncParentEstimatedHours(
+        {
+          ...workspace,
+          projects: workspace.projects.map(item => {
+            if (item.id !== project.id) return item;
+            const removedIds = taskDescendantIds(item.tasks, taskId);
+            removedIds.add(taskId);
+            return {
+              ...item,
+              tasks: item.tasks.filter(task => !removedIds.has(task.id)),
+              updatedAt: now(),
+            };
+          }),
+          allocations: workspace.allocations.filter(
+            allocation => !removedIds.has(allocation.taskId),
+          ),
+        },
+        project.id,
+      ),
+    );
   };
 
   const exportJson = () => {

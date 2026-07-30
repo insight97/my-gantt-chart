@@ -168,6 +168,7 @@ describe('階層工作項目', () => {
     if (!result.ok || !result.changed) return;
     const nextTasks = result.workspace.projects[0].tasks;
     const unsplit = nextTasks.find(task => task.name === '未拆分工作');
+    expect(nextTasks.find(task => task.id === parent.id)).toMatchObject({ estimatedHours: 16 });
     expect(unsplit).toMatchObject({
       parentId: parent.id,
       estimatedHours: parent.estimatedHours,
@@ -195,6 +196,7 @@ describe('階層工作項目', () => {
     expect(result).toMatchObject({ ok: true, changed: true });
     if (!result.ok || !result.changed) return;
     const nextTasks = result.workspace.projects[0].tasks;
+    expect(nextTasks.find(task => task.id === parent.id)).toMatchObject({ estimatedHours: 4 });
     expect(nextTasks).toHaveLength(2);
     expect(nextTasks.some(task => task.name === '未拆分工作')).toBe(false);
     expect(result.workspace.allocations).toEqual([zeroAllocation]);
@@ -243,6 +245,7 @@ describe('階層工作項目', () => {
     if (!result.ok || !result.changed) return;
     const nextTasks = result.workspace.projects[0].tasks;
     const unsplit = nextTasks.find(task => task.name === '未拆分工作');
+    expect(nextTasks.find(task => task.id === parent.id)).toMatchObject({ estimatedHours: 12 });
     expect(unsplit).toMatchObject({ parentId: parent.id, estimatedHours: parent.estimatedHours });
     expect(nextTasks).toEqual(
       expect.arrayContaining([
