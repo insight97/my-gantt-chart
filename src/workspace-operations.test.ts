@@ -73,6 +73,68 @@ describe('workspace operations', () => {
     expect(next.allocations[0]).toMatchObject({ date: '2026-01-01', allocatedHours: 8 });
   });
 
+  it('keeps an in-progress task in progress when automatically rescheduling it', () => {
+    const next = changed(
+      autoScheduleTask(
+        workspace(task({ status: 'in_progress', start: '2026-01-01', estimatedHours: 8 })),
+        'project-a',
+        'task-a',
+      ),
+    );
+
+    expect(next.projects[0].tasks[0]).toMatchObject({ status: 'in_progress' });
+  });
+
+  it('rejects automatic scheduling when a draft deadline exceeds its parent deadline', () => {
+    const original = workspace(task({ id: 'parent', name: 'Parent', deadline: '2026-02-10' }));
+    const result = autoScheduleTask(
+      original,
+      'project-a',
+      'child',
+      task({
+        id: 'child',
+        name: 'Child',
+        parentId: 'parent',
+        deadline: '2026-02-11',
+        status: 'scheduled',
+      }),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: '「Child」的截止日期不可晚於父任務「Parent」。',
+    });
+    expect(original.projects[0].tasks).toHaveLength(1);
+  });
+
+  it("preserves a parent's direct work before automatically scheduling a new child", () => {
+    const parent = task({ id: 'parent', name: 'Parent', status: 'scheduled', estimatedHours: 8 });
+    const original = workspace(parent, [
+      { id: 'parent-allocation', taskId: 'parent', date: '2026-01-01', allocatedHours: 8 },
+    ]);
+
+    const next = changed(
+      autoScheduleTask(
+        original,
+        'project-a',
+        'child',
+        task({ id: 'child', name: 'Child', parentId: 'parent', status: 'scheduled' }),
+      ),
+    );
+
+    const unsplit = next.projects[0].tasks.find(item => item.name === '未拆分工作');
+    expect(unsplit).toMatchObject({ parentId: 'parent', estimatedHours: 8 });
+    expect(next.projects[0].tasks.find(item => item.id === 'child')).toMatchObject({
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    expect(next.allocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'parent-allocation', taskId: unsplit?.id }),
+      ]),
+    );
+  });
+
   it('puts an automatically scheduled Backlog task at the end of its sibling order', () => {
     const original = workspace(task({ id: 'first', name: 'First', order: 0 }));
     original.projects[0].tasks.push(

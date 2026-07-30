@@ -36,7 +36,7 @@
 
 **Automatic Allocation**：系統依放下日期或今天與每日可用容量產生的 Allocation。系統從起點往後尋找有空間的日期，不會在一般日期故意超載；使用者可重新自動安排。
 
-**Automatic Scheduling**：使用者明確按下「自動排程」、將 Backlog Task 拖曳到 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存；三者都是同一個排程操作。操作會讓 Task 進入 Allocation Timeline，使用 `fastest` 建立 Allocation，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程使用放下日期。已在 Timeline 的 Leaf Task 拖到另一個日期時，清除該 Task 舊 Allocation 並以新日期重新建立。只分配到 Capacity-Available Day，沒有容量時保留 Pending Hours，不產生 Automatic Overflow。編輯既有 Task metadata、修改 Daily Capacity 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
+**Automatic Scheduling**：使用者明確按下「自動排程」、將 Backlog Task 拖曳到 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存；三者都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。操作會讓 Task 進入 Allocation Timeline，使用 `fastest` 建立 Allocation，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程使用放下日期。已在 Timeline 的 Leaf Task 拖到另一個日期時，清除該 Task 舊 Allocation 並以新日期重新建立；`in_progress` 重新排程後保持原狀態。只分配到 Capacity-Available Day，沒有容量時保留 Pending Hours，不產生 Automatic Overflow。編輯既有 Task metadata、修改 Daily Capacity 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
 
 **Estimated Hours**：Task 預計需要完成的總工時。修改 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation；需要重新分配時必須明確執行 Automatic Scheduling。
 

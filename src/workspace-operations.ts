@@ -210,19 +210,28 @@ function parentValidationError(project: Project, draft: Task): string | null {
   return null;
 }
 
-export function saveTask(
+type PreparedTask = {
+  workspace: WorkspaceData;
+  project: Project;
+  task: Task;
+  existingTask: Task | undefined;
+};
+
+function prepareTaskForPersistence(
   workspace: WorkspaceData,
   projectId: string,
   draft: Task,
-): WorkspaceOperationResult {
+): PreparedTask | { error: string } {
   let project = findProject(workspace, projectId);
-  if (!project) return invalid('找不到 Project。');
-  if (!draft.name.trim()) return invalid('請輸入 Task 名稱。');
+  if (!project) return { error: '找不到 Project。' };
+  if (!draft.name.trim()) return { error: '請輸入 Task 名稱。' };
   if (!Number.isFinite(draft.estimatedHours) || draft.estimatedHours < 0)
-    return invalid('請輸入有效的預估工時。');
+    return { error: '請輸入有效的預估工時。' };
   const parentError = parentValidationError(project, draft);
-  if (parentError) return invalid(parentError);
+  if (parentError) return { error: parentError };
+
   const initialProject = project;
+  const existingTask = findTask(initialProject, draft.id);
   if (taskHasChildren(initialProject.tasks, draft.id)) {
     draft = {
       ...draft,
@@ -236,27 +245,37 @@ export function saveTask(
     };
   }
 
-  const existingTask = findTask(project, draft.id);
   let nextWorkspace = workspace;
-  if (!existingTask && draft.parentId) {
-    const parent = findTask(project, draft.parentId)!;
+  const parentId = draft.parentId ?? null;
+  const previousParentId = existingTask?.parentId ?? null;
+  if (parentId && parentId !== previousParentId) {
+    const parent = findTask(project, parentId)!;
     nextWorkspace = preserveParentWorkAsUnsplit(workspace, project.id, parent);
     project = findProject(nextWorkspace, project.id)!;
   }
 
-  let nextTask: Task = {
-    ...draft,
-    name: draft.name.trim(),
-    updatedAt: now(),
-  };
-  if (!existingTask && nextTask.parentId && !nextTask.deadline)
-    nextTask.deadline = taskDeadlineConstraint(project.tasks, nextTask.parentId);
+  let task: Task = { ...draft, name: draft.name.trim(), updatedAt: now() };
+  if (!existingTask && task.parentId && !task.deadline)
+    task = { ...task, deadline: taskDeadlineConstraint(project.tasks, task.parentId) };
 
-  const candidateTasks = project.tasks.some(task => task.id === nextTask.id)
-    ? project.tasks.map(task => (task.id === nextTask.id ? nextTask : task))
-    : [...project.tasks, nextTask];
+  const candidateTasks = project.tasks.some(item => item.id === task.id)
+    ? project.tasks.map(item => (item.id === task.id ? task : item))
+    : [...project.tasks, task];
   const deadlineError = validateDeadlineHierarchy(candidateTasks);
-  if (deadlineError) return invalid(deadlineError);
+  if (deadlineError) return { error: deadlineError };
+
+  return { workspace: nextWorkspace, project, task, existingTask };
+}
+
+export function saveTask(
+  workspace: WorkspaceData,
+  projectId: string,
+  draft: Task,
+): WorkspaceOperationResult {
+  const prepared = prepareTaskForPersistence(workspace, projectId, draft);
+  if ('error' in prepared) return invalid(prepared.error);
+  const { workspace: nextWorkspace, project, existingTask } = prepared;
+  let nextTask = prepared.task;
 
   let taskAllocations: Allocation[] | undefined;
   if (nextTask.status === 'backlog') {
@@ -276,6 +295,32 @@ export function saveTask(
   );
 }
 
+function scheduleTaskTransition(
+  workspace: WorkspaceData,
+  project: Project,
+  task: Task,
+  date: string,
+  moveToSiblingEnd: boolean,
+): WorkspaceOperationResult {
+  if (taskHasChildren(project.tasks, task.id)) return invalid('有子任務的工作項目不可直接排程。');
+
+  try {
+    const result = scheduleTaskAt(task, workspace.allocations, workspace.dailyCapacities, date);
+    const nextTask: Task = { ...result.task, updatedAt: now() };
+    return updated(
+      replaceTaskAndAllocations(
+        workspace,
+        project.id,
+        nextTask,
+        result.allocations,
+        moveToSiblingEnd,
+      ),
+    );
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : '自動分配失敗。');
+  }
+}
+
 export function autoScheduleTask(
   workspace: WorkspaceData,
   projectId: string,
@@ -284,36 +329,18 @@ export function autoScheduleTask(
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
   if (!project) return invalid('找不到 Project。');
-  const task = draft
-    ? { ...draft, name: draft.name.trim(), updatedAt: now() }
-    : findTask(project, taskId);
-  if (!task || task.status === 'completed') return unchanged();
-  const parentError = parentValidationError(project, task);
-  if (parentError) return invalid(parentError);
-  if (taskHasChildren(project.tasks, task.id)) return invalid('有子任務的工作項目不可直接排程。');
-  if (!task.name.trim() || !Number.isFinite(task.estimatedHours) || task.estimatedHours < 0)
-    return invalid('請先輸入有效的 Task 名稱與預估工時。');
-
-  try {
-    const result = scheduleTaskAt(
-      task,
-      workspace.allocations,
-      workspace.dailyCapacities,
-      task.status === 'backlog' ? today() : task.start || today(),
-    );
-    const nextTask: Task = { ...result.task, updatedAt: now() };
-    return updated(
-      replaceTaskAndAllocations(
-        workspace,
-        project.id,
-        nextTask,
-        result.allocations,
-        !project.tasks.some(item => item.id === task.id) || task.status === 'backlog',
-      ),
-    );
-  } catch (error) {
-    return invalid(error instanceof Error ? error.message : '自動分配失敗。');
-  }
+  const sourceTask = draft || findTask(project, taskId);
+  if (!sourceTask || sourceTask.status === 'completed') return unchanged();
+  const prepared = prepareTaskForPersistence(workspace, projectId, sourceTask);
+  if ('error' in prepared) return invalid(prepared.error);
+  const { workspace: nextWorkspace, project: nextProject, task, existingTask } = prepared;
+  return scheduleTaskTransition(
+    nextWorkspace,
+    nextProject,
+    task,
+    task.status === 'backlog' ? today() : task.start || today(),
+    !existingTask || task.status === 'backlog',
+  );
 }
 
 export function adjustAllocationDay(
@@ -359,28 +386,7 @@ export function scheduleTaskAtDate(
   const project = findProject(workspace, projectId);
   const task = project && findTask(project, taskId);
   if (!project || !task || task.status === 'completed') return unchanged();
-  if (taskHasChildren(project.tasks, task.id)) return invalid('有子任務的工作項目不可直接排程。');
-
-  try {
-    const result = scheduleTaskAt(
-      { ...task, status: 'scheduled' },
-      workspace.allocations,
-      workspace.dailyCapacities,
-      date,
-    );
-    const nextTask: Task = { ...result.task, updatedAt: now() };
-    return updated(
-      replaceTaskAndAllocations(
-        workspace,
-        projectId,
-        nextTask,
-        result.allocations,
-        moveToSiblingEnd,
-      ),
-    );
-  } catch (error) {
-    return invalid(error instanceof Error ? error.message : '自動分配失敗。');
-  }
+  return scheduleTaskTransition(workspace, project, task, date, moveToSiblingEnd);
 }
 
 export function moveTaskToBacklog(
