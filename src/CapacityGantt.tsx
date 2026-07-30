@@ -71,6 +71,7 @@ export type CapacityGanttProps = {
     event: PointerEvent<HTMLElement>,
     allocatedHours: number,
     pendingHours: number,
+    isGroup?: boolean,
   ) => void;
   onTaskDropTarget: TaskDropTargetHandler;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
@@ -528,6 +529,7 @@ function GanttSidebar({
     event: PointerEvent<HTMLElement>,
     allocatedHours: number,
     pendingHours: number,
+    isGroup?: boolean,
   ) => void;
   onTaskDropTarget: TaskDropTargetHandler;
 }) {
@@ -606,8 +608,8 @@ function GanttSidebar({
               onEdit={onEdit}
               onDelete={task.status !== 'completed' ? onDelete : undefined}
               onPointerDown={
-                task.status !== 'completed' && !hasChildren
-                  ? event => onBeginTaskDrag(task, event, allocated, pending)
+                task.status !== 'completed'
+                  ? event => onBeginTaskDrag(task, event, allocated, pending, hasChildren)
                   : undefined
               }
             />

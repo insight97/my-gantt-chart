@@ -4,6 +4,8 @@ import type { Allocation, Project, Task, WorkspaceData } from './types';
 import {
   adjustAllocationDay,
   autoScheduleTask,
+  moveTaskGroupToBacklog,
+  moveTaskGroupToTimeline,
   moveTaskToBacklog,
   saveTask,
   scheduleTaskAtDate,
@@ -138,6 +140,72 @@ describe('workspace operations', () => {
     expect(children.map(item => [item.id, item.status])).toEqual([
       ['scheduled', 'backlog'],
       ['backlog', 'backlog'],
+    ]);
+  });
+
+  it('schedules a group backlog subtree in stable leaf order as one transition', () => {
+    const original = workspace(task({ id: 'group', name: 'Group' }));
+    original.projects[0].tasks.push(
+      task({ id: 'first', name: 'First', parentId: 'group', order: 0, estimatedHours: 6 }),
+      task({ id: 'second', name: 'Second', parentId: 'group', order: 1, estimatedHours: 6 }),
+    );
+    original.dailyCapacities = [
+      {
+        date: '2026-01-05',
+        totalCapacityHours: 8,
+        unavailableHours: 0,
+        availableHours: 8,
+      },
+      {
+        date: '2026-01-06',
+        totalCapacityHours: 8,
+        unavailableHours: 0,
+        availableHours: 8,
+      },
+    ];
+
+    const next = changed(moveTaskGroupToTimeline(original, 'project-a', 'group', '2026-01-05'));
+
+    expect(next.projects[0].tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'group', status: 'backlog' }),
+        expect.objectContaining({ id: 'first', status: 'scheduled', parentId: 'group' }),
+        expect.objectContaining({ id: 'second', status: 'scheduled', parentId: 'group' }),
+      ]),
+    );
+    expect(next.allocations.map(item => [item.taskId, item.date, item.allocatedHours])).toEqual([
+      ['first', '2026-01-05', 6],
+      ['second', '2026-01-05', 2],
+      ['second', '2026-01-06', 4],
+    ]);
+  });
+
+  it('returns only unfinished Timeline leaves in a group while preserving completed leaves', () => {
+    const original = workspace(task({ id: 'group', name: 'Group' }));
+    original.projects[0].tasks.push(
+      task({ id: 'scheduled', parentId: 'group', status: 'scheduled' }),
+      task({ id: 'progress', parentId: 'group', status: 'in_progress' }),
+      task({ id: 'completed', parentId: 'group', status: 'completed' }),
+      task({ id: 'backlog', parentId: 'group', status: 'backlog' }),
+    );
+    original.allocations = [
+      { id: 'scheduled-allocation', taskId: 'scheduled', date: '2026-01-05', allocatedHours: 2 },
+      { id: 'progress-allocation', taskId: 'progress', date: '2026-01-05', allocatedHours: 2 },
+      { id: 'completed-allocation', taskId: 'completed', date: '2026-01-05', allocatedHours: 2 },
+    ];
+
+    const next = changed(moveTaskGroupToBacklog(original, 'project-a', 'group'));
+
+    expect(next.projects[0].tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'scheduled', status: 'backlog', parentId: 'group' }),
+        expect.objectContaining({ id: 'progress', status: 'backlog', parentId: 'group' }),
+        expect.objectContaining({ id: 'completed', status: 'completed', parentId: 'group' }),
+        expect.objectContaining({ id: 'backlog', status: 'backlog', parentId: 'group' }),
+      ]),
+    );
+    expect(next.allocations).toEqual([
+      { id: 'completed-allocation', taskId: 'completed', date: '2026-01-05', allocatedHours: 2 },
     ]);
   });
 

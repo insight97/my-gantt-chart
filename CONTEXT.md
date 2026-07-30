@@ -6,13 +6,15 @@
 
 **Work Item**：唯一的工作物件。根項目與子項目沒有不同的型別，`parentId` 為空代表根項目；最多三層。
 
-**Hierarchy**：有子項目的 Work Item 是群組／彙總項目，不能直接分配工時；其預估工時與 Allocation 由所有後代葉節點彙總。拖曳群組會帶著整個子樹一起移動。
+**Hierarchy**：有子項目的 Work Item 是群組／彙總項目，不能直接分配工時；其預估工時與 Allocation 由所有後代葉節點彙總。跨視圖拖曳群組是一次 Group Transfer：它批次轉換符合目標狀態的葉節點，群組本身不取得視圖狀態。
 
 **Task Status**：Task 的生命週期狀態，包含 `backlog`、`scheduled`、`in_progress` 與 `completed`。`completed` Task 不可修改；`in_progress` Task 仍可調整排程。
 
 **Leaf Task**：沒有子項目的 Work Item。只有 Leaf Task 擁有 Backlog／Timeline 狀態並可直接分配工時。
 
 **View Projection**：Backlog 與 Allocation Timeline 都是同一份 Work Item 樹的投影。Leaf Task 的狀態決定它出現在哪個視圖，而每個可見 Leaf Task 都必須帶著完整祖先鏈；因此子項目不會單獨出現，父項目可同時作為兩個視圖的群組內容出現，但仍是同一筆資料。
+
+**Group Transfer**：使用者將群組拖曳到另一個視圖時的立即批次操作。拖入 Timeline 會依穩定樹序排程其中的 Backlog Leaf；拖回 Backlog 會移回未完成的 Timeline Leaf 並清除其 Allocation。已完成 Leaf 不變，因此群組可能仍同時出現在兩個視圖；整批操作可作為單次歷史紀錄復原。
 
 **Backlog Task**：尚未被使用者放入 Allocation Timeline 的 Leaf Task。它通常沒有 Allocation 與排程日期，但仍可保留建立日期、截止日期、優先順序與估計工時。
 
@@ -46,9 +48,9 @@
 
 **Deadline**：Work Item 必須完成的日期，是唯一由使用者輸入的日期限制。開始／結束日期不再是編輯欄位；時間軸範圍與摘要直接由 Allocation 日期推導。
 
-**Backlog to Allocation Timeline**：同一份 Leaf Task 資料在兩個位置之間移動，不建立副本。拖曳到時間軸空白區會觸發 Automatic Scheduling；拖曳到另一個 Work Item 則依落點加入子項目或改變同層順序。它的祖先鏈隨 Leaf Task 出現在 Timeline，但祖先不因此獲得可分配工時。
+**Backlog to Allocation Timeline**：同一份 Leaf Task 資料在兩個位置之間移動，不建立副本。拖曳到時間軸空白區會觸發 Automatic Scheduling；拖曳到另一個 Work Item 則依落點加入子項目或改變同層順序。拖曳群組時改用 Group Transfer，一次排程其中所有 Backlog Leaf；祖先不因此獲得可分配工時。
 
-**Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Leaf Task card 拖回 Backlog，或在 editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `parentId`、Deadline 與其他 metadata；若放在同一父項目的 Backlog 同層項目前後，則一併更新其同層順序。
+**Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Leaf Task card 拖回 Backlog，或在 editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `parentId`、Deadline 與其他 metadata；若放在同一父項目的 Backlog 同層項目前後，則一併更新其同層順序。拖曳群組回 Backlog 時，以 Group Transfer 一次移回其中所有未完成 Timeline Leaf；已完成 Leaf 保留在 Timeline。
 
 ## 視圖與操作模式
 

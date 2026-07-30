@@ -215,6 +215,20 @@ describe('Work Item hierarchy UI', () => {
     );
   });
 
+  it('makes projected parent groups draggable for immediate group transfer', async () => {
+    const parent = workItem('parent', '父工作');
+    const backlogChild = workItem('backlog-child', 'Backlog 子工作', { parentId: 'parent' });
+    const scheduledChild = workItem('scheduled-child', 'Timeline 子工作', {
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, backlogChild, scheduledChild]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Timeline 子工作')).toBeInTheDocument());
+    expect(document.querySelectorAll('.task-card-group.task-card-draggable')).toHaveLength(2);
+  });
+
   it('explains why completed task allocation cells are read-only', async () => {
     const task = workItem('completed', '已完成工作', { status: 'completed' });
     loadWorkspaceMock.mockResolvedValue(workspace([task]));
