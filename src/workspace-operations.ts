@@ -7,6 +7,7 @@ import {
 import {
   aggregateTaskEstimate,
   now,
+  taskChildren,
   taskDeadlineConstraint,
   taskHasChildren,
   taskDescendantIds,
@@ -71,6 +72,41 @@ function findProject(workspace: WorkspaceData, projectId: string) {
 
 function findTask(project: Project, taskId: string) {
   return project.tasks.find(task => task.id === taskId);
+}
+
+/** Returns a group's leaf descendants in stable depth-first sibling order. */
+function groupLeafTasks(project: Project, groupId: string): Task[] {
+  const group = findTask(project, groupId);
+  if (!group) return [];
+  const result: Task[] = [];
+  const visit = (task: Task) => {
+    const children = taskChildren(project.tasks, task.id);
+    if (!children.length) {
+      result.push(task);
+      return;
+    }
+    children.forEach(visit);
+  };
+  visit(group);
+  return result;
+}
+
+function replaceProjectTasksAndAllocations(
+  workspace: WorkspaceData,
+  projectId: string,
+  tasks: Task[],
+  allocations: Allocation[],
+) {
+  return syncParentEstimatedHours(
+    {
+      ...workspace,
+      projects: workspace.projects.map(project =>
+        project.id === projectId ? { ...project, tasks, updatedAt: now() } : project,
+      ),
+      allocations,
+    },
+    projectId,
+  );
 }
 
 /** Keep every persisted parent estimate equal to the sum of its leaf estimates. */
@@ -355,6 +391,78 @@ export function moveTaskToBacklog(
   const returnedTask: Task = { ...result.task, updatedAt: now() };
   return updated(
     replaceTaskAndAllocations(nextWorkspace, projectId, returnedTask, result.allocations),
+  );
+}
+
+/** Schedules every Backlog leaf in a group as one reversible workspace transition. */
+export function moveTaskGroupToTimeline(
+  workspace: WorkspaceData,
+  projectId: string,
+  groupId: string,
+  date: string,
+): WorkspaceOperationResult {
+  const project = findProject(workspace, projectId);
+  const group = project && findTask(project, groupId);
+  if (!project || !group) return unchanged();
+  if (!taskHasChildren(project.tasks, group.id))
+    return invalid('只有群組可批次移到 Allocation Timeline。');
+
+  let tasks = project.tasks;
+  let allocations = workspace.allocations;
+  let changed = false;
+  try {
+    for (const leaf of groupLeafTasks(project, group.id)) {
+      if (leaf.status !== 'backlog') continue;
+      const current = tasks.find(task => task.id === leaf.id)!;
+      const result = scheduleTaskAt(
+        { ...current, status: 'scheduled' },
+        allocations,
+        workspace.dailyCapacities,
+        date,
+      );
+      tasks = tasks.map(task =>
+        task.id === current.id ? { ...result.task, updatedAt: now() } : task,
+      );
+      allocations = [
+        ...allocations.filter(allocation => allocation.taskId !== current.id),
+        ...result.allocations,
+      ];
+      changed = true;
+    }
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : '群組自動分配失敗。');
+  }
+  if (!changed) return unchanged();
+  return updated(replaceProjectTasksAndAllocations(workspace, projectId, tasks, allocations));
+}
+
+/** Returns every unfinished Timeline leaf in a group to Backlog as one reversible transition. */
+export function moveTaskGroupToBacklog(
+  workspace: WorkspaceData,
+  projectId: string,
+  groupId: string,
+): WorkspaceOperationResult {
+  const project = findProject(workspace, projectId);
+  const group = project && findTask(project, groupId);
+  if (!project || !group) return unchanged();
+  if (!taskHasChildren(project.tasks, group.id)) return invalid('只有群組可批次移回 Backlog。');
+
+  const movedIds = new Set(
+    groupLeafTasks(project, group.id)
+      .filter(task => task.status === 'scheduled' || task.status === 'in_progress')
+      .map(task => task.id),
+  );
+  if (!movedIds.size) return unchanged();
+
+  return updated(
+    replaceProjectTasksAndAllocations(
+      workspace,
+      projectId,
+      project.tasks.map(task =>
+        movedIds.has(task.id) ? { ...task, status: 'backlog', updatedAt: now() } : task,
+      ),
+      workspace.allocations.filter(allocation => !movedIds.has(allocation.taskId)),
+    ),
   );
 }
 

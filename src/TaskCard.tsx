@@ -44,6 +44,7 @@ export default function TaskCard({
     'task-card',
     `task-card-${variant}`,
     isGroup ? 'task-card-group' : '',
+    onPointerDown ? 'task-card-draggable' : '',
     isDragging ? 'dragging-source' : '',
     isGhost ? 'task-card-ghost' : '',
   ]

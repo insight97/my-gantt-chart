@@ -48,6 +48,8 @@ import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
   moveTaskToBacklog as moveTaskToBacklogOperation,
+  moveTaskGroupToBacklog as moveTaskGroupToBacklogOperation,
+  moveTaskGroupToTimeline as moveTaskGroupToTimelineOperation,
   moveTaskToTimeline as moveTaskToTimelineOperation,
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
@@ -203,12 +205,14 @@ export default function App() {
     event: ReactPointerEvent<HTMLElement>,
     allocatedHours = 0,
     pendingHours = 0,
+    isGroup = false,
   ) => {
     if (event.button !== 0 || task.status === 'completed') return;
     const next: TaskDragState = {
       projectId,
       task,
       origin,
+      isGroup,
       allocatedHours,
       pendingHours,
       x: event.clientX,
@@ -376,6 +380,24 @@ export default function App() {
     },
     [workspace, commit],
   );
+  const moveTaskGroupToTimeline = useCallback(
+    (projectId: string, groupId: string, date: string) => {
+      if (!workspace) return;
+      const result = moveTaskGroupToTimelineOperation(workspace, projectId, groupId, date);
+      if (!result.ok) setNotice(result.error);
+      else if (result.changed) commit(result.workspace);
+    },
+    [workspace, commit],
+  );
+  const moveTaskGroupToBacklog = useCallback(
+    (projectId: string, groupId: string) => {
+      if (!workspace) return;
+      const result = moveTaskGroupToBacklogOperation(workspace, projectId, groupId);
+      if (!result.ok) setNotice(result.error);
+      else if (result.changed) commit(result.workspace);
+    },
+    [workspace, commit],
+  );
 
   const hasTaskDrag = taskDrag !== null;
   useEffect(() => {
@@ -413,7 +435,16 @@ export default function App() {
           : null;
       const target = tracked && (!hit || tracked.element.contains(hit)) ? tracked.target : null;
       if (target?.projectId === current.projectId) {
-        if (target.kind === 'backlog') {
+        if (current.isGroup) {
+          if (current.origin === 'gantt' && target.kind === 'backlog')
+            moveTaskGroupToBacklog(current.projectId, current.task.id);
+          if (current.origin === 'backlog') {
+            if (target.kind === 'gantt-timeline' && target.date)
+              moveTaskGroupToTimeline(current.projectId, current.task.id, target.date);
+            else if (target.kind === 'gantt-row' || target.kind === 'gantt-sidebar')
+              moveTaskGroupToTimeline(current.projectId, current.task.id, today());
+          }
+        } else if (target.kind === 'backlog') {
           const relation =
             target.relation === 'before' || target.relation === 'after'
               ? target.relation
@@ -423,7 +454,7 @@ export default function App() {
           else if (target.taskId && target.relation)
             moveTask(current.projectId, current.task.id, target.taskId, target.relation);
         }
-        if (target.kind === 'gantt-row') {
+        if (!current.isGroup && target.kind === 'gantt-row') {
           if (target.taskId)
             moveTask(
               current.projectId,
@@ -433,9 +464,9 @@ export default function App() {
               current.origin === 'backlog',
             );
         }
-        if (target.kind === 'gantt-sidebar' && current.origin === 'backlog')
+        if (!current.isGroup && target.kind === 'gantt-sidebar' && current.origin === 'backlog')
           scheduleTaskAtDate(current.projectId, current.task.id, today());
-        if (target.kind === 'gantt-timeline' && target.date)
+        if (!current.isGroup && target.kind === 'gantt-timeline' && target.date)
           scheduleTaskAtDate(current.projectId, current.task.id, target.date);
       }
       suppressTaskClickRef.current = true;
@@ -459,7 +490,14 @@ export default function App() {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [hasTaskDrag, moveTaskToBacklog, moveTask, scheduleTaskAtDate]);
+  }, [
+    hasTaskDrag,
+    moveTaskGroupToBacklog,
+    moveTaskGroupToTimeline,
+    moveTaskToBacklog,
+    moveTask,
+    scheduleTaskAtDate,
+  ]);
 
   const saveCapacity = (date: string, total: number, unavailable: number): string | null => {
     if (
@@ -771,6 +809,7 @@ type ProjectPanelProps = {
     event: ReactPointerEvent<HTMLElement>,
     allocatedHours?: number,
     pendingHours?: number,
+    isGroup?: boolean,
   ) => void;
   onTaskDropTarget: TaskDropTargetHandler;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
@@ -849,8 +888,8 @@ function ProjectPanel({
               onAddTask={onAddTask}
               onDelete={onDeleteTask}
               onAddChild={onAddChild}
-              onTaskPointerDown={(task, event) =>
-                onBeginTaskDrag(project.id, task, 'backlog', event)
+              onTaskPointerDown={(task, event, isGroup) =>
+                onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
               }
               onTaskDropTarget={onTaskDropTarget}
             />
@@ -870,8 +909,16 @@ function ProjectPanel({
               onZoomChange={onZoomChange}
               onEdit={onEditTask}
               onAddTask={onAddTimelineTask}
-              onBeginTaskDrag={(task, event, allocatedHours, pendingHours) =>
-                onBeginTaskDrag(project.id, task, 'gantt', event, allocatedHours, pendingHours)
+              onBeginTaskDrag={(task, event, allocatedHours, pendingHours, isGroup) =>
+                onBeginTaskDrag(
+                  project.id,
+                  task,
+                  'gantt',
+                  event,
+                  allocatedHours,
+                  pendingHours,
+                  isGroup,
+                )
               }
               onTaskDropTarget={onTaskDropTarget}
               onAdjustAllocation={onAdjustAllocation}
@@ -910,12 +957,12 @@ function Backlog({
   onAddTask: () => void;
   onDelete: (taskId: string) => void;
   onAddChild: (task: Task) => void;
-  onTaskPointerDown: (task: Task, event: ReactPointerEvent<HTMLElement>) => void;
+  onTaskPointerDown: (task: Task, event: ReactPointerEvent<HTMLElement>, isGroup?: boolean) => void;
   onTaskDropTarget: TaskDropTargetHandler;
 }) {
   const handleTaskPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const target = event.target;
-    if (!(target instanceof Element) || !target.closest('.backlog-drop-row'))
+    if (taskDrag?.isGroup || !(target instanceof Element) || !target.closest('.backlog-drop-row'))
       onTaskDropTarget({ kind: 'backlog', projectId }, event.currentTarget);
   };
   const handleTaskPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
@@ -959,7 +1006,7 @@ function Backlog({
           isGroup={isGroup}
           depth={taskDepth(allTasks, task.id)}
           onAddChild={task => onAddChild(task)}
-          onPointerDown={isGroup ? undefined : event => onTaskPointerDown(task, event)}
+          onPointerDown={event => onTaskPointerDown(task, event, isGroup)}
         />
       </div>
     );

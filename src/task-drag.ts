@@ -15,6 +15,8 @@ export type TaskDragState = {
   projectId: string;
   task: Task;
   origin: TaskDragOrigin;
+  /** A group drag transfers eligible descendant leaves as one workspace operation. */
+  isGroup: boolean;
   allocatedHours: number;
   pendingHours: number;
   x: number;
