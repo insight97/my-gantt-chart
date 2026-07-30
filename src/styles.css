@@ -1035,7 +1035,10 @@ h1 {
   background: #f3f8fb;
 }
 .backlog .task-card {
-  margin-left: 0;
+  --backlog-indent: calc((var(--task-depth, 1) - 1) * 18px);
+  width: calc(100% - var(--backlog-indent));
+  box-sizing: border-box;
+  margin-left: var(--backlog-indent);
 }
 .backlog .task-card-backlog .task-card-info {
   min-width: 0;

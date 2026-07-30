@@ -288,15 +288,15 @@ describe('Work Item hierarchy UI', () => {
     await waitFor(() => expect(screen.getByText('新父節點')).toBeInTheDocument());
   });
 
-  it('does not indent a child task while it is shown in Backlog', async () => {
+  it('indents a child task in Backlog to preserve its hierarchy context', async () => {
     const parent = workItem('parent', '父工作');
     const child = workItem('child', 'Backlog 子工作', { parentId: 'parent' });
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
     render(<App />);
 
     await waitFor(() => expect(screen.getByText('Backlog 子工作')).toBeInTheDocument());
-    const card = document.querySelector('.backlog .task-card-backlog');
+    const card = screen.getByText('Backlog 子工作').closest('.task-card-backlog');
     expect(card).not.toBeNull();
-    expect(getComputedStyle(card!).marginLeft).toMatch(/^0(?:px)?$/);
+    expect(card).toHaveStyle('--task-depth: 2');
   });
 });
