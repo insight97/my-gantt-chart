@@ -358,14 +358,7 @@ export function scheduleTaskAtDate(
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
   const task = project && findTask(project, taskId);
-  const hasAllocations = workspace.allocations.some(item => item.taskId === taskId);
-  if (
-    !project ||
-    !task ||
-    task.status === 'completed' ||
-    (task.status !== 'backlog' && hasAllocations)
-  )
-    return unchanged();
+  if (!project || !task || task.status === 'completed') return unchanged();
   if (taskHasChildren(project.tasks, task.id)) return invalid('有子任務的工作項目不可直接排程。');
 
   try {

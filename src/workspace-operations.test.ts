@@ -118,6 +118,29 @@ describe('workspace operations', () => {
     expect(next.allocations.map(item => item.date)).toEqual(['2026-01-05', '2026-01-06']);
   });
 
+  it('reschedules an existing Timeline task when dropped on an explicit date', () => {
+    const original = workspace(
+      task({ id: 'task-a', status: 'scheduled', start: '2026-01-01', estimatedHours: 8 }),
+      [{ id: 'old-allocation', taskId: 'task-a', date: '2026-01-01', allocatedHours: 8 }],
+    );
+    original.dailyCapacities = [
+      {
+        date: '2026-01-05',
+        totalCapacityHours: 8,
+        unavailableHours: 0,
+        availableHours: 8,
+      },
+    ];
+
+    const next = changed(scheduleTaskAtDate(original, 'project-a', 'task-a', '2026-01-05'));
+
+    expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: '2026-01-05' });
+    expect(next.allocations).toEqual([
+      expect.objectContaining({ taskId: 'task-a', date: '2026-01-05', allocatedHours: 8 }),
+    ]);
+    expect(next.allocations.some(item => item.id === 'old-allocation')).toBe(false);
+  });
+
   it('changes one allocation date without rebalance', () => {
     const result = adjustAllocationDay(
       workspace(task({ status: 'scheduled' }), [
