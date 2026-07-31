@@ -1,4 +1,5 @@
 import type { Allocation, DailyCapacity, Task } from './types';
+import { buildTaskTree } from './task-tree';
 
 const DAY_MS = 86400000;
 export const DEFAULT_PLANNING_HORIZON_DAYS = 180;
@@ -30,13 +31,9 @@ export function normalizeCapacity(capacity: DailyCapacity): DailyCapacity {
 }
 
 export function getProjectEstimatedHours(project: { tasks: Task[] }) {
-  const parentIds = new Set(
-    project.tasks
-      .map(task => task.parentId)
-      .filter((parentId): parentId is string => typeof parentId === 'string'),
-  );
+  const tree = buildTaskTree(project.tasks);
   return project.tasks
-    .filter(task => !parentIds.has(task.id))
+    .filter(task => !tree.hasChildren(task.id))
     .reduce((sum, task) => sum + Math.max(0, task.estimatedHours), 0);
 }
 

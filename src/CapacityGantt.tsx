@@ -8,16 +8,12 @@ import {
   today,
 } from './capacity';
 import { hoursLabel } from './formatters';
-import {
-  aggregateTaskAllocations,
-  aggregateTaskEstimate,
-  taskDepth,
-  taskHasChildren,
-} from './data';
+import { aggregateTaskAllocations, aggregateTaskEstimate } from './data';
 import TaskCard from './TaskCard';
 import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
 import type { Allocation, DailyCapacity, Task, ViewMode } from './types';
+import type { TaskTreeIndex } from './task-tree';
 import {
   buildTimelineContext,
   buildTimelinePeriods,
@@ -54,6 +50,7 @@ export type CapacityGanttProps = {
   projectId: string;
   tasks: Task[];
   allTasks: Task[];
+  taskTree: TaskTreeIndex;
   expandedTaskIds: Set<string>;
   backlogTasks: Task[];
   allocations: Allocation[];
@@ -361,7 +358,7 @@ type AllocationReadOnlyReason = 'completed' | 'parent';
 
 function TimelineTaskRows({
   tasks,
-  allTasks,
+  taskTree,
   hoursByTask,
   allocationsByTask,
   periods,
@@ -370,7 +367,7 @@ function TimelineTaskRows({
   onAdjustAllocation,
 }: {
   tasks: Task[];
-  allTasks: Task[];
+  taskTree: TaskTreeIndex;
   hoursByTask: Map<string, Map<string, number>>;
   allocationsByTask: Map<string, Allocation[]>;
   periods: TimelinePeriod[];
@@ -382,7 +379,7 @@ function TimelineTaskRows({
     <>
       {tasks.map(task => {
         const taskAllocationWindow = allocationWindow(allocationsByTask.get(task.id) || []);
-        const hasChildren = taskHasChildren(allTasks, task.id);
+        const hasChildren = taskTree.hasChildren(task.id);
         return (
           <div
             className={`timeline-row${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' deadline-overdue' : ''}`}
@@ -448,7 +445,7 @@ function TimelineGrid({
   view,
   scale,
   tasks,
-  allTasks,
+  taskTree,
   hoursByTask,
   allocationsByTask,
   dropPreview,
@@ -458,7 +455,7 @@ function TimelineGrid({
   view: ViewMode;
   scale: number;
   tasks: Task[];
-  allTasks: Task[];
+  taskTree: TaskTreeIndex;
   hoursByTask: Map<string, Map<string, number>>;
   allocationsByTask: Map<string, Allocation[]>;
   dropPreview: Task | null;
@@ -473,7 +470,7 @@ function TimelineGrid({
     <div className="timeline-grid" style={style}>
       <TimelineTaskRows
         tasks={tasks}
-        allTasks={allTasks}
+        taskTree={taskTree}
         hoursByTask={hoursByTask}
         allocationsByTask={allocationsByTask}
         periods={periods}
@@ -498,6 +495,7 @@ function GanttSidebar({
   projectId,
   tasks,
   allTasks,
+  taskTree,
   expandedTaskIds,
   allocatedByTask,
   allocationsByTask,
@@ -514,6 +512,7 @@ function GanttSidebar({
   projectId: string;
   tasks: Task[];
   allTasks: Task[];
+  taskTree: TaskTreeIndex;
   expandedTaskIds: Set<string>;
   allocatedByTask: Map<string, number>;
   allocationsByTask: Map<string, Allocation[]>;
@@ -559,9 +558,9 @@ function GanttSidebar({
       </div>
       {tasks.map(task => {
         const allocated = allocatedByTask.get(task.id) || 0;
-        const hasChildren = taskHasChildren(allTasks, task.id);
+        const hasChildren = taskTree.hasChildren(task.id);
         const estimated = hasChildren
-          ? aggregateTaskEstimate(task.id, allTasks)
+          ? aggregateTaskEstimate(task.id, allTasks, taskTree)
           : task.estimatedHours;
         const pending = estimated - allocated;
         const dropRelation =
@@ -598,7 +597,7 @@ function GanttSidebar({
               pendingHours={pending}
               hasChildren={hasChildren}
               isGroup={hasChildren}
-              depth={taskDepth(allTasks, task.id)}
+              depth={taskTree.depth(task.id)}
               expanded={expandedTaskIds.has(task.id)}
               onToggle={hasChildren ? item => onToggleTask(item.id) : undefined}
               onAddChild={onAddChild}
@@ -641,6 +640,7 @@ export default function CapacityGantt({
   projectId,
   tasks,
   allTasks,
+  taskTree,
   expandedTaskIds,
   backlogTasks,
   allocations,
@@ -689,9 +689,9 @@ export default function CapacityGantt({
   const taskAllocations = useMemo(() => {
     const index = new Map<string, Allocation[]>();
     for (const task of tasks)
-      index.set(task.id, aggregateTaskAllocations(task.id, allTasks, allocations));
+      index.set(task.id, aggregateTaskAllocations(task.id, allTasks, allocations, taskTree));
     return index;
-  }, [tasks, allTasks, allocations]);
+  }, [tasks, allTasks, allocations, taskTree]);
   const allocatedByTask = useMemo(() => {
     const index = new Map<string, number>();
     for (const [taskId, items] of taskAllocations)
@@ -920,6 +920,7 @@ export default function CapacityGantt({
           projectId={projectId}
           tasks={tasks}
           allTasks={allTasks}
+          taskTree={taskTree}
           expandedTaskIds={expandedTaskIds}
           allocatedByTask={allocatedByTask}
           allocationsByTask={taskAllocations}
@@ -970,7 +971,7 @@ export default function CapacityGantt({
               view={view}
               scale={scale}
               tasks={tasks}
-              allTasks={allTasks}
+              taskTree={taskTree}
               hoursByTask={hoursByTask}
               allocationsByTask={taskAllocations}
               dropPreview={dropPreview}

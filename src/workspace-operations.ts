@@ -6,11 +6,9 @@ import {
 } from './capacity';
 import {
   aggregateTaskEstimate,
+  buildTaskTree,
   now,
-  taskChildren,
   taskDeadlineConstraint,
-  taskHasChildren,
-  taskDescendantIds,
   uid,
   validateDeadlineHierarchy,
 } from './data';
@@ -89,20 +87,12 @@ function findTask(project: Project, taskId: string) {
 }
 
 /** Returns a group's leaf descendants in stable depth-first sibling order. */
-function groupLeafTasks(project: Project, groupId: string): Task[] {
-  const group = findTask(project, groupId);
-  if (!group) return [];
-  const result: Task[] = [];
-  const visit = (task: Task) => {
-    const children = taskChildren(project.tasks, task.id);
-    if (!children.length) {
-      result.push(task);
-      return;
-    }
-    children.forEach(visit);
-  };
-  visit(group);
-  return result;
+function groupLeafTasks(
+  project: Project,
+  groupId: string,
+  tree = buildTaskTree(project.tasks),
+): Task[] {
+  return tree.leafDescendants(groupId);
 }
 
 function replaceProjectTasksAndAllocations(
@@ -127,10 +117,11 @@ function replaceProjectTasksAndAllocations(
 export function syncParentEstimatedHours(workspace: WorkspaceData, projectId: string) {
   const project = findProject(workspace, projectId);
   if (!project) return workspace;
+  const tree = buildTaskTree(project.tasks);
   let changed = false;
   const tasks = project.tasks.map(task => {
-    if (!taskHasChildren(project.tasks, task.id)) return task;
-    const estimatedHours = aggregateTaskEstimate(task.id, project.tasks);
+    if (!tree.hasChildren(task.id)) return task;
+    const estimatedHours = aggregateTaskEstimate(task.id, project.tasks, tree);
     if (task.estimatedHours === estimatedHours) return task;
     changed = true;
     return { ...task, estimatedHours, updatedAt: now() };
@@ -159,11 +150,8 @@ function preserveParentWorkAsUnsplit(
   parent: Task,
 ): WorkspaceData {
   const project = findProject(workspace, projectId);
-  if (
-    !project ||
-    taskHasChildren(project.tasks, parent.id) ||
-    !parentHasDirectWork(workspace, parent)
-  )
+  const tree = project ? buildTaskTree(project.tasks) : null;
+  if (!project || tree?.hasChildren(parent.id) || !parentHasDirectWork(workspace, parent))
     return workspace;
 
   const unsplitTask: Task = {
@@ -187,7 +175,11 @@ function preserveParentWorkAsUnsplit(
   };
 }
 
-function parentValidationError(project: Project, draft: Task): string | null {
+function parentValidationError(
+  project: Project,
+  draft: Task,
+  tree = buildTaskTree(project.tasks),
+): string | null {
   const parentId = draft.parentId ?? null;
   if (!parentId) return null;
   if (parentId === draft.id) return 'Task 不可成為自己的父節點。';
@@ -195,17 +187,17 @@ function parentValidationError(project: Project, draft: Task): string | null {
   if (!parent) return '找不到父節點。';
   if (parent.status === 'completed') return '已完成工作不可作為父節點。';
 
-  const descendants = taskDescendantIds(project.tasks, draft.id);
+  const descendants = tree.descendants(draft.id);
   if (descendants.has(parentId)) return '不可把 Task 移到自己的子樹內。';
 
-  const sourceDepth = taskDepth(project.tasks, draft.id);
+  const sourceDepth = tree.depth(draft.id);
   const subtreeDepth = Math.max(
     0,
     ...project.tasks
       .filter(task => task.id === draft.id || descendants.has(task.id))
-      .map(task => taskDepth(project.tasks, task.id) - sourceDepth),
+      .map(task => tree.depth(task.id) - sourceDepth),
   );
-  if (taskDepth(project.tasks, parentId) + 1 + subtreeDepth > 3)
+  if (tree.depth(parentId) + 1 + subtreeDepth > 3)
     return '任務階層最多三層。請先調整父項目或排序位置。';
   return null;
 }
@@ -227,20 +219,20 @@ function prepareTaskForPersistence(
   if (!draft.name.trim()) return { error: '請輸入 Task 名稱。' };
   if (!Number.isFinite(draft.estimatedHours) || draft.estimatedHours < 0)
     return { error: '請輸入有效的預估工時。' };
-  const parentError = parentValidationError(project, draft);
+  const initialTree = buildTaskTree(project.tasks);
+  const parentError = parentValidationError(project, draft, initialTree);
   if (parentError) return { error: parentError };
 
   const initialProject = project;
   const existingTask = findTask(initialProject, draft.id);
-  if (taskHasChildren(initialProject.tasks, draft.id)) {
+  if (initialTree.hasChildren(draft.id)) {
     if (draft.status === 'completed') return { error: '有子任務的工作項目不可標記為已完成。' };
     draft = {
       ...draft,
       estimatedHours: initialProject.tasks
         .filter(
           task =>
-            taskDescendantIds(initialProject.tasks, draft.id).has(task.id) &&
-            !taskHasChildren(initialProject.tasks, task.id),
+            initialTree.descendants(draft.id).has(task.id) && !initialTree.hasChildren(task.id),
         )
         .reduce((sum, task) => sum + task.estimatedHours, 0),
     };
@@ -257,12 +249,15 @@ function prepareTaskForPersistence(
 
   let task: Task = { ...draft, name: draft.name.trim(), updatedAt: now() };
   if (!existingTask && task.parentId && !task.deadline)
-    task = { ...task, deadline: taskDeadlineConstraint(project.tasks, task.parentId) };
+    task = {
+      ...task,
+      deadline: taskDeadlineConstraint(project.tasks, task.parentId, buildTaskTree(project.tasks)),
+    };
 
   const candidateTasks = project.tasks.some(item => item.id === task.id)
     ? project.tasks.map(item => (item.id === task.id ? task : item))
     : [...project.tasks, task];
-  const deadlineError = validateDeadlineHierarchy(candidateTasks);
+  const deadlineError = validateDeadlineHierarchy(candidateTasks, buildTaskTree(candidateTasks));
   if (deadlineError) return { error: deadlineError };
 
   return { workspace: nextWorkspace, project, task, existingTask };
@@ -303,7 +298,8 @@ function scheduleTaskTransition(
   date: string,
   moveToSiblingEnd: boolean,
 ): WorkspaceOperationResult {
-  if (taskHasChildren(project.tasks, task.id)) return invalid('有子任務的工作項目不可直接排程。');
+  if (buildTaskTree(project.tasks).hasChildren(task.id))
+    return invalid('有子任務的工作項目不可直接排程。');
 
   try {
     const result = scheduleTaskAt(task, workspace.allocations, workspace.dailyCapacities, date);
@@ -355,7 +351,7 @@ export function adjustAllocationDay(
   if (!project) return invalid('找不到 Project。');
   const task = findTask(project, taskId);
   if (!task) return invalid('找不到 Task。');
-  if (taskHasChildren(project.tasks, task.id))
+  if (buildTaskTree(project.tasks).hasChildren(task.id))
     return invalid('有子任務的工作項目只能檢視彙總工時。');
   if (task.status === 'completed') return invalid('已完成 Task 不可修改。');
   if (
@@ -401,7 +397,7 @@ export function moveTaskToBacklog(
   const task = project && findTask(project, taskId);
   if (!project || !task || task.status === 'completed') return unchanged();
 
-  if (taskHasChildren(project.tasks, task.id))
+  if (buildTaskTree(project.tasks).hasChildren(task.id))
     return invalid('有子任務的工作項目不可直接移回 Backlog。');
 
   let nextWorkspace = workspace;
@@ -432,14 +428,14 @@ export function moveTaskGroupToTimeline(
   const project = findProject(workspace, projectId);
   const group = project && findTask(project, groupId);
   if (!project || !group) return unchanged();
-  if (!taskHasChildren(project.tasks, group.id))
-    return invalid('只有群組可批次移到 Allocation Timeline。');
+  const tree = buildTaskTree(project.tasks);
+  if (!tree.hasChildren(group.id)) return invalid('只有群組可批次移到 Allocation Timeline。');
 
   let tasks = project.tasks;
   let allocations = workspace.allocations;
   let changed = false;
   try {
-    for (const leaf of groupLeafTasks(project, group.id)) {
+    for (const leaf of groupLeafTasks(project, group.id, tree)) {
       if (leaf.status !== 'backlog') continue;
       const current = tasks.find(task => task.id === leaf.id)!;
       const result = scheduleTaskAt(
@@ -473,10 +469,11 @@ export function moveTaskGroupToBacklog(
   const project = findProject(workspace, projectId);
   const group = project && findTask(project, groupId);
   if (!project || !group) return unchanged();
-  if (!taskHasChildren(project.tasks, group.id)) return invalid('只有群組可批次移回 Backlog。');
+  const tree = buildTaskTree(project.tasks);
+  if (!tree.hasChildren(group.id)) return invalid('只有群組可批次移回 Backlog。');
 
   const movedIds = new Set(
-    groupLeafTasks(project, group.id)
+    groupLeafTasks(project, group.id, tree)
       .filter(task => task.status === 'scheduled' || task.status === 'in_progress')
       .map(task => task.id),
   );
@@ -496,21 +493,6 @@ export function moveTaskGroupToBacklog(
 
 export type TaskMoveRelation = 'inside' | 'before' | 'after';
 
-function taskDepth(tasks: Task[], taskId: string, parentOverride?: Map<string, string | null>) {
-  let depth = 0;
-  let current: Task | undefined = tasks.find(task => task.id === taskId);
-  const seen = new Set<string>();
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    depth += 1;
-    const parentId = parentOverride?.has(current.id)
-      ? parentOverride.get(current.id)!
-      : (current.parentId ?? null);
-    current = parentId ? tasks.find(task => task.id === parentId) : undefined;
-  }
-  return depth;
-}
-
 /** Reparents or reorders a whole subtree without touching its allocations. */
 export function moveTask(
   workspace: WorkspaceData,
@@ -527,27 +509,25 @@ export function moveTask(
   if (!source || !target) return unchanged();
   if (relation === 'inside' && target.status === 'completed')
     return invalid('已完成工作不可作為父節點。');
-  const descendants = taskDescendantIds(project.tasks, sourceId);
+  const tree = buildTaskTree(project.tasks);
+  const descendants = tree.descendants(sourceId);
   if (descendants.has(targetId)) return invalid('不可把工作項目移到自己的子樹內。');
 
   let nextWorkspace = workspace;
-  if (relation === 'inside' && !taskHasChildren(project.tasks, target.id)) {
+  if (relation === 'inside' && !tree.hasChildren(target.id)) {
     nextWorkspace = preserveParentWorkAsUnsplit(workspace, project.id, target);
     project = findProject(nextWorkspace, project.id)!;
   }
 
   const nextParentId = relation === 'inside' ? target.id : (target.parentId ?? null);
   const override = new Map<string, string | null>([[source.id, nextParentId]]);
+  const movedTree = buildTaskTree(project.tasks, override);
   const subtreeDepth = Math.max(
     ...project.tasks
       .filter(task => task.id === source.id || descendants.has(task.id))
-      .map(
-        task =>
-          taskDepth(project.tasks, task.id, override) -
-          taskDepth(project.tasks, source.id, override),
-      ),
+      .map(task => movedTree.depth(task.id) - movedTree.depth(source.id)),
   );
-  if (taskDepth(project.tasks, source.id, override) + subtreeDepth > 3)
+  if (movedTree.depth(source.id) + subtreeDepth > 3)
     return invalid('任務階層最多三層。請先調整父項目或排序位置。');
 
   const sourceParent = source.parentId ?? null;
@@ -584,7 +564,7 @@ export function moveTask(
       ? { ...task, order: task.order ?? 0 }
       : task,
   );
-  const deadlineError = validateDeadlineHierarchy(normalized);
+  const deadlineError = validateDeadlineHierarchy(normalized, buildTaskTree(normalized));
   if (deadlineError) return invalid(deadlineError);
   return updated(
     syncParentEstimatedHours(
