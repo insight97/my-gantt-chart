@@ -1186,11 +1186,13 @@ function TaskDialog({
               value={draft.status}
               onChange={event => setDraft({ ...draft, status: event.target.value as TaskStatus })}
             >
-              {Object.entries(statusLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
+              {Object.entries(statusLabels)
+                .filter(([value]) => !hasChildren || value !== 'completed')
+                .map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
             </select>
           </label>
         </div>

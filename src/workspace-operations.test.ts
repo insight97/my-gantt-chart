@@ -402,6 +402,20 @@ describe('workspace operations', () => {
     });
   });
 
+  it('rejects manually completing a group without changing the workspace', () => {
+    const parent = task({ id: 'parent', name: 'Parent' });
+    const child = task({ id: 'child', name: 'Child', parentId: 'parent', status: 'in_progress' });
+    const original = workspace(parent);
+    original.projects[0].tasks.push(child);
+
+    const result = saveTask(original, 'project-a', { ...parent, status: 'completed' });
+
+    expect(result).toEqual({ ok: false, error: '有子任務的工作項目不可標記為已完成。' });
+    expect(original.projects[0].tasks.find(item => item.id === 'parent')).toMatchObject({
+      status: 'backlog',
+    });
+  });
+
   it('rejects dragging a task inside a completed parent', () => {
     const original = workspace(
       task({ id: 'completed-parent', name: 'Completed Parent', status: 'completed' }),
