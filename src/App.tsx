@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
+  buildTaskTree,
   emptyTask,
-  taskDescendantIds,
   taskDeadlineConstraint,
-  taskHasChildren,
-  taskDepth,
   now,
   partitionProjectTasks,
   validateImport,
@@ -23,7 +21,7 @@ import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } 
 import CapacityGantt from './CapacityGantt';
 import { hourValueLabel, priorityLabels, weekdayDateLabel } from './formatters';
 import TaskCard from './TaskCard';
-import { backlogDropRelation, pointerLeftElement } from './task-drag';
+import { backlogDropRelation, pointerLeftElement, resolveTaskDrop } from './task-drag';
 import type {
   TaskDragOrigin,
   TaskDragState,
@@ -44,6 +42,7 @@ import type {
   WorkspaceData,
 } from './types';
 import type { TimelineInputMode, TimelineZoom } from './timeline';
+import type { TaskTreeIndex } from './task-tree';
 import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
@@ -132,11 +131,10 @@ export default function App() {
         setExpandedProjectIds(new Set(next.projects.slice(0, 1).map(item => item.id)));
         setExpandedTaskIds(
           new Set(
-            next.projects.flatMap(project =>
-              project.tasks
-                .filter(task => taskHasChildren(project.tasks, task.id))
-                .map(task => task.id),
-            ),
+            next.projects.flatMap(project => {
+              const tree = buildTaskTree(project.tasks);
+              return project.tasks.filter(task => tree.hasChildren(task.id)).map(task => task.id);
+            }),
           ),
         );
         setReady(true);
@@ -307,7 +305,7 @@ export default function App() {
       setNotice('已完成工作不可新增子任務。');
       return;
     }
-    if (taskDepth(project.tasks, parent.id) >= 3) {
+    if (buildTaskTree(project.tasks).depth(parent.id) >= 3) {
       setNotice('任務階層最多三層。');
       return;
     }
@@ -434,55 +432,36 @@ export default function App() {
           ? document.elementFromPoint(event.clientX, event.clientY)
           : null;
       const target = tracked && (!hit || tracked.element.contains(hit)) ? tracked.target : null;
-      if (target?.projectId === current.projectId) {
-        if (current.isGroup) {
-          if (current.origin === 'gantt' && target.kind === 'backlog')
-            moveTaskGroupToBacklog(current.projectId, current.task.id);
-          if (
-            current.origin === 'gantt' &&
-            target.kind === 'gantt-row' &&
-            target.taskId &&
-            target.relation
-          ) {
-            moveTask(current.projectId, current.task.id, target.taskId, target.relation);
-          }
-          if (
-            current.origin === 'backlog' &&
-            target.kind === 'backlog' &&
-            target.taskId &&
-            (target.relation === 'before' || target.relation === 'after')
-          ) {
-            moveTask(current.projectId, current.task.id, target.taskId, target.relation);
-          } else if (current.origin === 'backlog') {
-            if (target.kind === 'gantt-timeline' && target.date)
-              moveTaskGroupToTimeline(current.projectId, current.task.id, target.date);
-            else if (target.kind === 'gantt-row' || target.kind === 'gantt-sidebar')
-              moveTaskGroupToTimeline(current.projectId, current.task.id, today());
-          }
-        } else if (target.kind === 'backlog') {
-          const relation =
-            target.relation === 'before' || target.relation === 'after'
-              ? target.relation
-              : undefined;
-          if (current.origin === 'gantt')
-            moveTaskToBacklog(current.projectId, current.task.id, target.taskId, relation);
-          else if (target.taskId && target.relation)
-            moveTask(current.projectId, current.task.id, target.taskId, target.relation);
-        }
-        if (!current.isGroup && target.kind === 'gantt-row') {
-          if (target.taskId)
-            moveTask(
-              current.projectId,
-              current.task.id,
-              target.taskId,
-              target.relation || 'before',
-              current.origin === 'backlog',
+      const command = resolveTaskDrop(current, target, today());
+      if (command) {
+        switch (command.type) {
+          case 'move-group-to-backlog':
+            moveTaskGroupToBacklog(command.projectId, command.groupId);
+            break;
+          case 'move-group-to-timeline':
+            moveTaskGroupToTimeline(command.projectId, command.groupId, command.date);
+            break;
+          case 'move-task-to-backlog':
+            moveTaskToBacklog(
+              command.projectId,
+              command.taskId,
+              command.targetTaskId,
+              command.relation,
             );
+            break;
+          case 'move-task':
+            moveTask(
+              command.projectId,
+              command.sourceTaskId,
+              command.targetTaskId,
+              command.relation,
+              command.scheduleFromBacklog,
+            );
+            break;
+          case 'schedule-task':
+            scheduleTaskAtDate(command.projectId, command.taskId, command.date);
+            break;
         }
-        if (!current.isGroup && target.kind === 'gantt-sidebar' && current.origin === 'backlog')
-          scheduleTaskAtDate(current.projectId, current.task.id, today());
-        if (!current.isGroup && target.kind === 'gantt-timeline' && target.date)
-          scheduleTaskAtDate(current.projectId, current.task.id, target.date);
       }
       suppressTaskClickRef.current = true;
       setTimeout(() => {
@@ -541,7 +520,7 @@ export default function App() {
     if (!workspace || !confirm('確定刪除這個 Task 及其 Allocation？')) return;
     const project = workspace.projects.find(item => item.id === projectId);
     if (!project) return;
-    const removedIds = taskDescendantIds(project.tasks, taskId);
+    const removedIds = buildTaskTree(project.tasks).descendants(taskId);
     removedIds.add(taskId);
     commit(
       syncParentEstimatedHours(
@@ -549,7 +528,7 @@ export default function App() {
           ...workspace,
           projects: workspace.projects.map(item => {
             if (item.id !== project.id) return item;
-            const removedIds = taskDescendantIds(item.tasks, taskId);
+            const removedIds = buildTaskTree(item.tasks).descendants(taskId);
             removedIds.add(taskId);
             return {
               ...item,
@@ -600,9 +579,10 @@ export default function App() {
 
   if (!ready || !workspace) return <main className="loading">正在開啟本機工作區…</main>;
 
-  const expandableTaskIds = workspace.projects.flatMap(project =>
-    project.tasks.filter(task => taskHasChildren(project.tasks, task.id)).map(task => task.id),
-  );
+  const expandableTaskIds = workspace.projects.flatMap(project => {
+    const tree = buildTaskTree(project.tasks);
+    return project.tasks.filter(task => tree.hasChildren(task.id)).map(task => task.id);
+  });
   const allExpanded =
     expandableTaskIds.length > 0 && expandableTaskIds.every(taskId => expandedTaskIds.has(taskId));
   const expandAll = () => {
@@ -613,6 +593,7 @@ export default function App() {
   };
   const editingProject =
     editingTask && workspace.projects.find(project => project.id === editingTask.projectId);
+  const editingTaskTree = editingProject ? buildTaskTree(editingProject.tasks) : null;
   const editTask = (projectId: string, task: Task) => {
     if (task.status === 'completed') {
       setNotice('已完成 Task 不可修改。');
@@ -775,7 +756,7 @@ export default function App() {
           allocations={workspace.allocations.filter(
             allocation => allocation.taskId === editingTask.task.id,
           )}
-          hasChildren={taskHasChildren(editingProject.tasks, editingTask.task.id)}
+          hasChildren={editingTaskTree?.hasChildren(editingTask.task.id) ?? false}
           scheduleOnSave={editingTask.scheduleOnSave}
           onClose={() => setEditingTask(null)}
           onSave={task => saveTask(editingTask.projectId, task, editingTask.scheduleOnSave)}
@@ -862,9 +843,11 @@ function ProjectPanel({
   onZoomChange,
   onTimelineScroll,
 }: ProjectPanelProps) {
+  const taskTree = useMemo(() => buildTaskTree(project.tasks), [project.tasks]);
   const { backlog: backlogTasks, scheduled: scheduledTasks } = partitionProjectTasks(
     project,
     expandedTaskIds,
+    taskTree,
   );
   return (
     <article className={`project-card workspace-card${expanded ? ' expanded' : ' collapsed'}`}>
@@ -894,7 +877,7 @@ function ProjectPanel({
             <Backlog
               projectId={project.id}
               tasks={backlogTasks}
-              allTasks={project.tasks}
+              taskTree={taskTree}
               taskDrag={taskDrag}
               draggingTaskId={
                 taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
@@ -912,6 +895,7 @@ function ProjectPanel({
               projectId={project.id}
               tasks={scheduledTasks}
               allTasks={project.tasks}
+              taskTree={taskTree}
               expandedTaskIds={expandedTaskIds}
               backlogTasks={backlogTasks}
               allocations={allocations}
@@ -953,7 +937,7 @@ function ProjectPanel({
 function Backlog({
   projectId,
   tasks,
-  allTasks,
+  taskTree,
   taskDrag,
   draggingTaskId,
   onEdit,
@@ -965,7 +949,7 @@ function Backlog({
 }: {
   projectId: string;
   tasks: Task[];
-  allTasks: Task[];
+  taskTree: TaskTreeIndex;
   taskDrag: TaskDragState | null;
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
@@ -984,7 +968,7 @@ function Backlog({
     if (pointerLeftElement(event)) onTaskDropTarget(null);
   };
   const renderTask = (task: Task) => {
-    const isGroup = taskHasChildren(allTasks, task.id);
+    const isGroup = taskTree.hasChildren(task.id);
     const dropRelation =
       taskDrag?.projectId === projectId &&
       taskDrag.target?.kind === 'backlog' &&
@@ -1018,7 +1002,7 @@ function Backlog({
           onDelete={onDelete}
           hasChildren={isGroup}
           isGroup={isGroup}
-          depth={taskDepth(allTasks, task.id)}
+          depth={taskTree.depth(task.id)}
           onAddChild={task => onAddChild(task)}
           onPointerDown={event => onTaskPointerDown(task, event, isGroup)}
         />
@@ -1036,7 +1020,7 @@ function Backlog({
           <h2>Backlog</h2>
           <small>
             {
-              tasks.filter(task => !taskHasChildren(allTasks, task.id) && task.status === 'backlog')
+              tasks.filter(task => !taskTree.hasChildren(task.id) && task.status === 'backlog')
                 .length
             }{' '}
             個待排程 Task
@@ -1083,13 +1067,14 @@ function TaskDialog({
   const [draft, setDraft] = useState(task);
   const [error, setError] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const descendantIds = taskDescendantIds(tasks, task.id);
+  const taskTree = useMemo(() => buildTaskTree(tasks), [tasks]);
+  const descendantIds = taskTree.descendants(task.id);
   const parentOptions = tasks.filter(
     candidate =>
       candidate.id !== task.id &&
       candidate.status !== 'completed' &&
       !descendantIds.has(candidate.id) &&
-      taskDepth(tasks, candidate.id) < 3,
+      taskTree.depth(candidate.id) < 3,
   );
   useLayoutEffect(() => {
     nameInputRef.current?.focus();
@@ -1141,7 +1126,7 @@ function TaskDialog({
               <option value="">無（根項目）</option>
               {parentOptions.map(parent => (
                 <option key={parent.id} value={parent.id}>
-                  {'　'.repeat(Math.max(0, taskDepth(tasks, parent.id) - 1))}
+                  {'　'.repeat(Math.max(0, taskTree.depth(parent.id) - 1))}
                   {parent.name}
                 </option>
               ))}
