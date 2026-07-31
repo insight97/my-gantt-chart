@@ -708,8 +708,15 @@ export default function CapacityGantt({
   }, [taskAllocations]);
 
   const latestRef = useRef({ timelineZoom, periods, scale, onZoomChange });
+  const isTimelineGroupDrag =
+    taskDrag?.projectId === projectId &&
+    taskDrag.active &&
+    taskDrag.isGroup &&
+    taskDrag.origin === 'gantt';
   const dropTargetDate =
-    taskDrag?.projectId === projectId && taskDrag.target?.kind === 'gantt-timeline'
+    !isTimelineGroupDrag &&
+    taskDrag?.projectId === projectId &&
+    taskDrag.target?.kind === 'gantt-timeline'
       ? taskDrag.target.date
       : undefined;
   const dropTargetTaskId = dropTargetDate ? taskDrag?.task.id : undefined;
@@ -869,6 +876,10 @@ export default function CapacityGantt({
   };
   const handleTaskDropMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!taskDrag?.active) return;
+    if (isTimelineGroupDrag) {
+      onTaskDropTarget(null);
+      return;
+    }
     const timeline = timelineRef.current;
     if (!timeline) return;
     const bounds = timeline.getBoundingClientRect();

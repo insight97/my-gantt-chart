@@ -327,6 +327,37 @@ describe('Work Item hierarchy UI', () => {
     });
   });
 
+  it('does not preview scheduling when a Timeline group is dragged over a date', async () => {
+    const parent = workItem('parent', 'Timeline 父項目', { status: 'scheduled' });
+    const child = workItem('child', 'Timeline 子項目', {
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('Timeline 父項目')).toBeInTheDocument());
+    const source = screen.getByText('Timeline 父項目').closest('.task-card')!;
+    const timeline = document.querySelector('.timeline')!;
+    vi.spyOn(timeline, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(source, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(timeline, { clientX: 50, clientY: 50 });
+
+    expect(document.querySelector('.drop-preview')).not.toBeInTheDocument();
+  });
+
   it('explains why completed task allocation cells are read-only', async () => {
     const task = workItem('completed', '已完成工作', { status: 'completed' });
     loadWorkspaceMock.mockResolvedValue(workspace([task]));
