@@ -412,6 +412,19 @@ describe('Work Item hierarchy UI', () => {
     expect(screen.queryByRole('option', { name: '已完成父項目' })).not.toBeInTheDocument();
   });
 
+  it('does not offer completed status when editing a group', async () => {
+    const parent = workItem('parent', '父工作');
+    const child = workItem('child', '子工作', { parentId: 'parent', status: 'in_progress' });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('父工作'));
+
+    const statusSelect = screen.getByLabelText('狀態');
+    expect(statusSelect).not.toHaveTextContent('已完成');
+  });
+
   it('indents a child task in Backlog to preserve its hierarchy context', async () => {
     const parent = workItem('parent', '父工作');
     const child = workItem('child', 'Backlog 子工作', { parentId: 'parent' });

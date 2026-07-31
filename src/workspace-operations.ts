@@ -233,6 +233,7 @@ function prepareTaskForPersistence(
   const initialProject = project;
   const existingTask = findTask(initialProject, draft.id);
   if (taskHasChildren(initialProject.tasks, draft.id)) {
+    if (draft.status === 'completed') return { error: '有子任務的工作項目不可標記為已完成。' };
     draft = {
       ...draft,
       estimatedHours: initialProject.tasks

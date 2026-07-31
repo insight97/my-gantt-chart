@@ -39,7 +39,7 @@ export default function TaskCard({
   isGroup = false,
   onPointerDown,
 }: TaskCardProps) {
-  const canEdit = !isGhost && Boolean(onEdit) && task.status !== 'completed';
+  const canEdit = !isGhost && Boolean(onEdit) && (task.status !== 'completed' || isGroup);
   const className = [
     'task-card',
     `task-card-${variant}`,
