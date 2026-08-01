@@ -395,6 +395,17 @@ function scheduleTaskTransition(
   if (buildTaskTree(project.tasks).hasChildren(task.id))
     return invalid('有子任務的工作項目不可直接排程。');
 
+  if (task.recurrence) {
+    const savedWorkspace = replaceTaskAndAllocations(
+      workspace,
+      project.id,
+      task,
+      [],
+      moveToSiblingEnd,
+    );
+    return applyTaskRecurrence(savedWorkspace, project.id, task.id);
+  }
+
   try {
     const result = scheduleTaskAt(task, workspace.allocations, date);
     const nextTask: Task = { ...result.task, updatedAt: now() };
@@ -425,16 +436,6 @@ export function autoScheduleTask(
   const prepared = prepareTaskForPersistence(workspace, projectId, sourceTask);
   if ('error' in prepared) return invalid(prepared.error);
   const { workspace: nextWorkspace, project: nextProject, task, existingTask } = prepared;
-  if (task.recurrence) {
-    const savedWorkspace = replaceTaskAndAllocations(
-      nextWorkspace,
-      nextProject.id,
-      task,
-      [],
-      !existingTask || task.status === 'backlog',
-    );
-    return applyTaskRecurrence(savedWorkspace, nextProject.id, task.id);
-  }
   return scheduleTaskTransition(
     nextWorkspace,
     nextProject,
@@ -562,39 +563,32 @@ export function moveTaskGroupToTimeline(
   const tree = buildTaskTree(project.tasks);
   if (!tree.hasChildren(group.id)) return invalid('只有群組可批次移到 Allocation Timeline。');
 
-  let tasks = project.tasks;
-  let allocations = workspace.allocations;
+  let nextWorkspace = workspace;
   let changed = false;
   try {
     for (const leaf of groupLeafTasks(project, group.id, tree)) {
       if (leaf.status !== 'backlog') continue;
-      const current = tasks.find(task => task.id === leaf.id)!;
+      const currentProject = findProject(nextWorkspace, projectId)!;
+      const current = findTask(currentProject, leaf.id)!;
       const result = autoSchedule
-        ? scheduleTaskAt({ ...current, status: 'scheduled' }, allocations, date)
-        : {
-            task: {
-              ...current,
-              status: 'scheduled' as const,
-              start: date,
-              end: date,
-              updatedAt: now(),
-            },
-            allocations: [],
-          };
-      tasks = tasks.map(task =>
-        task.id === current.id ? { ...result.task, updatedAt: now() } : task,
-      );
-      allocations = [
-        ...allocations.filter(allocation => allocation.taskId !== current.id),
-        ...result.allocations,
-      ];
+        ? scheduleTaskTransition(
+            nextWorkspace,
+            currentProject,
+            { ...current, status: 'scheduled' },
+            date,
+            false,
+          )
+        : placeTaskOnTimeline(nextWorkspace, currentProject, current, date, false);
+      if (!result.ok) return result;
+      if (!result.changed) continue;
+      nextWorkspace = result.workspace;
       changed = true;
     }
   } catch (error) {
     return invalid(error instanceof Error ? error.message : '群組自動分配失敗。');
   }
   if (!changed) return unchanged();
-  return updated(replaceProjectTasksAndAllocations(workspace, projectId, tasks, allocations));
+  return updated(nextWorkspace);
 }
 
 /** Returns every unfinished Timeline leaf in a group to Backlog as one reversible transition. */
