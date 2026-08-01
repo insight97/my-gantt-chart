@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { emptyTask } from './data';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
@@ -197,6 +198,54 @@ describe('Work Item hierarchy UI', () => {
       ['2026-01-02', 8],
       ['2026-01-03', 8],
     ]);
+  });
+
+  it('allows editing a new Timeline task immediately after a refreshed workspace loads', async () => {
+    let resolveWorkspace!: (value: WorkspaceData) => void;
+    loadWorkspaceMock.mockReturnValue(
+      new Promise<WorkspaceData>(resolve => {
+        resolveWorkspace = resolve;
+      }),
+    );
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    resolveWorkspace(workspace([]));
+    const addButton = await screen.findByRole('button', {
+      name: 'Allocation Timeline 新增 Task',
+    });
+    fireEvent.click(addButton);
+
+    const nameInput = screen.getByLabelText('Task 名稱');
+    expect(screen.getByRole('dialog').parentElement?.parentElement).toBe(document.body);
+    fireEvent.click(nameInput);
+    expect(document.activeElement).toBe(nameInput);
+    fireEvent.change(nameInput, { target: { value: '重新整理後的新工作' } });
+    expect(nameInput).toHaveValue('重新整理後的新工作');
+
+    fireEvent.change(screen.getByLabelText('截止日期'), { target: { value: '2026-08-02' } });
+    expect(screen.getByLabelText('截止日期')).toHaveValue('2026-08-02');
+  });
+
+  it('keeps the Timeline editor open after a task drag click is suppressed', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([workItem('scheduled', '已排程工作', { status: 'scheduled' })]),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('已排程工作')).toBeInTheDocument());
+
+    const source = screen.getByText('已排程工作').closest('.task-card')!;
+    fireEvent.pointerDown(source, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { clientX: 10, clientY: 10 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '拖曳後的新工作' } });
+    expect(screen.getByLabelText('Task 名稱')).toHaveValue('拖曳後的新工作');
   });
 
   it('persists the automatic scheduling toggle', async () => {

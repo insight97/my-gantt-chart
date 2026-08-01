@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   buildTaskTree,
   emptyTask,
@@ -667,11 +668,12 @@ export default function App() {
     <div
       className="app"
       onClickCapture={event => {
-        if (suppressTaskClickRef.current) {
-          event.preventDefault();
-          event.stopPropagation();
-          suppressTaskClickRef.current = false;
-        }
+        if (!suppressTaskClickRef.current) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target?.closest('.task-card')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressTaskClickRef.current = false;
       }}
     >
       <header>
@@ -1196,7 +1198,7 @@ function TaskDialog({
     event.preventDefault();
     saveDraft();
   };
-  return (
+  return createPortal(
     <div
       className="modal"
       role="presentation"
@@ -1470,6 +1472,7 @@ function TaskDialog({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
