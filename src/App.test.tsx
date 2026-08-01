@@ -362,7 +362,7 @@ describe('Work Item hierarchy UI', () => {
   it('persists the automatic scheduling toggle', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
     render(<App />);
-    const toggle = await screen.findByLabelText('拖入或新增時自動排程');
+    const toggle = await screen.findByLabelText('自動排程');
 
     expect(toggle).toBeChecked();
     fireEvent.click(toggle);
@@ -371,13 +371,13 @@ describe('Work Item hierarchy UI', () => {
 
     cleanup();
     render(<App />);
-    expect(await screen.findByLabelText('拖入或新增時自動排程')).not.toBeChecked();
+    expect(await screen.findByLabelText('自動排程')).not.toBeChecked();
   });
 
   it('does not automatically schedule a new Timeline task when the toggle is off', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([]));
     render(<App />);
-    const toggle = await screen.findByLabelText('拖入或新增時自動排程');
+    const toggle = await screen.findByLabelText('自動排程');
     fireEvent.click(toggle);
     fireEvent.click(screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }));
     fireEvent.change(screen.getByLabelText('Task 名稱'), {
@@ -406,7 +406,7 @@ describe('Work Item hierarchy UI', () => {
       workspace([workItem('task-a', '可調整工作', { status: 'scheduled' })]),
     );
     render(<App />);
-    const step = await screen.findByLabelText('每日 Allocation 調整步進');
+    const step = await screen.findByLabelText('每次調整步進');
 
     expect(step).toHaveValue('1');
     fireEvent.change(step, { target: { value: '0.5' } });
@@ -415,7 +415,7 @@ describe('Work Item hierarchy UI', () => {
 
     cleanup();
     render(<App />);
-    expect(await screen.findByLabelText('每日 Allocation 調整步進')).toHaveValue('0.5');
+    expect(await screen.findByLabelText('每次調整步進')).toHaveValue('0.5');
   });
 
   it('uses the selected Allocation adjustment step for daily clicks', async () => {
@@ -425,7 +425,7 @@ describe('Work Item hierarchy UI', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText('可調整工作')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('每日 Allocation 調整步進'), {
+    fireEvent.change(screen.getByLabelText('每次調整步進'), {
       target: { value: '0.5' },
     });
     fireEvent.click(screen.getByRole('button', { name: '日' }));
@@ -461,7 +461,7 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
     render(<App />);
     await waitFor(() => expect(screen.getByText('待安排工作')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('拖入或新增時自動排程'));
+    fireEvent.click(screen.getByLabelText('自動排程'));
 
     const source = screen.getByText('待安排工作').closest('.task-card')!;
     const timeline = document.querySelector('.timeline')!;

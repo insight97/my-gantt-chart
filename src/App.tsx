@@ -697,18 +697,19 @@ export default function App() {
             </div>
             <div className="project-list-actions">
               <label className="auto-schedule-switch">
+                <span>自動排程</span>
                 <input
                   type="checkbox"
-                  aria-label="拖入或新增時自動排程"
+                  aria-label="自動排程"
                   checked={autoScheduleEnabled}
                   onChange={event => setAutoScheduleEnabled(event.target.checked)}
                 />
-                <span>拖入或新增時自動排程</span>
+                <span className="toggle-track" aria-hidden="true" />
               </label>
               <label className="allocation-step-switch">
-                <span>每日調整</span>
+                <span>每次調整</span>
                 <select
-                  aria-label="每日 Allocation 調整步進"
+                  aria-label="每次調整步進"
                   value={allocationStep}
                   onChange={event =>
                     setAllocationStep(Number(event.target.value) as AllocationStep)
@@ -722,7 +723,6 @@ export default function App() {
                 </select>
               </label>
               <div className="input-mode-switch" role="group" aria-label="時間軸操作模式">
-                <span>時間軸操作</span>
                 <div className="mode-switch">
                   <button
                     className={timelineInputMode === 'trackpad' ? 'active' : ''}

@@ -143,6 +143,7 @@ header {
   flex-wrap: wrap;
 }
 .auto-schedule-switch {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -151,10 +152,42 @@ header {
   white-space: nowrap;
 }
 .auto-schedule-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.auto-schedule-switch .toggle-track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #b9c6ce;
+  transition: background 160ms ease;
+}
+.auto-schedule-switch .toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: 16px;
   height: 16px;
-  margin: 0;
-  accent-color: var(--blue);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #17324d33;
+  transition: transform 160ms ease;
+}
+.auto-schedule-switch input:checked + .toggle-track {
+  background: var(--blue);
+}
+.auto-schedule-switch input:checked + .toggle-track::after {
+  transform: translateX(16px);
+}
+.auto-schedule-switch input:focus-visible + .toggle-track {
+  outline: 3px solid #99c9f2;
+  outline-offset: 2px;
 }
 .allocation-step-switch {
   display: inline-flex;
