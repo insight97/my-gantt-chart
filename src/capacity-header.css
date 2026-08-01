@@ -74,21 +74,6 @@
   background: #9fb2bf;
 }
 
-.capacity-period.editable {
-  cursor: pointer;
-}
-
-.capacity-period.editable:hover {
-  background: #edf5fa;
-  color: #174f7c;
-}
-
-.capacity-period.editable:focus-visible {
-  z-index: 1;
-  outline: 3px solid #99c9f2;
-  outline-offset: -3px;
-}
-
 .capacity-period b,
 .capacity-period strong,
 .capacity-period small {

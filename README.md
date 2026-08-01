@@ -4,7 +4,7 @@
 
 > 目前的可用容量，是否足以承擔這些 Task？
 
-以下 Backlog／Allocation Timeline 互動規則是目前產品實作的行為；共同語言請參考 [`CONTEXT.md`](./CONTEXT.md)，重大取捨請參考 [`docs/adr/0004-leaf-driven-backlog-timeline-projections.md`](./docs/adr/0004-leaf-driven-backlog-timeline-projections.md)。
+以下 Backlog／Allocation Timeline 互動規則是目前產品實作的行為；共同語言請參考 [`CONTEXT.md`](./CONTEXT.md)，重大取捨請參考 [`docs/adr/0004-leaf-driven-backlog-timeline-projections.md`](./docs/adr/0004-leaf-driven-backlog-timeline-projections.md) 與 [`docs/adr/0005-fixed-24-hour-capacity.md`](./docs/adr/0005-fixed-24-hour-capacity.md)。
 
 ## 核心概念
 
@@ -12,7 +12,7 @@
 - **Hierarchy**：根項目沒有父項目，最多允許三層；有子項目的 Work Item 不可直接分配工時。
 - **Leaf Task**：沒有子項目的 Work Item；只有 Leaf Task 可決定 Backlog／Timeline 狀態與直接分配工時。
 - **Backlog**：尚未被使用者放入 Allocation Timeline 的 Leaf Task；通常沒有 Allocation。
-- **Daily Capacity**：每天的總容量、不可用時間與可用容量。
+- **Daily Capacity**：每天固定 24 小時；睡眠、休息、通勤等內容以一般 Task／Allocation 計入，不另設不可用時間或每日容量設定。
 - **Allocation**：Task 在特定日期上的工時，可由使用者指定或 Automatic Scheduling 產生；不區分來源。
 - **Allocation Timeline**：唯一的時間軸畫面，保留日／週／月容量摘要、Allocation 編輯、縮放、平移與 Task card 拖曳。
 - **Deadline**：Task 必須完成的日期；只有實際 Allocation 日期超過時顯示逾期警告。
@@ -20,7 +20,7 @@
 - 若父 Work Item 原本已有實際 Allocation，加入子項目時會保留為 `未拆分工作` 葉節點；只有預估工時但尚未分配時不會建立額外子項目。
 - **Pending Hours**：估計工時與目前 Allocation 總和的有號差額；正值代表待安排，負值代表需要釋放。
 
-Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（例如 `4h / 8h`）；日層級點擊日期即可編輯總容量與不可用時間，超載日期會以紅色警告。
+Allocation Timeline 的日期欄會簡潔顯示「已分配 / 每日固定 24 小時」（例如 `4h / 24h`）；所有 Task 的 Allocation 都會計入當日使用量，超過 24 小時會以紅色警告。
 
 ## Backlog 與 Allocation Timeline 流程
 
@@ -36,14 +36,14 @@ Allocation Timeline 的日期欄會簡潔顯示「已分配 / 可用容量」（
 ## Allocation 規則
 
 - 新增 Task 預設為 Backlog，預估工時預設為 8 小時，建立日期由系統記錄。
-- Automatic Scheduling 只採最快完成模式，從放下日期或今天往後尋找 Capacity-Available Day；沒有容量時保留 Pending Hours，不產生 Automatic Overflow。週末與假日不特殊處理，只看每日可用容量。
+- Automatic Scheduling 只採最快完成模式，從放下日期或今天往後尋找仍有剩餘時間的日期；睡眠、休息等既有 Allocation 也會先消耗當日 24 小時，沒有剩餘時間時延續到下一天。週末與假日不特殊處理。
 - Allocation Timeline 日層級左鍵增加 1 小時，右鍵減少 1 小時，只修改被操作的日期，不跨日期重平衡；可以超過容量或 Estimated Hours，必須清楚顯示警告。
-- 只有明確 Automatic Scheduling 會清除並重建全部 Allocation；修改 Daily Capacity、Estimated Hours 或 Task metadata 不會改動 Allocation。
+- 只有明確 Automatic Scheduling 會清除並重建全部 Allocation；修改 Estimated Hours 或 Task metadata 不會改動既有 Allocation。手動調整可以暫時超過 24 小時，但必須顯示超載警告。
 - 本階段不做跨 Task 的自動排程、相依關係推理或全域重新排序。
 
 ## Allocation Timeline 顯示
 
-- Allocation Timeline 固定採單一 Allocation 操作語意。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。Allocation 範圍使用淺色底，有工時的格子使用較深底色；日層級週末在日期標題加上標記，下方格子維持單純底色。
+- Allocation Timeline 固定採單一 Allocation 操作語意。日層級可編輯每日工時；週／月層級只顯示期間 Allocation summary 且唯讀。容量摘要固定以期間天數乘以 24 小時計算；Allocation 範圍使用淺色底，有工時的格子使用較深底色；日層級週末在日期標題加上標記，下方格子維持單純底色。
 - 時間軸縮放層級與工作區的水平滾動位置同步。
 - Timeline 會保留同層 Work Item 順序；拖曳到項目中央代表加入子項目，拖曳到項目上方／下方代表同層排序。來源項目的整個子樹會一起移動。
 - 時間軸至少提供今天前 90 天的歷史範圍，並以垂直線標出今天的位置。
@@ -73,4 +73,4 @@ npm run preview
 
 資料存取集中在 [`src/db.ts`](./src/db.ts)，容量與 Allocation 規則集中在 [`src/capacity.ts`](./src/capacity.ts)，React UI 不直接操作 IndexedDB。
 
-目前使用 `gantt-capacity-local` schema version 3。舊版資料會由 IndexedDB 遷移流程把多個 Project 的 Task 合併成同一工作區的 Work Item；`projects` 只保留作為相容的匯入／儲存邊界，不再是產品 UI 的階層。
+目前使用 `gantt-capacity-local` schema version 5。舊版資料會由 IndexedDB 遷移流程把多個 Project 的 Task 合併成同一工作區的 Work Item；舊資料中的每日容量／不可用時間欄位會被忽略，既有 Task 與 Allocation 會保留，並改以固定每日 24 小時計算；`projects` 只保留作為相容的匯入／儲存邊界，不再是產品 UI 的階層。

@@ -10,8 +10,6 @@ import {
   validWorkspaceData,
 } from './data';
 import {
-  capacityAvailableHours,
-  getDailyCapacity,
   getProjectEstimatedHours,
   getTaskAllocatedHours,
   getTaskPendingHours,
@@ -20,7 +18,7 @@ import {
 } from './capacity';
 import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } from './db';
 import CapacityGantt from './CapacityGantt';
-import { hourValueLabel, priorityLabels, weekdayDateLabel } from './formatters';
+import { hourValueLabel, priorityLabels } from './formatters';
 import TaskCard from './TaskCard';
 import { backlogDropRelation, pointerLeftElement, resolveTaskDrop } from './task-drag';
 import type {
@@ -34,7 +32,6 @@ import { CURRENT_WORKSPACE_VERSION } from './types';
 import { recurrenceDates, recurrenceRuleError } from './recurrence';
 import type {
   Allocation,
-  DailyCapacity,
   ExportFile,
   Project,
   RecurrenceRule,
@@ -154,7 +151,6 @@ export default function App() {
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
   const [ready, setReady] = useState(false);
   const [editingTask, setEditingTask] = useState<EditingTask | null>(null);
-  const [capacityDate, setCapacityDate] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [history, setHistory] = useState<WorkspaceData[]>([]);
   const [future, setFuture] = useState<WorkspaceData[]>([]);
@@ -578,29 +574,6 @@ export default function App() {
     autoScheduleEnabled,
   ]);
 
-  const saveCapacity = (date: string, total: number, unavailable: number): string | null => {
-    if (
-      !workspace ||
-      !Number.isFinite(total) ||
-      !Number.isFinite(unavailable) ||
-      total < 0 ||
-      unavailable < 0
-    )
-      return '請輸入有效的容量數值。';
-    const nextCapacity: DailyCapacity = {
-      date,
-      totalCapacityHours: total,
-      unavailableHours: unavailable,
-      availableHours: capacityAvailableHours(total, unavailable),
-    };
-    const capacities = workspace.dailyCapacities.some(item => item.date === date)
-      ? workspace.dailyCapacities.map(item => (item.date === date ? nextCapacity : item))
-      : [...workspace.dailyCapacities, nextCapacity].sort((a, b) => a.date.localeCompare(b.date));
-    commit({ ...workspace, dailyCapacities: capacities });
-    setCapacityDate(null);
-    return null;
-  };
-
   const deleteTask = (projectId: string, taskId: string) => {
     if (!workspace || !confirm('確定刪除這個 Task 及其 Allocation？')) return;
     const project = workspace.projects.find(item => item.id === projectId);
@@ -637,7 +610,6 @@ export default function App() {
       version: CURRENT_WORKSPACE_VERSION,
       exportedAt: now(),
       projects: workspace.projects,
-      dailyCapacities: workspace.dailyCapacities,
       allocations: workspace.allocations,
     };
     download(JSON.stringify(file, null, 2), 'capacity-gantt-backup.json', 'application/json');
@@ -796,7 +768,6 @@ export default function App() {
                   project={project}
                   allocations={allocationsByProject.get(project.id) || []}
                   allAllocations={workspace.allocations}
-                  capacities={workspace.dailyCapacities}
                   view={view}
                   timelineZoom={timelineZoom}
                   timelineInputMode={timelineInputMode}
@@ -833,7 +804,6 @@ export default function App() {
                       return next;
                     })
                   }
-                  onEditCapacity={setCapacityDate}
                   onViewChange={value => setTimelineZoom(timelineZoomPreset(value))}
                   onZoomChange={setTimelineZoom}
                   onTimelineScroll={setTimelineScrollLeft}
@@ -878,14 +848,6 @@ export default function App() {
           }
         />
       )}
-      {capacityDate && (
-        <CapacityDialog
-          date={capacityDate}
-          capacity={getDailyCapacity(capacityDate, workspace.dailyCapacities)}
-          onClose={() => setCapacityDate(null)}
-          onSave={saveCapacity}
-        />
-      )}
       <footer>
         Capacity Allocation · 所有資料皆留在您的瀏覽器 ·{' '}
         <button onClick={exportJson}>立即備份</button>
@@ -898,7 +860,6 @@ type ProjectPanelProps = {
   project: Project;
   allocations: Allocation[];
   allAllocations: Allocation[];
-  capacities: DailyCapacity[];
   view: ViewMode;
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
@@ -926,7 +887,6 @@ type ProjectPanelProps = {
   onDeleteTask: (taskId: string) => void;
   onToggleTask: (taskId: string) => void;
   onToggleBacklogTask: (taskId: string) => void;
-  onEditCapacity: (date: string) => void;
   onViewChange: (view: ViewMode) => void;
   onZoomChange: (next: TimelineZoom) => void;
   onTimelineScroll: (left: number) => void;
@@ -936,7 +896,6 @@ function ProjectPanel({
   project,
   allocations,
   allAllocations,
-  capacities,
   view,
   timelineZoom,
   timelineInputMode,
@@ -956,7 +915,6 @@ function ProjectPanel({
   onDeleteTask,
   onToggleTask,
   onToggleBacklogTask,
-  onEditCapacity,
   onViewChange,
   onZoomChange,
   onTimelineScroll,
@@ -1021,8 +979,7 @@ function ProjectPanel({
               expandedTaskIds={expandedTaskIds}
               backlogTasks={backlogTasks}
               allocations={allocations}
-              capacityAllocations={allAllocations}
-              capacities={capacities}
+              allAllocations={allAllocations}
               timelineZoom={timelineZoom}
               timelineInputMode={timelineInputMode}
               autoScheduleEnabled={autoScheduleEnabled}
@@ -1047,7 +1004,6 @@ function ProjectPanel({
               onDelete={onDeleteTask}
               onAddChild={onAddChild}
               onToggleTask={onToggleTask}
-              onEditCapacity={onEditCapacity}
               onTimelineScroll={onTimelineScroll}
             />
           </div>
@@ -1501,79 +1457,6 @@ function TaskDialog({
                 {recurrence ? '套用重複排程' : '清除重複排程'}
               </button>
             )}
-          <button className="primary" type="submit">
-            儲存
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function CapacityDialog({
-  date,
-  capacity,
-  onClose,
-  onSave,
-}: {
-  date: string;
-  capacity: DailyCapacity;
-  onClose: () => void;
-  onSave: (date: string, total: number, unavailable: number) => string | null;
-}) {
-  const [total, setTotal] = useState(capacity.totalCapacityHours);
-  const [unavailable, setUnavailable] = useState(capacity.unavailableHours);
-  const [error, setError] = useState('');
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const result = onSave(date, total, unavailable);
-    if (result) setError(result);
-  };
-  return (
-    <div
-      className="modal"
-      role="presentation"
-      onMouseDown={event => event.target === event.currentTarget && onClose()}
-    >
-      <form className="dialog small-dialog" role="dialog" aria-modal="true" onSubmit={submit}>
-        <div className="dialog-head">
-          <div>
-            <small>Daily Capacity</small>
-            <h2>{weekdayDateLabel(date)}</h2>
-          </div>
-          <button type="button" onClick={onClose} aria-label="關閉">
-            ×
-          </button>
-        </div>
-        <label>
-          每日總容量（小時）
-          <input
-            type="number"
-            min="0"
-            step="0.5"
-            value={total}
-            onChange={event => setTotal(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          不可用時間（小時）
-          <input
-            type="number"
-            min="0"
-            step="0.5"
-            value={unavailable}
-            onChange={event => setUnavailable(Number(event.target.value))}
-          />
-        </label>
-        <p className="form-hint">
-          可用容量會由總容量減去不可用時間計算。容量變更只會更新可用空間與警告，不會改變既有
-          Allocation。
-        </p>
-        {error && <p className="error">{error}</p>}
-        <div className="dialog-actions">
-          <button type="button" onClick={onClose}>
-            取消
-          </button>
           <button className="primary" type="submit">
             儲存
           </button>

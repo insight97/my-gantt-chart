@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, today } from './capacity';
+import { today } from './capacity';
 import { emptyTask } from './data';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
@@ -37,7 +37,6 @@ function workspace(taskValue: Task, allocations: Allocation[] = []): WorkspaceDa
   return {
     version: CURRENT_WORKSPACE_VERSION,
     projects: [project],
-    dailyCapacities: [],
     allocations,
   };
 }
@@ -57,10 +56,7 @@ describe('workspace operations', () => {
     const next = changed(result);
 
     expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: today() });
-    expect(next.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
-      [today(), 8],
-      [addDays(today(), 1), 2],
-    ]);
+    expect(next.allocations.map(item => [item.date, item.allocatedHours])).toEqual([[today(), 10]]);
   });
 
   it('keeps an existing Timeline start when automatically rescheduling it', () => {
@@ -72,7 +68,7 @@ describe('workspace operations', () => {
     const next = changed(result);
 
     expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: '2026-01-01' });
-    expect(next.allocations[0]).toMatchObject({ date: '2026-01-01', allocatedHours: 8 });
+    expect(next.allocations[0]).toMatchObject({ date: '2026-01-01', allocatedHours: 10 });
   });
 
   it('keeps an in-progress task in progress when automatically rescheduling it', () => {
@@ -179,7 +175,7 @@ describe('workspace operations', () => {
     const next = changed(result);
 
     expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: '2026-01-05' });
-    expect(next.allocations.map(item => item.date)).toEqual(['2026-01-05', '2026-01-06']);
+    expect(next.allocations.map(item => item.date)).toEqual(['2026-01-05']);
   });
 
   it('can place a backlog task in Timeline without creating allocations', () => {
@@ -207,15 +203,6 @@ describe('workspace operations', () => {
       task({ id: 'task-a', status: 'scheduled', start: '2026-01-01', estimatedHours: 8 }),
       [{ id: 'old-allocation', taskId: 'task-a', date: '2026-01-01', allocatedHours: 8 }],
     );
-    original.dailyCapacities = [
-      {
-        date: '2026-01-05',
-        totalCapacityHours: 8,
-        unavailableHours: 0,
-        availableHours: 8,
-      },
-    ];
-
     const next = changed(scheduleTaskAtDate(original, 'project-a', 'task-a', '2026-01-05'));
 
     expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: '2026-01-05' });
@@ -456,21 +443,6 @@ describe('workspace operations', () => {
       task({ id: 'first', name: 'First', parentId: 'group', order: 0, estimatedHours: 6 }),
       task({ id: 'second', name: 'Second', parentId: 'group', order: 1, estimatedHours: 6 }),
     );
-    original.dailyCapacities = [
-      {
-        date: '2026-01-05',
-        totalCapacityHours: 8,
-        unavailableHours: 0,
-        availableHours: 8,
-      },
-      {
-        date: '2026-01-06',
-        totalCapacityHours: 8,
-        unavailableHours: 0,
-        availableHours: 8,
-      },
-    ];
-
     const next = changed(moveTaskGroupToTimeline(original, 'project-a', 'group', '2026-01-05'));
 
     expect(next.projects[0].tasks).toEqual(
@@ -482,8 +454,7 @@ describe('workspace operations', () => {
     );
     expect(next.allocations.map(item => [item.taskId, item.date, item.allocatedHours])).toEqual([
       ['first', '2026-01-05', 6],
-      ['second', '2026-01-05', 2],
-      ['second', '2026-01-06', 4],
+      ['second', '2026-01-05', 6],
     ]);
   });
 

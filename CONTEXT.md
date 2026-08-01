@@ -26,17 +26,17 @@
 
 ## 容量與工時
 
-**Daily Capacity**：某一天可投入工作的總時間。可用容量是總容量扣除不可用時間；修改 Daily Capacity 只改變可用空間與警告，不會移動既有 Allocation。
+**Daily Capacity**：目前固定為每天 24 小時。系統不另存每日容量或不可用時間；睡眠、休息、通勤等內容應建立為一般 Task，透過其 Allocation 佔用時間。
 
-**Remaining Capacity**：某一天的可用容量扣除所有 Work Item Allocation 後的剩餘時間；小於零表示超載。
+**Remaining Capacity**：某一天的 24 小時扣除所有 Work Item Allocation 後的剩餘時間；小於零表示超載。
 
 **Capacity-Available Day**：Remaining Capacity 大於零的日期。Automatic Allocation 只把一般工時放到這類日期；週末與假日沒有額外規則，完全依該日可用容量判斷。
 
 **Allocation**：把 Task 的若干工時放到特定日期。每日畫面可操作單日總量，直接改變目前結果；週與月畫面只顯示期間加總，不拆分來源。Allocation 不區分自動或手動來源。
 
-**Automatic Allocation**：系統依放下日期或今天與每日可用容量產生的 Allocation。系統從起點往後尋找有空間的日期，不會在一般日期故意超載；使用者可重新自動安排。
+**Automatic Allocation**：系統依放下日期或今天與固定每日 24 小時產生的 Allocation。系統從起點往後尋找有剩餘時間的日期，所有既有 Task（包含睡眠、休息等 Task）的 Allocation 都會計入，不會在一般日期故意超載；使用者可重新自動安排。
 
-**Automatic Scheduling**：使用者明確按下「自動排程」、將 Backlog Task 拖曳到 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存；三者都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。操作會讓 Task 進入 Allocation Timeline，使用 `fastest` 建立 Allocation，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程使用放下日期。已在 Timeline 的 Leaf Task 拖到另一個日期時，清除該 Task 舊 Allocation 並以新日期重新建立；`in_progress` 重新排程後保持原狀態。只分配到 Capacity-Available Day，沒有容量時保留 Pending Hours，不產生 Automatic Overflow。編輯既有 Task metadata、修改 Daily Capacity 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
+**Automatic Scheduling**：使用者明確按下「自動排程」、將 Backlog Task 拖曳到 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存；三者都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。操作會讓 Task 進入 Allocation Timeline，使用 `fastest` 建立 Allocation，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程使用放下日期。已在 Timeline 的 Leaf Task 拖到另一個日期時，清除該 Task 舊 Allocation 並以新日期重新建立；`in_progress` 重新排程後保持原狀態。只分配到仍有剩餘時間的日期，沒有剩餘時間時延續到下一天；手動或 recurring Allocation 若超過 24 小時則保留結果並顯示超載。編輯既有 Task metadata 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
 
 **Estimated Hours**：Task 預計需要完成的總工時。修改 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation；需要重新分配時必須明確執行 Automatic Scheduling。
 
@@ -56,7 +56,7 @@
 
 **Allocation Adjustment**：Allocation Timeline 在日層級可用左鍵增加 1 小時、右鍵減少 1 小時，只修改被操作的日期；不跨日期重平衡，也不隱含觸發 Automatic Scheduling。週與月層級只顯示各期間 Allocation 加總並唯讀；父項目的彙總格在任何層級都唯讀。
 
-**Allocation Timeline**：唯一保留的時間軸畫面，固定採 Allocation Adjustment 的操作語意。它保留日、週、月的容量與 Allocation 顯示、時間軸平移與縮放，以及 Backlog Task 放入時間軸的操作；不繪製 Task bar，改以淺色底顯示第一個到最後一個正 Allocation 日期的範圍，實際有工時的格子使用較深底色，日層級週末在日期標題標記、下方格子不加入週末紋理。Timeline 與 Backlog 都可以獨立收合群組；收合只隱藏該視圖的子項目，不改變另一個視圖。Task Date Range metadata 顯示在 Task card 上。
+**Allocation Timeline**：唯一保留的時間軸畫面，固定採 Allocation Adjustment 的操作語意。它保留日、週、月的固定 24 小時容量與 Allocation 顯示、時間軸平移與縮放，以及 Backlog Task 放入時間軸的操作；不繪製 Task bar，改以淺色底顯示第一個到最後一個正 Allocation 日期的範圍，實際有工時的格子使用較深底色，日層級週末在日期標題標記、下方格子不加入週末紋理。Timeline 與 Backlog 都可以獨立收合群組；收合只隱藏該視圖的子項目，不改變另一個視圖。Task Date Range metadata 顯示在 Task card 上。
 
 **Timeline Semantic Level**：日、週、月是同一條連續時間軸的不同縮放語意；只有日層級可編輯每日工時。
 

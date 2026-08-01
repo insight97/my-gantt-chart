@@ -105,6 +105,7 @@ describe('recurrence domain', () => {
     });
 
     expect(migrated.version).toBe(CURRENT_WORKSPACE_VERSION);
+    expect(migrated).not.toHaveProperty('dailyCapacities');
     expect(migrated.projects[0].tasks[0].recurrence).toBeNull();
     expect(migrated.allocations[0]).toMatchObject({ recurrenceId: 'task-a' });
   });

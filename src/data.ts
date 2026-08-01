@@ -1,14 +1,6 @@
-import type {
-  Allocation,
-  DailyCapacity,
-  ExportFile,
-  Project,
-  Task,
-  TaskPriority,
-  WorkspaceData,
-} from './types';
+import type { Allocation, ExportFile, Project, Task, TaskPriority, WorkspaceData } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
-import { addDays, datesBetween, defaultDailyCapacity, today } from './capacity';
+import { addDays, today } from './capacity';
 import { buildTaskTree } from './task-tree';
 import type { TaskTreeIndex } from './task-tree';
 import { isValidRecurrenceRule } from './recurrence';
@@ -69,12 +61,10 @@ export const sampleProject = (): Project => {
 };
 
 export function sampleWorkspace(): WorkspaceData {
-  const start = offsetDate(-2);
   const project = sampleProject();
   return {
     version: CURRENT_WORKSPACE_VERSION,
     projects: [project],
-    dailyCapacities: datesBetween(start, offsetDate(45)).map(date => defaultDailyCapacity(date)),
     allocations: [],
   };
 }
@@ -127,19 +117,6 @@ function validProject(value: unknown): value is Project {
   );
 }
 
-function validCapacity(value: unknown): value is DailyCapacity {
-  if (!value || typeof value !== 'object') return false;
-  const capacity = value as Record<string, unknown>;
-  return (
-    isDate(capacity.date) &&
-    typeof capacity.totalCapacityHours === 'number' &&
-    capacity.totalCapacityHours >= 0 &&
-    typeof capacity.unavailableHours === 'number' &&
-    capacity.unavailableHours >= 0 &&
-    typeof capacity.availableHours === 'number'
-  );
-}
-
 function validAllocation(value: unknown): value is Allocation {
   if (!value || typeof value !== 'object') return false;
   const allocation = value as Record<string, unknown>;
@@ -162,8 +139,6 @@ export function validWorkspaceData(value: unknown): value is WorkspaceData {
     data.version === CURRENT_WORKSPACE_VERSION &&
     Array.isArray(data.projects) &&
     data.projects.every(validProject) &&
-    Array.isArray(data.dailyCapacities) &&
-    data.dailyCapacities.every(validCapacity) &&
     Array.isArray(data.allocations) &&
     data.allocations.every(validAllocation)
   );
@@ -191,7 +166,6 @@ export function validateImport(value: unknown): value is ExportFile {
         typeof project === 'object' &&
         Array.isArray((project as Record<string, unknown>).tasks),
     ) &&
-    Array.isArray(file.dailyCapacities) &&
     Array.isArray(file.allocations)
   );
 }

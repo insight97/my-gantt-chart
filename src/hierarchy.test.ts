@@ -39,7 +39,6 @@ const workspace = (tasks: Task[], allocations: Allocation[] = []): WorkspaceData
       tasks,
     } satisfies Project,
   ],
-  dailyCapacities: [],
   allocations,
 });
 

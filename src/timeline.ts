@@ -222,11 +222,8 @@ export function periodHours(period: TimelinePeriod, hoursByDate: Map<string, num
   return period.dates.reduce((sum, date) => sum + (hoursByDate.get(date) || 0), 0);
 }
 
-export function periodAvailableHours(period: TimelinePeriod, availableByDate: Map<string, number>) {
-  return period.dates.reduce(
-    (sum, date) => sum + (availableByDate.get(date) ?? DEFAULT_DAILY_CAPACITY_HOURS),
-    0,
-  );
+export function periodAvailableHours(period: TimelinePeriod) {
+  return period.dates.length * DEFAULT_DAILY_CAPACITY_HOURS;
 }
 
 export type CapacityState = 'available' | 'full' | 'overloaded';

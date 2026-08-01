@@ -1,7 +1,7 @@
 // Schema version of WorkspaceData/ExportFile. The one place a future field addition
 // that isn't safely defaultable bumps — db.ts's migrateWorkspace and data.ts's
 // validation import it instead of each holding their own copy of the number.
-export const CURRENT_WORKSPACE_VERSION = 4;
+export const CURRENT_WORKSPACE_VERSION = 5;
 
 export type ViewMode = 'day' | 'week' | 'month';
 export type TaskStatus = 'backlog' | 'scheduled' | 'in_progress' | 'completed';
@@ -53,13 +53,6 @@ export interface Project {
   tasks: Task[];
 }
 
-export interface DailyCapacity {
-  date: string;
-  totalCapacityHours: number;
-  unavailableHours: number;
-  availableHours: number;
-}
-
 export interface Allocation {
   id: string;
   taskId: string;
@@ -72,7 +65,6 @@ export interface Allocation {
 export interface WorkspaceData {
   version: typeof CURRENT_WORKSPACE_VERSION;
   projects: Project[];
-  dailyCapacities: DailyCapacity[];
   allocations: Allocation[];
 }
 

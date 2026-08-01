@@ -3,6 +3,7 @@ import { daysBetween, today } from './capacity';
 import {
   buildTimelinePeriods,
   dropPreviewGeometry,
+  periodAvailableHours,
   timelineRange,
   timelinePositionForDate,
   timelineScale,
@@ -57,6 +58,11 @@ describe('語意時間軸', () => {
     const months = buildTimelinePeriods('2026-07-08', '2026-08-20', 'month');
     expect(weeks[0]).toMatchObject({ start: '2026-07-06', end: '2026-07-12' });
     expect(months[0]).toMatchObject({ start: '2026-07-01', end: '2026-07-31' });
+  });
+
+  it('以期間天數乘以固定每日 24 小時計算容量', () => {
+    const periods = buildTimelinePeriods('2026-07-08', '2026-07-20', 'week');
+    expect(periodAvailableHours(periods[0])).toBe(7 * 24);
   });
 
   it('keeps a six-month planning horizon even for short task ranges', () => {
