@@ -10,6 +10,7 @@ import {
   moveTaskGroupToBacklog,
   moveTaskGroupToTimeline,
   moveTask,
+  moveTaskToTimeline,
   moveTaskToBacklog,
   saveTask,
   scheduleTaskAtDate,
@@ -47,6 +48,34 @@ function changed(result: WorkspaceOperationResult): WorkspaceData {
 }
 
 describe('workspace operations', () => {
+  it('schedules a recurring task by its recurrence dates when moved to Timeline', () => {
+    const recurring = task({
+      status: 'backlog',
+      estimatedHours: 24,
+      recurrence: {
+        frequency: 'daily',
+        startDate: '2026-01-01',
+        endDate: '2026-01-03',
+        hoursPerOccurrence: 8,
+        weekdays: [],
+        monthDays: [],
+      },
+    });
+    const target = task({ id: 'target', name: 'Target', status: 'scheduled' });
+    const original = workspace(recurring);
+    original.projects[0].tasks.push(target);
+
+    const next = changed(
+      moveTaskToTimeline(original, 'project-a', 'task-a', 'target', 'after', true),
+    );
+
+    expect(next.allocations.filter(item => item.taskId === 'task-a')).toEqual([
+      expect.objectContaining({ date: '2026-01-01', allocatedHours: 8 }),
+      expect.objectContaining({ date: '2026-01-02', allocatedHours: 8 }),
+      expect.objectContaining({ date: '2026-01-03', allocatedHours: 8 }),
+    ]);
+  });
+
   it('schedules a task through one transition seam', () => {
     const result = autoScheduleTask(
       workspace(task({ status: 'backlog', start: '2026-01-01', estimatedHours: 10 })),
@@ -512,6 +541,35 @@ describe('workspace operations', () => {
     expect(next.allocations.map(item => [item.taskId, item.date, item.allocatedHours])).toEqual([
       ['first', '2026-01-05', 6],
       ['second', '2026-01-05', 6],
+    ]);
+  });
+
+  it('schedules a recurring group leaf by its rule when moved to Timeline', () => {
+    const original = workspace(task({ id: 'group', name: 'Group' }));
+    original.projects[0].tasks.push(
+      task({
+        id: 'recurring-leaf',
+        name: 'Recurring leaf',
+        parentId: 'group',
+        status: 'backlog',
+        estimatedHours: 6,
+        recurrence: {
+          frequency: 'weekly',
+          startDate: '2026-01-05',
+          endDate: '2026-01-19',
+          hoursPerOccurrence: 2,
+          weekdays: [1],
+          monthDays: [],
+        },
+      }),
+    );
+
+    const next = changed(moveTaskGroupToTimeline(original, 'project-a', 'group', '2026-08-01'));
+
+    expect(next.allocations.filter(item => item.taskId === 'recurring-leaf')).toEqual([
+      expect.objectContaining({ date: '2026-01-05', allocatedHours: 2 }),
+      expect.objectContaining({ date: '2026-01-12', allocatedHours: 2 }),
+      expect.objectContaining({ date: '2026-01-19', allocatedHours: 2 }),
     ]);
   });
 
