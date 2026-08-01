@@ -135,6 +135,70 @@ describe('Work Item hierarchy UI', () => {
     expect(saved?.allocations.every(allocation => allocation.recurrenceId === 'task-a')).toBe(true);
   });
 
+  it('keeps other task editor changes available after enabling recurrence', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '固定例會')]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('固定例會')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('固定例會'));
+    fireEvent.click(screen.getByLabelText('啟用重複排程'));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '更新後例會' } });
+    fireEvent.change(screen.getByLabelText('頻率'), { target: { value: 'daily' } });
+    fireEvent.change(screen.getByLabelText('開始日期'), { target: { value: '2026-01-01' } });
+    fireEvent.change(screen.getByLabelText('結束日期'), { target: { value: '2026-01-03' } });
+    fireEvent.change(screen.getByLabelText('每次時數'), { target: { value: '8' } });
+
+    expect(screen.getByLabelText('頻率')).toBeEnabled();
+    expect(screen.getByLabelText('開始日期')).toBeEnabled();
+    expect(screen.getByLabelText('結束日期')).toBeEnabled();
+    expect(screen.getByLabelText('每次時數')).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalled());
+    const saved = saveWorkspaceMock.mock.calls.at(-1)?.[0];
+    expect(saved?.projects[0].tasks[0]).toMatchObject({
+      name: '更新後例會',
+      recurrence: expect.objectContaining({
+        frequency: 'daily',
+        startDate: '2026-01-01',
+        endDate: '2026-01-03',
+        hoursPerOccurrence: 8,
+      }),
+    });
+  });
+
+  it('applies recurring hours when a new Timeline task is saved', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([]));
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '每日休息' } });
+    fireEvent.click(screen.getByLabelText('啟用重複排程'));
+    fireEvent.change(screen.getByLabelText('頻率'), { target: { value: 'daily' } });
+    fireEvent.change(screen.getByLabelText('開始日期'), { target: { value: '2026-01-01' } });
+    fireEvent.change(screen.getByLabelText('結束日期'), { target: { value: '2026-01-03' } });
+    fireEvent.change(screen.getByLabelText('每次時數'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalled());
+    const saved = saveWorkspaceMock.mock.calls.at(-1)?.[0];
+    expect(saved?.projects[0].tasks[0]).toMatchObject({
+      name: '每日休息',
+      status: 'scheduled',
+      estimatedHours: 24,
+    });
+    expect(saved?.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
+      ['2026-01-01', 8],
+      ['2026-01-02', 8],
+      ['2026-01-03', 8],
+    ]);
+  });
+
   it('persists the automatic scheduling toggle', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
     render(<App />);

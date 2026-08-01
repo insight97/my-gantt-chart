@@ -59,6 +59,31 @@ describe('workspace operations', () => {
     expect(next.allocations.map(item => [item.date, item.allocatedHours])).toEqual([[today(), 10]]);
   });
 
+  it('schedules a recurring Timeline task by occurrence hours', () => {
+    const recurring = task({
+      status: 'backlog',
+      estimatedHours: 24,
+      recurrence: {
+        frequency: 'daily',
+        startDate: '2026-01-01',
+        endDate: '2026-01-03',
+        hoursPerOccurrence: 8,
+        weekdays: [],
+        monthDays: [],
+      },
+    });
+
+    const next = changed(
+      autoScheduleTask(workspace(task({ status: 'backlog' })), 'project-a', 'task-a', recurring),
+    );
+
+    expect(next.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
+      ['2026-01-01', 8],
+      ['2026-01-02', 8],
+      ['2026-01-03', 8],
+    ]);
+  });
+
   it('keeps an existing Timeline start when automatically rescheduling it', () => {
     const result = autoScheduleTask(
       workspace(task({ status: 'scheduled', start: '2026-01-01', estimatedHours: 10 })),
