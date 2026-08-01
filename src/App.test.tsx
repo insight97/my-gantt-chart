@@ -438,7 +438,8 @@ describe('Work Item hierarchy UI', () => {
 
     const header = document.querySelector('.capacity-period');
     expect(header).not.toHaveTextContent('1 天合計');
-    expect(header).toHaveTextContent('剩餘');
+    expect(header).not.toHaveTextContent('剩餘');
+    expect(header).toHaveTextContent('24h');
   });
 
   it('does not preview automatic allocation when dragging with the toggle off', async () => {
