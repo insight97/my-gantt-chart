@@ -151,7 +151,7 @@ describe('Work Item hierarchy UI', () => {
     fireEvent.change(screen.getByLabelText('開始日期'), { target: { value: '2026-01-01' } });
     fireEvent.change(screen.getByLabelText('結束日期'), { target: { value: '2026-01-03' } });
     fireEvent.change(screen.getByLabelText('每次時數'), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: '套用重複排程' }));
+    fireEvent.click(screen.getByRole('button', { name: '幫我排程' }));
 
     await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalled());
     const saved = saveWorkspaceMock.mock.calls.at(-1)?.[0];
@@ -162,6 +162,51 @@ describe('Work Item hierarchy UI', () => {
     });
     expect(saved?.allocations).toHaveLength(3);
     expect(saved?.allocations.every(allocation => allocation.recurrenceId === 'task-a')).toBe(true);
+  });
+
+  it('clears recurring allocations without removing the recurring rule', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [
+          workItem('task-a', '可清除例會', {
+            status: 'scheduled',
+            estimatedHours: 6,
+            recurrence: {
+              frequency: 'daily',
+              startDate: '2026-01-01',
+              endDate: '2026-01-03',
+              hoursPerOccurrence: 2,
+              weekdays: [],
+              monthDays: [],
+            },
+          }),
+        ],
+        [],
+        [
+          { id: 'allocation-1', taskId: 'task-a', date: '2026-01-01', allocatedHours: 2 },
+          { id: 'allocation-2', taskId: 'task-a', date: '2026-01-02', allocatedHours: 2 },
+        ],
+      ),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('可清除例會')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('可清除例會'));
+    fireEvent.click(screen.getByRole('button', { name: '清除排程' }));
+
+    await waitFor(() =>
+      expect(saveWorkspaceMock.mock.calls.some(([value]) => value.allocations.length === 0)).toBe(
+        true,
+      ),
+    );
+    const saved = [...saveWorkspaceMock.mock.calls]
+      .reverse()
+      .map(([value]) => value)
+      .find(value => value.allocations.length === 0)!;
+    expect(saved.projects[0].tasks[0]).toMatchObject({
+      estimatedHours: 6,
+      recurrence: expect.objectContaining({ endDate: '2026-01-03' }),
+    });
   });
 
   it('keeps other task editor changes available after enabling recurrence', async () => {

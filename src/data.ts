@@ -2,6 +2,7 @@ import type { Allocation, ExportFile, Project, Task, TaskPriority, WorkspaceData
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, today } from './capacity';
 import { buildTaskTree } from './task-tree';
+import { getRecurringEstimatedHours } from './recurring-allocation';
 import type { TaskTreeIndex } from './task-tree';
 import { isValidRecurrenceRule } from './recurrence';
 
@@ -171,35 +172,36 @@ export function validateImport(value: unknown): value is ExportFile {
 }
 
 export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
-  return {
-    ...value,
-    projects: value.projects.map(project => ({
-      ...project,
-      tasks: project.tasks.map((task, index) => {
-        const currentTask = { ...(task as Task & { allocationStrategy?: unknown }) };
-        delete currentTask.allocationStrategy;
-        return {
-          ...currentTask,
-          deadline: task.deadline ?? null,
-          priority: task.priority ?? 'medium',
-          parentId: task.parentId ?? null,
-          order: Number.isFinite(task.order) ? task.order : index,
-          recurrence: task.recurrence ?? null,
-        };
-      }),
-    })),
-    allocations: value.allocations.map(allocation => {
-      const normalized: Allocation = {
-        id: allocation.id,
-        taskId: allocation.taskId,
-        date: allocation.date,
-        allocatedHours: allocation.allocatedHours,
+  const allocations = value.allocations.map(allocation => {
+    const normalized: Allocation = {
+      id: allocation.id,
+      taskId: allocation.taskId,
+      date: allocation.date,
+      allocatedHours: allocation.allocatedHours,
+    };
+    if (typeof allocation.recurrenceId === 'string')
+      normalized.recurrenceId = allocation.recurrenceId;
+    return normalized;
+  });
+  const projects = value.projects.map(project => ({
+    ...project,
+    tasks: project.tasks.map((task, index) => {
+      const currentTask = { ...(task as Task & { allocationStrategy?: unknown }) };
+      delete currentTask.allocationStrategy;
+      const normalized = {
+        ...currentTask,
+        deadline: task.deadline ?? null,
+        priority: task.priority ?? 'medium',
+        parentId: task.parentId ?? null,
+        order: Number.isFinite(task.order) ? task.order : index,
+        recurrence: task.recurrence ?? null,
       };
-      if (typeof allocation.recurrenceId === 'string')
-        normalized.recurrenceId = allocation.recurrenceId;
-      return normalized;
+      return normalized.recurrence
+        ? { ...normalized, estimatedHours: getRecurringEstimatedHours(normalized, allocations) }
+        : normalized;
     }),
-  };
+  }));
+  return { ...value, projects, allocations };
 }
 
 export const taskChildren = (tasks: Task[], parentId: string | null, tree = buildTaskTree(tasks)) =>

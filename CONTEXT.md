@@ -36,9 +36,13 @@
 
 **Automatic Allocation**：系統依放下日期或今天與固定每日 24 小時產生的 Allocation。系統從起點往後尋找有剩餘時間的日期，所有既有 Task（包含睡眠、休息等 Task）的 Allocation 都會計入，不會在一般日期故意超載；使用者可重新自動安排。
 
-**Automatic Scheduling**：使用者明確按下「自動排程」，或在啟用自動排程時將 Backlog Task 拖曳到 Allocation Timeline、從 Allocation Timeline 新增 Task 並儲存；這些入口都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。從 Backlog 父項目新增子任務時，新子任務沿用 Backlog 入口；從 Timeline 父項目新增子任務時，新子任務使用 Timeline 入口並在啟用自動排程時建立 Allocation。一般 Task 使用 `fastest` 建立 Allocation；有 `recurrence` 的 Task 則以重複規則日期與每次時數建立 Allocation，不使用累積的 `Estimated Hours` 重新分散，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一般 Task 一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；有重複規則的 Task 保留規則日期。按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程的放下日期只決定進入 Timeline，不會平移 recurring 規則。已在 Timeline 的 Leaf Task 拖到另一個日期時，一般 Task 會清除舊 Allocation 並以新日期重新建立；recurring Task 會依規則重建；`in_progress` 重新排程後保持原狀態。只分配到仍有剩餘時間的日期，沒有剩餘時間時延續到下一天；手動或 recurring Allocation 若超過 24 小時則保留結果並顯示超載。編輯既有 Task metadata 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
+**Automatic Scheduling**：在啟用自動排程時將 Backlog Task 拖曳到 Allocation Timeline、從 Allocation Timeline 新增 Task 並儲存，或將既有 Timeline Task 明確拖到新日期時執行；這些入口都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。從 Backlog 父項目新增子任務時，新子任務沿用 Backlog 入口；從 Timeline 父項目新增子任務時，新子任務使用 Timeline 入口並在啟用自動排程時建立 Allocation。一般 Task 使用 `fastest` 建立 Allocation；有 `recurrence` 的 Task 則以重複規則日期與每次時數建立 Allocation，不使用累積的 `Estimated Hours` 重新分散，並將新進入的 Task 放到清單最下方。Backlog Task 的明確 Timeline Placement 一般從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；有重複規則的 Task 保留規則日期。Timeline 新增沒有開始日時也從今天開始；拖曳排程的放下日期只決定進入 Timeline，不會平移 recurring 規則。已在 Timeline 的 Leaf Task 拖到另一個日期時，一般 Task 會清除舊 Allocation 並以新日期重新建立；recurring Task 會依規則重建；`in_progress` 重新排程後保持原狀態。只分配到仍有剩餘時間的日期，沒有剩餘時間時延續到下一天；手動或 recurring Allocation 若超過 24 小時則保留結果並顯示超載。編輯既有 Task metadata 或時間軸顯示，不會隱含觸發 Automatic Scheduling。明確按下「幫我排程」是另一個填補式操作，不屬於 Automatic Scheduling。
 
-**Estimated Hours**：Task 預計需要完成的總工時。修改 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation；需要重新分配時必須明確執行 Automatic Scheduling。
+**Help Scheduling**：使用者明確按下「幫我排程」時，只填補尚未滿足的排程內容，不修改既有 Allocation。一般 Task 保留既有 Allocation 後，只安排 `Estimated Hours` 的剩餘工時；recurring Task 保留每個已有 Allocation 的日期，即使該日只有部分時數，也不補差額。recurring 規則延長時只補新增日期；縮短時清除超出新規則、且仍帶有該 Task `recurrenceId` 的自動 Allocation，曾被手動調整而移除標記的 Allocation 保留。要完全重建時，先使用「清除排程」再按「幫我排程」。
+
+**Clear Schedule**：使用者明確按下「清除排程」時，只移除該 Task 的全部 Allocation，保留 Task metadata、狀態與 recurring 規則；因此 recurring Task 可以再按「幫我排程」重新填入。此操作可由 workspace history 復原。
+
+**Estimated Hours**：一般 Task 的預計總工時，由使用者手動輸入。recurring Task 的 `Estimated Hours` 為唯讀衍生值：目前 Allocation 總和，加上仍沒有 Allocation 的 recurring 規則日期之每次時數；已有 Allocation 的日期只計算一次，手動 Allocation 也會納入，不能透過欄位直接修改。修改一般 Task 的 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation。
 
 **Allocation Strategy**：Task 自動分配工時的方式。目前只採 `fastest`，從指定起始日往後優先填滿最近的 Capacity-Available Day；不再平均分配每日自動工時。
 
