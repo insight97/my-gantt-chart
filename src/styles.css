@@ -566,6 +566,38 @@ h1 {
   padding: 9px;
   border-radius: 6px;
 }
+.recurrence-choice-group {
+  margin-bottom: 13px;
+}
+.recurrence-choice-group > span {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #506474;
+  margin-bottom: 5px;
+}
+.recurrence-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.recurrence-weekdays .checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 7px 3px;
+  border: 1px solid #cbd6de;
+  border-radius: 7px;
+  background: #fbfcfd;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.recurrence-weekdays .checkbox-label input {
+  width: auto;
+  margin: 0;
+}
 .error {
   color: #a33d36;
   font-size: 12px;

@@ -1165,6 +1165,10 @@ function TaskDialog({
   onClearSchedule: (task: Task) => string | null;
 }) {
   const [draft, setDraft] = useState(task);
+  const [recurrenceEnabled, setRecurrenceEnabled] = useState(() => Boolean(task.recurrence));
+  const [recurrenceSettings, setRecurrenceSettings] = useState<RecurrenceRule | null>(() =>
+    task.recurrence ? clone(task.recurrence) : null,
+  );
   const [error, setError] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
   const taskTree = useMemo(() => buildTaskTree(tasks), [tasks]);
@@ -1176,16 +1180,17 @@ function TaskDialog({
       !descendantIds.has(candidate.id) &&
       taskTree.depth(candidate.id) < 3,
   );
-  const recurrence = draft.recurrence ?? null;
+  const recurrence = recurrenceEnabled ? (recurrenceSettings ?? defaultRecurrence(draft)) : null;
+  const recurringDraft = { ...draft, recurrence };
   const recurrenceError = recurrence ? recurrenceRuleError(recurrence) : null;
   const recurrenceRuleHours = recurrenceHours(recurrence);
   const recurringEstimatedHours =
-    recurrence && !recurrenceError ? getRecurringEstimatedHours(draft, allocations) : null;
+    recurrence && !recurrenceError ? getRecurringEstimatedHours(recurringDraft, allocations) : null;
   useLayoutEffect(() => {
     nameInputRef.current?.focus();
   }, []);
   const draftForSave = () => ({
-    ...draft,
+    ...recurringDraft,
     estimatedHours: recurringEstimatedHours ?? Number(draft.estimatedHours),
   });
   const saveDraft = () => {
@@ -1194,12 +1199,9 @@ function TaskDialog({
     else setError('');
   };
   const updateRecurrence = (changes: Partial<RecurrenceRule>) => {
-    setDraft(current => ({
-      ...current,
-      recurrence: {
-        ...(current.recurrence ?? defaultRecurrence(current)),
-        ...changes,
-      },
+    setRecurrenceSettings(current => ({
+      ...(current ?? recurrence ?? defaultRecurrence(draft)),
+      ...changes,
     }));
   };
   const submit = (event: FormEvent) => {
@@ -1314,15 +1316,13 @@ function TaskDialog({
             <label className="checkbox-label">
               <input
                 type="checkbox"
-                checked={Boolean(recurrence)}
-                onChange={event =>
-                  setDraft(current => ({
-                    ...current,
-                    recurrence: event.target.checked
-                      ? (current.recurrence ?? defaultRecurrence(current))
-                      : null,
-                  }))
-                }
+                checked={recurrenceEnabled}
+                onChange={event => {
+                  if (event.target.checked && !recurrenceSettings) {
+                    setRecurrenceSettings(defaultRecurrence(draft));
+                  }
+                  setRecurrenceEnabled(event.target.checked);
+                }}
               />
               啟用重複排程
             </label>
@@ -1441,7 +1441,7 @@ function TaskDialog({
             ? '此父任務的截止日期會限制整個子樹；預估工時與 Allocation 由子任務彙總。'
             : allocations.length
               ? recurrence
-                ? `目前已排 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，尚有 ${hourValueLabel(getTaskPendingHours({ ...draft, estimatedHours: recurringEstimatedHours ?? draft.estimatedHours }, allocations))} 小時 recurring 日期未安排。`
+                ? `目前已排 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，尚有 ${hourValueLabel(getTaskPendingHours({ ...recurringDraft, estimatedHours: recurringEstimatedHours ?? draft.estimatedHours }, allocations))} 小時 recurring 日期未安排。`
                 : `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待安排 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
               : scheduleOnSave
                 ? '儲存此 Timeline Task 時會自動建立 Allocation。'
