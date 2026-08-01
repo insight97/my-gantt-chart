@@ -111,22 +111,27 @@ describe('Work Item hierarchy UI', () => {
     expect(document.querySelector('.backlog .task-card-group')).toHaveTextContent('根工作');
   });
 
-  it('expands and collapses Timeline child tasks without changing Backlog projection', async () => {
+  it('keeps Backlog and Timeline hierarchy toggles independent', async () => {
     const parent = workItem('parent', '父工作');
-    const child = workItem('child', '子工作', { parentId: 'parent', status: 'scheduled' });
-    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    const backlogChild = workItem('backlog-child', 'Backlog 子工作', { parentId: 'parent' });
+    const timelineChild = workItem('timeline-child', 'Timeline 子工作', {
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, backlogChild, timelineChild]));
     render(<App />);
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '收合 父工作' })).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('button', { name: '全部收合' }));
-    await waitFor(() => expect(screen.queryByText('子工作')).not.toBeInTheDocument());
-    expect(screen.getByText('父工作')).toBeInTheDocument();
-    expect(document.querySelector('.project-card')).not.toBeNull();
+    await waitFor(() => expect(screen.getByText('Backlog 子工作')).toBeInTheDocument());
+    fireEvent.click(document.querySelector('.gantt-side-row .task-card-toggle')!);
+    await waitFor(() => expect(screen.queryByText('Timeline 子工作')).not.toBeInTheDocument());
+    expect(screen.getByText('Backlog 子工作')).toBeInTheDocument();
+
+    fireEvent.click(document.querySelector('.backlog .task-card-toggle')!);
+    await waitFor(() => expect(screen.queryByText('Backlog 子工作')).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '全部展開' }));
-    expect(await screen.findByText('子工作')).toBeInTheDocument();
+    expect(await screen.findByText('Timeline 子工作')).toBeInTheDocument();
+    expect(screen.getByText('Backlog 子工作')).toBeInTheDocument();
   });
 
   it('inherits the parent deadline when creating a child', async () => {

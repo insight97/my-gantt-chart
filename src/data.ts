@@ -352,19 +352,19 @@ function flattenProjectedTaskTree(
  * Projects the one task tree into Backlog and Allocation Timeline views.
  *
  * Leaf status decides the destination. Every selected leaf brings its full ancestor
- * chain with it; Backlog always exposes that chain, while Timeline respects its own
- * expand/collapse state. Parents cannot appear by themselves merely because they
- * have children.
+ * chain with it; both views respect their own expand/collapse state. Parents cannot
+ * appear by themselves merely because they have children.
  */
 export function partitionProjectTasks(
   project: Project,
   timelineExpandedIds = new Set<string>(),
   tree = buildTaskTree(project.tasks),
+  backlogExpandedIds?: Set<string>,
 ) {
   const backlogIds = projectedTaskIds(project.tasks, task => task.status === 'backlog', tree);
   const scheduledIds = projectedTaskIds(project.tasks, task => task.status !== 'backlog', tree);
   return {
-    backlog: flattenProjectedTaskTree(backlogIds, backlogIds, tree),
+    backlog: flattenProjectedTaskTree(backlogIds, backlogExpandedIds ?? backlogIds, tree),
     scheduled: flattenProjectedTaskTree(scheduledIds, timelineExpandedIds, tree),
   };
 }
