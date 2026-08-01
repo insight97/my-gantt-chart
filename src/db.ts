@@ -1,6 +1,5 @@
 import { normalizeWorkspaceData, now, sampleWorkspace, uid } from './data';
-import { addDays, datesBetween, defaultDailyCapacity, normalizeCapacity, today } from './capacity';
-import type { DailyCapacity, Project, Task, WorkspaceData } from './types';
+import type { Project, Task, WorkspaceData } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { normalizeRecurrenceRule } from './recurrence';
 
@@ -101,19 +100,6 @@ function migrateProject(value: Record<string, unknown>): Project {
   };
 }
 
-function migrationCapacities(projects: Project[]): DailyCapacity[] {
-  const dates = projects
-    .flatMap(project =>
-      project.tasks.flatMap(task =>
-        [task.start, task.end].filter((date): date is string => typeof date === 'string'),
-      ),
-    )
-    .sort();
-  const first = dates[0] || today();
-  const last = dates.at(-1) || addDays(first, 45);
-  return datesBetween(first, last).map(date => defaultDailyCapacity(date));
-}
-
 function migrateLegacyProjects(value: unknown): WorkspaceData {
   const sourceProjects = Array.isArray(value)
     ? value
@@ -124,7 +110,6 @@ function migrateLegacyProjects(value: unknown): WorkspaceData {
   return {
     version: CURRENT_WORKSPACE_VERSION,
     projects,
-    dailyCapacities: migrationCapacities(projects),
     allocations: [],
   };
 }
@@ -170,9 +155,6 @@ export function migrateWorkspace(raw: unknown): WorkspaceData {
   return normalizeWorkspaceData({
     version: CURRENT_WORKSPACE_VERSION,
     projects: mergeProjects(projects),
-    dailyCapacities: Array.isArray(value.dailyCapacities)
-      ? value.dailyCapacities.map(normalizeCapacity)
-      : [],
     allocations: Array.isArray(value.allocations) ? value.allocations : [],
   });
 }

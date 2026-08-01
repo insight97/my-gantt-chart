@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   adjustAllocationDay,
-  capacityAvailableHours,
   datesBetween,
   getDailyAllocatedHours,
   getProjectEstimatedHours,
@@ -16,26 +15,17 @@ import {
   scheduleTaskAt,
 } from './capacity';
 import { buildTaskTree, emptyTask, partitionProjectTasks, validateImport } from './data';
-import type { Allocation, DailyCapacity, Project, Task } from './types';
-
-const capacity = (date: string, total = 8, unavailable = 0): DailyCapacity => ({
-  date,
-  totalCapacityHours: total,
-  unavailableHours: unavailable,
-  availableHours: total - unavailable,
-});
+import type { Allocation, Project, Task } from './types';
 
 const task = (overrides: Partial<Task> = {}): Task => ({ ...emptyTask(), ...overrides });
 
 describe('容量 domain', () => {
-  it('計算每日可用與剩餘容量', () => {
-    const capacities = [capacity('2026-01-01', 8, 2)];
+  it('以固定 24 小時計算每日剩餘容量', () => {
     const allocations: Allocation[] = [
       { id: 'a', taskId: 'other', date: '2026-01-01', allocatedHours: 3 },
     ];
-    expect(capacityAvailableHours(8, 2)).toBe(6);
     expect(getDailyAllocatedHours('2026-01-01', allocations)).toBe(3);
-    expect(getRemainingCapacity('2026-01-01', capacities, allocations)).toBe(3);
+    expect(getRemainingCapacity('2026-01-01', allocations)).toBe(21);
   });
 
   it('計算 Project 下所有 Task 的預估總工時', () => {
@@ -49,11 +39,21 @@ describe('容量 domain', () => {
     const result = recalculateAutomaticAllocations(
       task({ id: 'task', start: '2026-01-01', estimatedHours: 14 }),
       [],
-      [capacity('2026-01-01', 8), capacity('2026-01-02', 8)],
     );
     expect(result.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
-      ['2026-01-01', 8],
-      ['2026-01-02', 6],
+      ['2026-01-01', 14],
+    ]);
+  });
+
+  it('將睡眠等 Allocation 視為每日時間消耗', () => {
+    const result = recalculateAutomaticAllocations(
+      task({ id: 'work', start: '2026-01-01', estimatedHours: 20 }),
+      [{ id: 'sleep', taskId: 'sleep', date: '2026-01-01', allocatedHours: 8 }],
+    );
+
+    expect(result.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
+      ['2026-01-01', 16],
+      ['2026-01-02', 4],
     ]);
   });
 
@@ -67,7 +67,6 @@ describe('容量 domain', () => {
     const result = recalculateAutomaticAllocations(
       task({ id: 'task', start: '2026-01-01', estimatedHours: 6 }),
       [old],
-      [capacity('2026-01-01')],
     );
     expect(result.allocations).toHaveLength(1);
     expect(result.allocations[0]).toMatchObject({
@@ -78,29 +77,27 @@ describe('容量 domain', () => {
     expect(result.allocations.some(item => item.id === old.id)).toBe(false);
   });
 
-  it('沒有容量時保留 Pending Hours，不建立 overflow Allocation', () => {
+  it('超過單日 24 小時時延續到下一天', () => {
     const result = recalculateAutomaticAllocations(
-      task({ id: 'task', start: '2026-01-01', estimatedHours: 20 }),
+      task({ id: 'task', start: '2026-01-01', estimatedHours: 28 }),
       [],
-      [capacity('2026-01-01', 8), capacity('2026-01-02', 0)],
       '2026-01-01',
       { horizonDays: 2 },
     );
-    expect(getTaskAllocatedHours('task', result.allocations)).toBe(8);
-    expect(getTaskPendingHours(task({ id: 'task', estimatedHours: 20 }), result.allocations)).toBe(
-      12,
+    expect(getTaskAllocatedHours('task', result.allocations)).toBe(28);
+    expect(getTaskPendingHours(task({ id: 'task', estimatedHours: 28 }), result.allocations)).toBe(
+      0,
     );
-    expect(result.allocations.every(item => item.allocatedHours <= 8)).toBe(true);
+    expect(result.allocations).toEqual([
+      expect.objectContaining({ date: '2026-01-01', allocatedHours: 24 }),
+      expect.objectContaining({ date: '2026-01-02', allocatedHours: 4 }),
+    ]);
   });
 
   it('沒有容量時仍把已明確自動排程的 Task 留在 Timeline', () => {
-    const scheduled = scheduleTaskAt(
-      task({ id: 'task', estimatedHours: 8 }),
-      [],
-      [capacity('2026-01-01', 0)],
-      '2026-01-01',
-      { horizonDays: 1 },
-    ).task;
+    const scheduled = scheduleTaskAt(task({ id: 'task', estimatedHours: 8 }), [], '2026-01-01', {
+      horizonDays: 1,
+    }).task;
     const result = partitionProjectTasks({ tasks: [scheduled] } as Project);
     expect(result.scheduled.map(item => item.id)).toEqual(['task']);
   });
@@ -150,23 +147,21 @@ describe('容量 domain', () => {
     const result = scheduleTaskAt(
       task({ id: 'task', end: '2026-01-01', estimatedHours: 12 }),
       [],
-      [capacity('2026-01-01', 8), capacity('2026-01-02', 8)],
       '2026-01-01',
     );
     expect(result.task).toMatchObject({ start: '2026-01-01', end: '2026-01-01' });
-    expect(result.allocations.map(item => item.date)).toEqual(['2026-01-01', '2026-01-02']);
+    expect(result.allocations.map(item => item.date)).toEqual(['2026-01-01']);
   });
 
   it('沒有 start 時使用明確排程 anchor，並保留其他 metadata', () => {
     const result = recalculateTaskSchedule(
       task({ id: 'task', deadline: '2026-01-10', estimatedHours: 10 }),
       [],
-      [capacity('2026-01-05', 8), capacity('2026-01-06', 8)],
       '2026-01-05',
     );
     expect(result.task.start).toBe('2026-01-05');
     expect(result.task.deadline).toBe('2026-01-10');
-    expect(result.allocations.map(item => item.allocatedHours)).toEqual([8, 2]);
+    expect(result.allocations.map(item => item.allocatedHours)).toEqual([10]);
   });
 
   it('直接調整只改被點擊的日期，且允許超過預估與容量', () => {
@@ -254,7 +249,6 @@ describe('容量 domain', () => {
         version: 2,
         exportedAt: 'now',
         projects: [],
-        dailyCapacities: [],
         allocations: [],
       }),
     ).toBe(true);
@@ -264,7 +258,6 @@ describe('容量 domain', () => {
         version: 99,
         exportedAt: 'now',
         projects: [],
-        dailyCapacities: [],
         allocations: [],
       }),
     ).toBe(false);

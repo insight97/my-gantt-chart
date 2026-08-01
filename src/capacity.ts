@@ -1,9 +1,9 @@
-import type { Allocation, DailyCapacity, Task } from './types';
+import type { Allocation, Task } from './types';
 import { buildTaskTree } from './task-tree';
 
 const DAY_MS = 86400000;
 export const DEFAULT_PLANNING_HORIZON_DAYS = 180;
-export const DEFAULT_DAILY_CAPACITY_HOURS = 8;
+export const DEFAULT_DAILY_CAPACITY_HOURS = 24;
 
 export interface AllocationResult {
   allocations: Allocation[];
@@ -16,18 +16,6 @@ export interface ScheduleResult {
 
 export interface RecalculateOptions {
   horizonDays?: number;
-  capacityIndex?: Map<string, number>;
-}
-
-export function capacityAvailableHours(totalCapacityHours: number, unavailableHours: number) {
-  return Math.max(0, totalCapacityHours - unavailableHours);
-}
-
-export function normalizeCapacity(capacity: DailyCapacity): DailyCapacity {
-  return {
-    ...capacity,
-    availableHours: capacityAvailableHours(capacity.totalCapacityHours, capacity.unavailableHours),
-  };
 }
 
 export function getProjectEstimatedHours(project: { tasks: Task[] }) {
@@ -74,27 +62,6 @@ export function getDailyAllocatedHours(
     .reduce((sum, allocation) => sum + allocation.allocatedHours, 0);
 }
 
-export function defaultDailyCapacity(
-  date: string,
-  fallbackHours = DEFAULT_DAILY_CAPACITY_HOURS,
-): DailyCapacity {
-  return {
-    date,
-    totalCapacityHours: fallbackHours,
-    unavailableHours: 0,
-    availableHours: fallbackHours,
-  };
-}
-
-export function getDailyCapacity(
-  date: string,
-  capacities: DailyCapacity[],
-  fallbackHours = DEFAULT_DAILY_CAPACITY_HOURS,
-) {
-  const existing = capacities.find(capacity => capacity.date === date);
-  return existing ? normalizeCapacity(existing) : defaultDailyCapacity(date, fallbackHours);
-}
-
 /** Date-keyed indexes so render paths avoid re-scanning the whole allocation set per day. */
 export function allocationsByTask(allocations: Allocation[]) {
   const index = new Map<string, Allocation[]>();
@@ -113,24 +80,12 @@ export function allocatedHoursByDate(allocations: Allocation[]) {
   return index;
 }
 
-export function capacityAvailableByDate(capacities: DailyCapacity[]) {
-  const index = new Map<string, number>();
-  for (const capacity of capacities)
-    index.set(
-      capacity.date,
-      capacityAvailableHours(capacity.totalCapacityHours, capacity.unavailableHours),
-    );
-  return index;
-}
-
 export function getRemainingCapacity(
   date: string,
-  capacities: DailyCapacity[],
   allocations: Allocation[],
   excludeTaskId?: string,
 ) {
-  const capacity = getDailyCapacity(date, capacities);
-  return capacity.availableHours - getDailyAllocatedHours(date, allocations, excludeTaskId);
+  return DEFAULT_DAILY_CAPACITY_HOURS - getDailyAllocatedHours(date, allocations, excludeTaskId);
 }
 
 export function datesBetween(start: string, end: string) {
@@ -174,12 +129,10 @@ function createAllocation(taskId: string, date: string, hours: number): Allocati
 export function recalculateAutomaticAllocations(
   task: Task,
   allocations: Allocation[],
-  capacities: DailyCapacity[],
   startDate = today(),
   options: RecalculateOptions = {},
 ): AllocationResult {
   const horizonDays = options.horizonDays ?? DEFAULT_PLANNING_HORIZON_DAYS;
-  const capacityIndex = options.capacityIndex ?? capacityAvailableByDate(capacities);
   const otherAllocations = allocations.filter(item => item.taskId !== task.id);
   const otherAllocatedByDate = allocatedHoursByDate(otherAllocations);
   const anchor = task.start || startDate;
@@ -189,9 +142,7 @@ export function recalculateAutomaticAllocations(
 
   for (const date of searchDates) {
     if (remaining <= 0) break;
-    const available =
-      (capacityIndex.get(date) ?? DEFAULT_DAILY_CAPACITY_HOURS) -
-      (otherAllocatedByDate.get(date) || 0);
+    const available = DEFAULT_DAILY_CAPACITY_HOURS - (otherAllocatedByDate.get(date) || 0);
     if (available <= 0) continue;
     const hours = Math.min(remaining, available);
     result.push(createAllocation(task.id, date, hours));
@@ -204,7 +155,6 @@ export function recalculateAutomaticAllocations(
 export function recalculateTaskSchedule(
   task: Task,
   allocations: Allocation[],
-  capacities: DailyCapacity[],
   startDate = today(),
   options: RecalculateOptions = {},
 ): ScheduleResult {
@@ -214,13 +164,7 @@ export function recalculateTaskSchedule(
     status:
       task.status === 'completed' || task.status === 'in_progress' ? task.status : 'scheduled',
   };
-  const result = recalculateAutomaticAllocations(
-    scheduledTask,
-    allocations,
-    capacities,
-    startDate,
-    options,
-  );
+  const result = recalculateAutomaticAllocations(scheduledTask, allocations, startDate, options);
   return { task: scheduledTask, allocations: result.allocations };
 }
 
@@ -228,11 +172,10 @@ export function recalculateTaskSchedule(
 export function scheduleTaskAt(
   task: Task,
   allocations: Allocation[],
-  capacities: DailyCapacity[],
   date: string,
   options: RecalculateOptions = {},
 ): ScheduleResult {
-  return recalculateTaskSchedule({ ...task, start: date }, allocations, capacities, date, options);
+  return recalculateTaskSchedule({ ...task, start: date }, allocations, date, options);
 }
 
 /** Clears a Task's current Allocation while preserving its card metadata. */

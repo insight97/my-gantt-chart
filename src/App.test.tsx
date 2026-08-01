@@ -57,7 +57,6 @@ const workspace = (
     },
     ...extraProjects,
   ],
-  dailyCapacities: [],
   allocations,
 });
 

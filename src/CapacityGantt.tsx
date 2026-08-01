@@ -1,18 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import {
-  allocatedHoursByDate,
-  capacityAvailableByDate,
-  isTaskOverdue,
-  scheduleTaskAt,
-  today,
-} from './capacity';
+import { allocatedHoursByDate, isTaskOverdue, scheduleTaskAt, today } from './capacity';
 import { hoursLabel } from './formatters';
 import { aggregateTaskAllocations, aggregateTaskEstimate } from './data';
 import TaskCard from './TaskCard';
 import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
-import type { Allocation, DailyCapacity, Task, ViewMode } from './types';
+import type { Allocation, Task, ViewMode } from './types';
 import type { TaskTreeIndex } from './task-tree';
 import {
   buildTimelineContext,
@@ -54,8 +48,7 @@ export type CapacityGanttProps = {
   expandedTaskIds: Set<string>;
   backlogTasks: Task[];
   allocations: Allocation[];
-  capacityAllocations: Allocation[];
-  capacities: DailyCapacity[];
+  allAllocations: Allocation[];
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
   autoScheduleEnabled: boolean;
@@ -76,7 +69,6 @@ export type CapacityGanttProps = {
   onDelete: (taskId: string) => void;
   onAddChild: (task: Task) => void;
   onToggleTask: (taskId: string) => void;
-  onEditCapacity: (date: string) => void;
   onTimelineScroll: (left: number) => void;
 };
 
@@ -115,66 +107,35 @@ function TimelineContext({ cells, scale }: TimelineContextProps) {
 
 type CapacityPeriodsProps = {
   periods: TimelinePeriod[];
-  availableByDate: Map<string, number>;
   allocatedByDate: Map<string, number>;
   view: ViewMode;
   scale: number;
-  onEditCapacity: (date: string) => void;
 };
 
-function CapacityPeriods({
-  periods,
-  availableByDate,
-  allocatedByDate,
-  view,
-  scale,
-  onEditCapacity,
-}: CapacityPeriodsProps) {
-  const editable = view === 'day';
+function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeriodsProps) {
   const density = periodDensity(scale);
   return (
     <>
       {periods.map((period, index) => {
         const allocated = periodHours(period, allocatedByDate);
-        const available = periodAvailableHours(period, availableByDate);
+        const available = periodAvailableHours(period);
         const weekend = weekendClass(period.start, view);
-        const className = [
-          'capacity-period',
-          capacityState(allocated, available),
-          density,
-          editable ? 'editable' : '',
-          weekend,
-        ]
+        const className = ['capacity-period', capacityState(allocated, available), density, weekend]
           .filter(Boolean)
           .join(' ');
         const weekendLabel = weekend ? ' · 週末' : '';
-        const title = editable
-          ? `${period.label}${weekendLabel} · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)} · 點擊設定容量`
-          : `${period.label}${weekendLabel} · ${period.dates.length} 天容量加總 · 已分配 ${hoursLabel(allocated)} / 可用 ${hoursLabel(available)}`;
+        const title = `${period.label}${weekendLabel} · ${period.dates.length} 天總容量 ${hoursLabel(available)} · 已分配 ${hoursLabel(allocated)} · 剩餘 ${hoursLabel(Math.max(0, available - allocated))}`;
         return (
           <span
             className={className}
             key={period.start}
-            role={editable ? 'button' : undefined}
-            tabIndex={editable ? 0 : undefined}
             title={title}
-            aria-label={`${period.label}${weekendLabel}，已分配 ${hoursLabel(allocated)}，可用容量 ${hoursLabel(available)}`}
-            onClick={editable ? () => onEditCapacity(period.start) : undefined}
-            onKeyDown={
-              editable
-                ? event => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      onEditCapacity(period.start);
-                    }
-                  }
-                : undefined
-            }
+            aria-label={`${period.label}${weekendLabel}，每日固定 24 小時，已分配 ${hoursLabel(allocated)}，剩餘 ${hoursLabel(Math.max(0, available - allocated))}`}
             style={{ left: index * scale, width: scale, top: TIMELINE_CONTEXT_ROW_HEIGHT }}
           >
             <b>{periodDisplayLabel(period, view, scale)}</b>
             <strong>{periodCapacityLabel(allocated, available, scale)}</strong>
-            {!editable && scale >= 56 && <small>{period.dates.length} 天合計</small>}
+            {scale >= 56 && <small>{period.dates.length} 天合計</small>}
           </span>
         );
       })}
@@ -185,19 +146,15 @@ function CapacityPeriods({
 function TimelineHeader({
   periods,
   context,
-  availableByDate,
   allocatedByDate,
   view,
   scale,
-  onEditCapacity,
 }: {
   periods: TimelinePeriod[];
   context: TimelineContextCell[];
-  availableByDate: Map<string, number>;
   allocatedByDate: Map<string, number>;
   view: ViewMode;
   scale: number;
-  onEditCapacity: (date: string) => void;
 }) {
   return (
     <div
@@ -210,11 +167,9 @@ function TimelineHeader({
       <TimelineContext cells={context} scale={scale} />
       <CapacityPeriods
         periods={periods}
-        availableByDate={availableByDate}
         allocatedByDate={allocatedByDate}
         view={view}
         scale={scale}
-        onEditCapacity={onEditCapacity}
       />
     </div>
   );
@@ -656,8 +611,7 @@ export default function CapacityGantt({
   expandedTaskIds,
   backlogTasks,
   allocations,
-  capacityAllocations,
-  capacities,
+  allAllocations,
   timelineZoom,
   timelineInputMode,
   autoScheduleEnabled,
@@ -672,7 +626,6 @@ export default function CapacityGantt({
   onDelete,
   onAddChild,
   onToggleTask,
-  onEditCapacity,
   onTimelineScroll,
 }: CapacityGanttProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -694,10 +647,9 @@ export default function CapacityGantt({
   const layoutKey = `${view}:${timelineZoom.pixelsPerDay}:${range.start}:${range.end}`;
 
   // Date/task keyed indexes, so the header and every row read O(1) instead of rescanning allocations per day.
-  const availableByDate = useMemo(() => capacityAvailableByDate(capacities), [capacities]);
   const capacityAllocatedByDate = useMemo(
-    () => allocatedHoursByDate(capacityAllocations),
-    [capacityAllocations],
+    () => allocatedHoursByDate(allAllocations),
+    [allAllocations],
   );
   const taskAllocations = useMemo(() => {
     const index = new Map<string, Allocation[]>();
@@ -741,7 +693,7 @@ export default function CapacityGantt({
       tasks.find(item => item.id === dropTargetTaskId);
     if (!task) return null;
     try {
-      const result = scheduleTaskAt(task, capacityAllocations, capacities, dropTargetDate);
+      const result = scheduleTaskAt(task, allAllocations, dropTargetDate);
       return {
         ...result.task,
         start: result.task.start || dropTargetDate,
@@ -755,8 +707,7 @@ export default function CapacityGantt({
     dropTargetTaskId,
     dropTargetDate,
     backlogTasks,
-    capacityAllocations,
-    capacities,
+    allAllocations,
     tasks,
     autoScheduleEnabled,
     taskDrag?.origin,
@@ -931,7 +882,8 @@ export default function CapacityGantt({
         <div>
           <h2>Capacity Allocation</h2>
           <small>
-            日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation 範圍、深底＝實際工時、標題標記＝週末。
+            每日固定 24 小時；日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation
+            範圍、深底＝實際工時、標題標記＝週末。
             {timelineInputMode === 'trackpad'
               ? '兩指滑動捲動、兩指捏合縮放、拖曳平移時間軸'
               : '滑鼠滾輪縮放、拖曳平移時間軸'}
@@ -983,11 +935,9 @@ export default function CapacityGantt({
             <TimelineHeader
               periods={periods}
               context={context}
-              availableByDate={availableByDate}
               allocatedByDate={capacityAllocatedByDate}
               view={view}
               scale={scale}
-              onEditCapacity={onEditCapacity}
             />
             <TimelineGrid
               periods={periods}

@@ -396,7 +396,7 @@ function scheduleTaskTransition(
     return invalid('有子任務的工作項目不可直接排程。');
 
   try {
-    const result = scheduleTaskAt(task, workspace.allocations, workspace.dailyCapacities, date);
+    const result = scheduleTaskAt(task, workspace.allocations, date);
     const nextTask: Task = { ...result.task, updatedAt: now() };
     return updated(
       replaceTaskAndAllocations(
@@ -560,12 +560,7 @@ export function moveTaskGroupToTimeline(
       if (leaf.status !== 'backlog') continue;
       const current = tasks.find(task => task.id === leaf.id)!;
       const result = autoSchedule
-        ? scheduleTaskAt(
-            { ...current, status: 'scheduled' },
-            allocations,
-            workspace.dailyCapacities,
-            date,
-          )
+        ? scheduleTaskAt({ ...current, status: 'scheduled' }, allocations, date)
         : {
             task: {
               ...current,
