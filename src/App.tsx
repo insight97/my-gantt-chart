@@ -355,7 +355,11 @@ export default function App() {
     task.order = project.tasks.filter(item => (item.parentId ?? null) === parentId).length;
     if (parentId) task.deadline = taskDeadlineConstraint(project.tasks, parentId);
     if (entryPoint === 'timeline') task.status = 'scheduled';
-    setEditingTask({ projectId, task, scheduleOnSave: entryPoint === 'timeline' });
+    setEditingTask({
+      projectId,
+      task,
+      scheduleOnSave: entryPoint === 'timeline' && autoScheduleEnabled,
+    });
   };
 
   const addChildTask = (
@@ -735,11 +739,11 @@ export default function App() {
               <label className="auto-schedule-switch">
                 <input
                   type="checkbox"
-                  aria-label="拖入 Timeline 時自動排程"
+                  aria-label="拖入或新增時自動排程"
                   checked={autoScheduleEnabled}
                   onChange={event => setAutoScheduleEnabled(event.target.checked)}
                 />
-                <span>拖入時自動排程</span>
+                <span>拖入或新增時自動排程</span>
               </label>
               <label className="allocation-step-switch">
                 <span>每日調整</span>
