@@ -20,7 +20,7 @@
 - 若父 Work Item 原本已有實際 Allocation，加入子項目時會保留為 `未拆分工作` 葉節點；只有預估工時但尚未分配時不會建立額外子項目。
 - **Pending Hours**：估計工時與目前 Allocation 總和的有號差額；正值代表待安排，負值代表需要釋放。
 
-Allocation Timeline 的日期欄會簡潔顯示「已分配 / 每日固定 24 小時」（例如 `4h / 24h`）；所有 Task 的 Allocation 都會計入當日使用量，超過 24 小時會以紅色警告。
+Allocation Timeline 的日期欄在日檢視顯示剩餘時數，週／月檢視顯示「已分配 / 每日固定 24 小時」的期間摘要；所有 Task 的 Allocation 都會計入當日使用量，超過 24 小時會以紅色警告。
 
 ## Backlog 與 Allocation Timeline 流程
 
