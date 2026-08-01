@@ -560,7 +560,7 @@ export default function App() {
   ]);
 
   const deleteTask = (projectId: string, taskId: string) => {
-    if (!workspace || !confirm('確定刪除這個 Task 及其 Allocation？')) return;
+    if (!workspace) return;
     const project = workspace.projects.find(item => item.id === projectId);
     if (!project) return;
     const removedIds = buildTaskTree(project.tasks).descendants(taskId);
@@ -680,10 +680,6 @@ export default function App() {
           <input ref={fileRef} hidden type="file" accept="application/json" onChange={importJson} />
         </div>
       </header>
-      <div className="local-note">
-        <b>資料只儲存在這台裝置</b>
-        <span>請定期建立 JSON 備份。</span>
-      </div>
       {notice && (
         <div className="toast" role="status">
           {notice}
