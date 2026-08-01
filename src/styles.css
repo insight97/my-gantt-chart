@@ -99,15 +99,6 @@ header {
   display: flex;
   gap: 7px;
 }
-.local-note {
-  display: flex;
-  gap: 10px;
-  padding: 8px 28px;
-  background: #fff8df;
-  color: #6f5710;
-  font-size: 12px;
-  border-bottom: 1px solid #ebdda7;
-}
 .toast {
   position: fixed;
   z-index: 60;
@@ -729,7 +720,6 @@ h1 {
 }
 @media print {
   header,
-  .local-note,
   .projectbar,
   .header-actions,
   .workspace-title .primary,
@@ -986,7 +976,8 @@ h1 {
 .timeline-today-marker i {
   position: absolute;
   top: 2px;
-  left: -2px;
+  left: 0;
+  transform: translateX(calc(-100% - 4px));
   background: #e7f0f7;
   color: #174f7c;
   border-radius: 4px;

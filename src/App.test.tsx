@@ -97,6 +97,21 @@ describe('Work Item hierarchy UI', () => {
     expect(screen.getByText('根工作 B')).toBeInTheDocument();
     expect(screen.queryByText('舊專案 A')).not.toBeInTheDocument();
     expect(screen.queryByText('舊專案 B')).not.toBeInTheDocument();
+    expect(screen.queryByText('資料只儲存在這台裝置')).not.toBeInTheDocument();
+  });
+
+  it('deletes a task immediately and restores it with undo', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '可復原工作')]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('可復原工作')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '刪除 可復原工作' }));
+
+    await waitFor(() => expect(screen.queryByText('可復原工作')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '復原' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '復原' }));
+    await waitFor(() => expect(screen.getByText('可復原工作')).toBeInTheDocument());
   });
 
   it('creates a child with the same Work Item object shape', async () => {
