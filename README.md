@@ -25,7 +25,7 @@ Allocation Timeline 的日期欄在日檢視顯示剩餘時數，週／月檢視
 ## Backlog 與 Allocation Timeline 流程
 
 - Work Item 只有一份資料；Leaf Task 的狀態決定它在 Backlog 或 Allocation Timeline 的位置。每個可見 Leaf 都會帶著完整祖先鏈，所以子項目不會單獨出現；同一父項目可在兩邊作為群組內容出現。
-- Backlog 卡片顯示名稱、優先順序與估計工時；祖先列是不可直接排程的群組內容。Leaf 卡片可點擊編輯，按住並移動可拖曳。
+- Backlog 卡片顯示名稱、重要性與估計工時；祖先列是不可直接排程的群組內容。Leaf 卡片可點擊編輯，按住並移動可拖曳。
 - 啟用「拖入或新增時自動排程」後，拖曳 Backlog 卡片到 Allocation Timeline 會立即執行 Automatic Scheduling，不需要確認按鈕；一般 Task 以放下位置作為 fastest 排程起點，recurring Task 依重複規則日期與每次時數安排，新 Task 放到清單最下方。
 - 拖曳父群組到另一個區域會立即批次搬移其葉節點：拖入 Timeline 依自動排程開關處理 Backlog Leaf，拖回 Backlog 移回所有未完成 Timeline Leaf；整批可用一次復原還原。已完成 Leaf 不會被搬動，因此父群組可繼續同時出現在兩邊。
 - 「拖入或新增時自動排程」開關關閉時，Backlog 拖入 Timeline、群組搬移與 Timeline 新增只改變 Timeline 狀態，不建立 Allocation；明確進行 Timeline Placement 或 Automatic Scheduling 仍會執行排程，任務編輯器的「幫我排程」則只填補缺口。

@@ -122,8 +122,13 @@ export default function TaskCard({
               <>子項目彙總 · 預估 {hoursLabel(task.estimatedHours)}</>
             ) : (
               <>
-                <em className={`priority ${task.priority}`}>{priorityLabels[task.priority]}</em> ·
-                預估 {hoursLabel(task.estimatedHours)}
+                <em
+                  className={`priority ${task.priority}`}
+                  title={`重要性：${priorityLabels[task.priority]}`}
+                >
+                  {priorityLabels[task.priority]}
+                </em>{' '}
+                · 預估 {hoursLabel(task.estimatedHours)}
               </>
             )}
           </small>
