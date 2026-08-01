@@ -263,6 +263,47 @@ describe('Work Item hierarchy UI', () => {
     expect(await screen.findByLabelText('拖入 Timeline 時自動排程')).not.toBeChecked();
   });
 
+  it('persists the daily Allocation adjustment step', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([workItem('task-a', '可調整工作', { status: 'scheduled' })]),
+    );
+    render(<App />);
+    const step = await screen.findByLabelText('每日 Allocation 調整步進');
+
+    expect(step).toHaveValue('1');
+    fireEvent.change(step, { target: { value: '0.5' } });
+    expect(step).toHaveValue('0.5');
+    expect(localStorage.getItem('gantt-allocation-step')).toBe('0.5');
+
+    cleanup();
+    render(<App />);
+    expect(await screen.findByLabelText('每日 Allocation 調整步進')).toHaveValue('0.5');
+  });
+
+  it('uses the selected Allocation adjustment step for daily clicks', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([workItem('task-a', '可調整工作', { status: 'scheduled' })]),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('可調整工作')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('每日 Allocation 調整步進'), {
+      target: { value: '0.5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '日' }));
+    const cell = document.querySelector('.allocation-cell') as HTMLButtonElement;
+    expect(cell).toHaveAttribute('title', expect.stringContaining('左鍵 +0.5h，右鍵 -0.5h'));
+
+    saveWorkspaceMock.mockClear();
+    fireEvent.click(cell);
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalled());
+    const saved = saveWorkspaceMock.mock.calls.at(-1)?.[0];
+    expect(saved?.allocations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ allocatedHours: 0.5 })]),
+    );
+  });
+
   it('does not preview automatic allocation when dragging with the toggle off', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
     render(<App />);

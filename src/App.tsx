@@ -68,6 +68,13 @@ const statusLabels: Record<TaskStatus, string> = {
 };
 const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
 const AUTO_SCHEDULE_STORAGE_KEY = 'gantt-auto-schedule';
+const ALLOCATION_STEP_STORAGE_KEY = 'gantt-allocation-step';
+const ALLOCATION_STEP_OPTIONS = [1, 0.5] as const;
+type AllocationStep = (typeof ALLOCATION_STEP_OPTIONS)[number];
+
+function initialAllocationStep(): AllocationStep {
+  return localStorage.getItem(ALLOCATION_STEP_STORAGE_KEY) === '0.5' ? 0.5 : 1;
+}
 
 function defaultRecurrence(task: Task): RecurrenceRule {
   const startDate = task.start || today();
@@ -149,6 +156,7 @@ export default function App() {
   const [timelineInputMode, setTimelineInputMode] =
     useState<TimelineInputMode>(initialTimelineInputMode);
   const [autoScheduleEnabled, setAutoScheduleEnabled] = useState(initialAutoScheduleEnabled);
+  const [allocationStep, setAllocationStep] = useState<AllocationStep>(initialAllocationStep);
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
   const [ready, setReady] = useState(false);
   const [editingTask, setEditingTask] = useState<EditingTask | null>(null);
@@ -201,6 +209,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(AUTO_SCHEDULE_STORAGE_KEY, String(autoScheduleEnabled));
   }, [autoScheduleEnabled]);
+  useEffect(() => {
+    localStorage.setItem(ALLOCATION_STEP_STORAGE_KEY, String(allocationStep));
+  }, [allocationStep]);
 
   // One pass over allocations instead of a per-project scan with a nested task lookup.
   const allocationsByProject = useMemo(() => {
@@ -725,6 +736,22 @@ export default function App() {
                 />
                 <span>拖入時自動排程</span>
               </label>
+              <label className="allocation-step-switch">
+                <span>每日調整</span>
+                <select
+                  aria-label="每日 Allocation 調整步進"
+                  value={allocationStep}
+                  onChange={event =>
+                    setAllocationStep(Number(event.target.value) as AllocationStep)
+                  }
+                >
+                  {ALLOCATION_STEP_OPTIONS.map(step => (
+                    <option key={step} value={step}>
+                      {hourValueLabel(step)} 小時
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="input-mode-switch" role="group" aria-label="時間軸操作模式">
                 <span>時間軸操作</span>
                 <div className="mode-switch">
@@ -774,6 +801,7 @@ export default function App() {
                   timelineZoom={timelineZoom}
                   timelineInputMode={timelineInputMode}
                   autoScheduleEnabled={autoScheduleEnabled}
+                  allocationStep={allocationStep}
                   timelineScrollLeft={timelineScrollLeft}
                   taskDrag={taskDrag}
                   expandedTaskIds={expandedTaskIds}
@@ -866,6 +894,7 @@ type ProjectPanelProps = {
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
   autoScheduleEnabled: boolean;
+  allocationStep: AllocationStep;
   timelineScrollLeft: number;
   taskDrag: TaskDragState | null;
   expandedTaskIds: Set<string>;
@@ -902,6 +931,7 @@ function ProjectPanel({
   timelineZoom,
   timelineInputMode,
   autoScheduleEnabled,
+  allocationStep,
   timelineScrollLeft,
   taskDrag,
   expandedTaskIds,
@@ -985,6 +1015,7 @@ function ProjectPanel({
               timelineZoom={timelineZoom}
               timelineInputMode={timelineInputMode}
               autoScheduleEnabled={autoScheduleEnabled}
+              allocationStep={allocationStep}
               scrollLeft={timelineScrollLeft}
               taskDrag={taskDrag}
               onZoomChange={onZoomChange}

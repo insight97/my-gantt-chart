@@ -37,7 +37,7 @@ Allocation Timeline 的日期欄會簡潔顯示「已分配 / 每日固定 24 �
 
 - 新增 Task 預設為 Backlog，預估工時預設為 8 小時，建立日期由系統記錄。
 - Automatic Scheduling 只採最快完成模式，從放下日期或今天往後尋找仍有剩餘時間的日期；睡眠、休息等既有 Allocation 也會先消耗當日 24 小時，沒有剩餘時間時延續到下一天。週末與假日不特殊處理。
-- Allocation Timeline 日層級左鍵增加 1 小時，右鍵減少 1 小時，只修改被操作的日期，不跨日期重平衡；可以超過容量或 Estimated Hours，必須清楚顯示警告。
+- Allocation Timeline 日層級可選擇每次調整 1 或 0.5 小時；左鍵增加、右鍵減少選定步進，只修改被操作的日期，不跨日期重平衡；可以超過容量或 Estimated Hours，必須清楚顯示警告。
 - 只有明確 Automatic Scheduling 會清除並重建全部 Allocation；修改 Estimated Hours 或 Task metadata 不會改動既有 Allocation。手動調整可以暫時超過 24 小時，但必須顯示超載警告。
 - 本階段不做跨 Task 的自動排程、相依關係推理或全域重新排序。
 
