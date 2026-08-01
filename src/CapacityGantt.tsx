@@ -139,7 +139,7 @@ function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeri
             <b>{periodDisplayLabel(period, view, scale)}</b>
             <strong>
               {view === 'day'
-                ? `剩餘 ${hoursLabel(remaining)}`
+                ? hoursLabel(remaining)
                 : periodCapacityLabel(allocated, available, scale)}
             </strong>
             {view !== 'day' && scale >= 56 && <small>{period.dates.length} 天合計</small>}
