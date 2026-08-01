@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import { allocatedHoursByDate, isTaskOverdue, scheduleTaskAt, today } from './capacity';
+import { allocatedHoursByDate, isTaskOverdue, today } from './capacity';
 import { hoursLabel } from './formatters';
 import { aggregateTaskAllocations, aggregateTaskEstimate } from './data';
 import TaskCard from './TaskCard';
@@ -8,6 +8,7 @@ import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
 import type { Allocation, Task, ViewMode } from './types';
 import type { TaskTreeIndex } from './task-tree';
+import { previewTimelinePlacement } from './workspace-operations';
 import {
   buildTimelineContext,
   buildTimelinePeriods,
@@ -707,17 +708,12 @@ export default function CapacityGantt({
       backlogTasks.find(item => item.id === dropTargetTaskId) ||
       tasks.find(item => item.id === dropTargetTaskId);
     if (!task) return null;
-    try {
-      const result = scheduleTaskAt(task, allAllocations, dropTargetDate);
-      return {
-        ...result.task,
-        start: result.task.start || dropTargetDate,
-        end: result.task.end || dropTargetDate,
-        status: 'scheduled' as const,
-      };
-    } catch {
-      return { ...task, start: dropTargetDate, end: dropTargetDate, status: 'scheduled' as const };
-    }
+    return previewTimelinePlacement(
+      task,
+      allAllocations,
+      dropTargetDate,
+      taskDrag?.origin === 'gantt' || autoScheduleEnabled,
+    );
   }, [
     dropTargetTaskId,
     dropTargetDate,

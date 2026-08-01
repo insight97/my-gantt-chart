@@ -36,7 +36,7 @@
 
 **Automatic Allocation**：系統依放下日期或今天與固定每日 24 小時產生的 Allocation。系統從起點往後尋找有剩餘時間的日期，所有既有 Task（包含睡眠、休息等 Task）的 Allocation 都會計入，不會在一般日期故意超載；使用者可重新自動安排。
 
-**Automatic Scheduling**：使用者明確按下「自動排程」、將 Backlog Task 拖曳到 Allocation Timeline，或從 Allocation Timeline 新增 Task 並儲存；三者都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。從 Backlog 父項目新增子任務時，新子任務沿用 Backlog 入口；從 Timeline 父項目新增子任務時，新子任務使用 Timeline 入口並在儲存時建立 Allocation。一般 Task 使用 `fastest` 建立 Allocation；有 `recurrence` 的 Task 則以重複規則日期與每次時數建立 Allocation，不使用累積的 `Estimated Hours` 重新分散，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一般 Task 一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；有重複規則的 Task 保留規則日期。按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程的放下日期只決定進入 Timeline，不會平移 recurring 規則。已在 Timeline 的 Leaf Task 拖到另一個日期時，一般 Task 會清除舊 Allocation 並以新日期重新建立；recurring Task 會依規則重建；`in_progress` 重新排程後保持原狀態。只分配到仍有剩餘時間的日期，沒有剩餘時間時延續到下一天；手動或 recurring Allocation 若超過 24 小時則保留結果並顯示超載。編輯既有 Task metadata 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
+**Automatic Scheduling**：使用者明確按下「自動排程」，或在啟用自動排程時將 Backlog Task 拖曳到 Allocation Timeline、從 Allocation Timeline 新增 Task 並儲存；這些入口都先共用草稿驗證、父節點直接工時拆分與 Deadline 檢查，再進入同一個 Allocation 重建 transition。從 Backlog 父項目新增子任務時，新子任務沿用 Backlog 入口；從 Timeline 父項目新增子任務時，新子任務使用 Timeline 入口並在啟用自動排程時建立 Allocation。一般 Task 使用 `fastest` 建立 Allocation；有 `recurrence` 的 Task 則以重複規則日期與每次時數建立 Allocation，不使用累積的 `Estimated Hours` 重新分散，並將新進入的 Task 放到清單最下方。Backlog Task 按下「自動排程」時一般 Task 一律從今天開始，不沿用拖回 Backlog 後殘留的舊 `start` metadata；有重複規則的 Task 保留規則日期。按鈕與 Timeline 新增沒有開始日時也從今天開始；拖曳排程的放下日期只決定進入 Timeline，不會平移 recurring 規則。已在 Timeline 的 Leaf Task 拖到另一個日期時，一般 Task 會清除舊 Allocation 並以新日期重新建立；recurring Task 會依規則重建；`in_progress` 重新排程後保持原狀態。只分配到仍有剩餘時間的日期，沒有剩餘時間時延續到下一天；手動或 recurring Allocation 若超過 24 小時則保留結果並顯示超載。編輯既有 Task metadata 或時間軸顯示，不會隱含觸發 Automatic Scheduling。
 
 **Estimated Hours**：Task 預計需要完成的總工時。修改 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation；需要重新分配時必須明確執行 Automatic Scheduling。
 
@@ -48,7 +48,9 @@
 
 **Deadline**：Work Item 必須完成的日期，是唯一由使用者輸入的日期限制。開始／結束日期不再是編輯欄位；時間軸範圍與摘要直接由 Allocation 日期推導。
 
-**Backlog to Allocation Timeline**：同一份 Leaf Task 資料在兩個位置之間移動，不建立副本。拖曳到時間軸空白區會觸發 Automatic Scheduling；一般 Task 使用放下日期作為最快排程起點，recurring Task 依規則日期與每次時數建立 Allocation。拖曳到另一個 Work Item 則依落點加入子項目或改變同層順序。拖曳群組時改用 Group Transfer，一次排程其中所有 Backlog Leaf；祖先不因此獲得可分配工時。
+**Timeline Placement**：Leaf Task 進入 Allocation Timeline、在 Timeline 內改變日期，或在同一視圖中改變排序位置的明確操作。Backlog 進入 Timeline 與 Timeline 新增 Task 這類隱含入口在自動排程關閉時只改變 Timeline 狀態；使用者明確將既有 Timeline Task 拖到新日期時仍會重建 Allocation。Placement 不改變 Work Item hierarchy 的父子關係語意。
+
+**Backlog to Allocation Timeline**：同一份 Leaf Task 資料在兩個位置之間移動，不建立副本。拖曳到時間軸空白區會依自動排程開關決定是否觸發 Automatic Scheduling；一般 Task 使用放下日期作為最快排程起點，recurring Task 依規則日期與每次時數建立 Allocation。拖曳到另一個 Work Item 則依落點加入子項目或改變同層順序。拖曳群組時改用 Group Transfer，一次依開關排程其中所有 Backlog Leaf；祖先不因此獲得可分配工時。
 
 **Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Leaf Task card 拖回 Backlog，或在 editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `parentId`、Deadline 與其他 metadata；若放在同一父項目的 Backlog 同層項目前後，則一併更新其同層順序。Backlog 中的群組也可在同層項目前後重排，並連同完整子樹一起移動。拖曳群組回 Backlog 時，以 Group Transfer 一次移回其中所有未完成 Timeline Leaf；已完成 Leaf 保留在 Timeline。
 

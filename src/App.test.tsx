@@ -279,7 +279,7 @@ describe('Work Item hierarchy UI', () => {
   it('persists the automatic scheduling toggle', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
     render(<App />);
-    const toggle = await screen.findByLabelText('拖入 Timeline 時自動排程');
+    const toggle = await screen.findByLabelText('拖入或新增時自動排程');
 
     expect(toggle).toBeChecked();
     fireEvent.click(toggle);
@@ -288,7 +288,34 @@ describe('Work Item hierarchy UI', () => {
 
     cleanup();
     render(<App />);
-    expect(await screen.findByLabelText('拖入 Timeline 時自動排程')).not.toBeChecked();
+    expect(await screen.findByLabelText('拖入或新增時自動排程')).not.toBeChecked();
+  });
+
+  it('does not automatically schedule a new Timeline task when the toggle is off', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([]));
+    render(<App />);
+    const toggle = await screen.findByLabelText('拖入或新增時自動排程');
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), {
+      target: { value: '待安排 Timeline 工作' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() =>
+      expect(
+        saveWorkspaceMock.mock.calls.some(([value]) =>
+          value.projects[0].tasks.some(task => task.name === '待安排 Timeline 工作'),
+        ),
+      ).toBe(true),
+    );
+    const saved = [...saveWorkspaceMock.mock.calls]
+      .reverse()
+      .map(([value]) => value)
+      .find(value => value.projects[0].tasks.some(task => task.name === '待安排 Timeline 工作'))!;
+    const created = saved.projects[0].tasks.find(task => task.name === '待安排 Timeline 工作');
+    expect(created).toMatchObject({ status: 'scheduled' });
+    expect(saved.allocations.some(allocation => allocation.taskId === created?.id)).toBe(false);
   });
 
   it('persists the daily Allocation adjustment step', async () => {
@@ -350,7 +377,7 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
     render(<App />);
     await waitFor(() => expect(screen.getByText('待安排工作')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('拖入 Timeline 時自動排程'));
+    fireEvent.click(screen.getByLabelText('拖入或新增時自動排程'));
 
     const source = screen.getByText('待安排工作').closest('.task-card')!;
     const timeline = document.querySelector('.timeline')!;

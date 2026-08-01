@@ -322,42 +322,44 @@ function withoutRecurrenceMarker(allocation: Allocation) {
   return manualAllocation;
 }
 
-/** Applies one leaf's rule while preserving manual allocations as one-off overrides. */
-export function applyTaskRecurrence(
-  workspace: WorkspaceData,
-  projectId: string,
-  taskId: string,
-): WorkspaceOperationResult {
-  const project = findProject(workspace, projectId);
-  const task = project && findTask(project, taskId);
-  if (!project || !task) return invalid('找不到 Task。');
-  if (buildTaskTree(project.tasks).hasChildren(task.id)) return invalid('父任務不可套用重複排程。');
-  if (task.status === 'completed') return invalid('已完成 Task 不可套用重複排程。');
+type TaskPlacementPlan = { task: Task; allocations?: Allocation[] };
+type RecurrencePlanResult = TaskPlacementPlan | { error: string } | null;
+type TaskPlacementPlanResult = TaskPlacementPlan | { error: string };
 
-  const generated = workspace.allocations.filter(
+/** Builds the recurrence-owned part of a placement without committing it. */
+function planRecurringTask(
+  task: Task,
+  allocations: Allocation[],
+  preserveManualAllocations: boolean,
+): RecurrencePlanResult {
+  const generated = allocations.filter(
     allocation => allocation.taskId === task.id && allocation.recurrenceId === task.id,
   );
   if (!task.recurrence) {
-    if (!generated.length) return unchanged();
-    const retained = workspace.allocations.filter(
-      allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
-    );
-    return updated(replaceTaskAndAllocations(workspace, project.id, task, retained));
+    if (!generated.length) return null;
+    return {
+      task,
+      allocations: allocations.filter(
+        allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
+      ),
+    };
   }
 
   const ruleError = recurrenceRuleError(task.recurrence);
-  if (ruleError) return invalid(ruleError);
+  if (ruleError) return { error: ruleError };
   let dates: string[];
   try {
     dates = recurrenceDates(task.recurrence);
   } catch (error) {
-    return invalid(error instanceof Error ? error.message : '重複排程日期無效。');
+    return { error: error instanceof Error ? error.message : '重複排程日期無效。' };
   }
-  if (!dates.length) return invalid('重複排程範圍內沒有符合的日期。');
+  if (!dates.length) return { error: '重複排程範圍內沒有符合的日期。' };
 
-  const retained = workspace.allocations.filter(
-    allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
-  );
+  const retained = preserveManualAllocations
+    ? allocations.filter(
+        allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
+      )
+    : allocations.filter(allocation => allocation.taskId !== task.id);
   const manualDates = new Set(
     retained.filter(allocation => allocation.taskId === task.id).map(allocation => allocation.date),
   );
@@ -378,11 +380,69 @@ export function applyTaskRecurrence(
     end: dates.at(-1)!,
     updatedAt: now(),
   };
-  const taskAllocations = [
-    ...retained.filter(allocation => allocation.taskId === task.id),
-    ...generatedAllocations,
-  ];
-  return updated(replaceTaskAndAllocations(workspace, project.id, nextTask, taskAllocations));
+  return {
+    task: nextTask,
+    allocations: [
+      ...retained.filter(allocation => allocation.taskId === task.id),
+      ...generatedAllocations,
+    ],
+  };
+}
+
+/** Plans a Timeline placement; preview and commit both cross this seam. */
+function planTimelinePlacement(
+  task: Task,
+  allocations: Allocation[],
+  date: string,
+  autoSchedule: boolean,
+): TaskPlacementPlanResult {
+  if (!autoSchedule)
+    return {
+      task: { ...task, status: 'scheduled', start: date, end: date, updatedAt: now() },
+    };
+
+  if (task.recurrence) {
+    const recurringPlan = planRecurringTask(task, allocations, false);
+    if (!recurringPlan) return { error: '重複排程沒有可套用的日期。' };
+    if ('error' in recurringPlan) return recurringPlan;
+    return recurringPlan;
+  }
+
+  try {
+    const result = scheduleTaskAt(task, allocations, date);
+    return { task: { ...result.task, updatedAt: now() }, allocations: result.allocations };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : '自動分配失敗。' };
+  }
+}
+
+/** Returns the same Task shape that a Timeline drop will commit, without side effects. */
+export function previewTimelinePlacement(
+  task: Task,
+  allocations: Allocation[],
+  date: string,
+  autoSchedule = true,
+): Task | null {
+  const planned = planTimelinePlacement(task, allocations, date, autoSchedule);
+  return 'error' in planned ? null : planned.task;
+}
+
+/** Applies one leaf's rule while preserving manual allocations as one-off overrides. */
+export function applyTaskRecurrence(
+  workspace: WorkspaceData,
+  projectId: string,
+  taskId: string,
+): WorkspaceOperationResult {
+  const project = findProject(workspace, projectId);
+  const task = project && findTask(project, taskId);
+  if (!project || !task) return invalid('找不到 Task。');
+  if (buildTaskTree(project.tasks).hasChildren(task.id)) return invalid('父任務不可套用重複排程。');
+  if (task.status === 'completed') return invalid('已完成 Task 不可套用重複排程。');
+
+  const plan = planRecurringTask(task, workspace.allocations, true);
+  if (!plan) return unchanged();
+  if ('error' in plan) return invalid(plan.error);
+  return updated(replaceTaskAndAllocations(workspace, project.id, plan.task, plan.allocations));
 }
 
 function scheduleTaskTransition(
@@ -395,32 +455,11 @@ function scheduleTaskTransition(
   if (buildTaskTree(project.tasks).hasChildren(task.id))
     return invalid('有子任務的工作項目不可直接排程。');
 
-  if (task.recurrence) {
-    const savedWorkspace = replaceTaskAndAllocations(
-      workspace,
-      project.id,
-      task,
-      [],
-      moveToSiblingEnd,
-    );
-    return applyTaskRecurrence(savedWorkspace, project.id, task.id);
-  }
-
-  try {
-    const result = scheduleTaskAt(task, workspace.allocations, date);
-    const nextTask: Task = { ...result.task, updatedAt: now() };
-    return updated(
-      replaceTaskAndAllocations(
-        workspace,
-        project.id,
-        nextTask,
-        result.allocations,
-        moveToSiblingEnd,
-      ),
-    );
-  } catch (error) {
-    return invalid(error instanceof Error ? error.message : '自動分配失敗。');
-  }
+  const plan = planTimelinePlacement(task, workspace.allocations, date, true);
+  if ('error' in plan) return invalid(plan.error);
+  return updated(
+    replaceTaskAndAllocations(workspace, project.id, plan.task, plan.allocations, moveToSiblingEnd),
+  );
 }
 
 export function autoScheduleTask(
@@ -507,14 +546,11 @@ function placeTaskOnTimeline(
 ): WorkspaceOperationResult {
   if (buildTaskTree(project.tasks).hasChildren(task.id))
     return invalid('有子任務的工作項目不可直接放入 Timeline。');
-  const nextTask: Task = {
-    ...task,
-    status: 'scheduled',
-    start: date,
-    end: date,
-    updatedAt: now(),
-  };
-  return updated(replaceTaskAndAllocations(workspace, project.id, nextTask, [], moveToSiblingEnd));
+  const plan = planTimelinePlacement(task, workspace.allocations, date, false);
+  if ('error' in plan) return invalid(plan.error);
+  return updated(
+    replaceTaskAndAllocations(workspace, project.id, plan.task, plan.allocations, moveToSiblingEnd),
+  );
 }
 
 export function moveTaskToBacklog(

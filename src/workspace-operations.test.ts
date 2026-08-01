@@ -14,6 +14,7 @@ import {
   moveTaskToBacklog,
   saveTask,
   scheduleTaskAtDate,
+  previewTimelinePlacement,
   type WorkspaceOperationResult,
 } from './workspace-operations';
 
@@ -86,6 +87,43 @@ describe('workspace operations', () => {
 
     expect(next.projects[0].tasks[0]).toMatchObject({ status: 'scheduled', start: today() });
     expect(next.allocations.map(item => [item.date, item.allocatedHours])).toEqual([[today(), 10]]);
+  });
+
+  it('previews recurring placement with the same rule dates as the commit path', () => {
+    const recurring = task({
+      status: 'backlog',
+      estimatedHours: 24,
+      recurrence: {
+        frequency: 'daily',
+        startDate: '2026-01-01',
+        endDate: '2026-01-03',
+        hoursPerOccurrence: 8,
+        weekdays: [],
+        monthDays: [],
+      },
+    });
+    const preview = previewTimelinePlacement(recurring, [], '2026-08-01');
+    const committed = changed(
+      scheduleTaskAtDate(workspace(recurring), 'project-a', 'task-a', '2026-08-01'),
+    );
+
+    expect(preview).toMatchObject({
+      status: 'scheduled',
+      estimatedHours: 24,
+      start: '2026-01-01',
+      end: '2026-01-03',
+    });
+    expect(committed.projects[0].tasks[0]).toMatchObject({
+      status: preview?.status,
+      estimatedHours: preview?.estimatedHours,
+      start: preview?.start,
+      end: preview?.end,
+    });
+    expect(committed.allocations.map(item => [item.date, item.allocatedHours])).toEqual([
+      ['2026-01-01', 8],
+      ['2026-01-02', 8],
+      ['2026-01-03', 8],
+    ]);
   });
 
   it('schedules a recurring Timeline task by occurrence hours', () => {
