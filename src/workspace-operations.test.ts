@@ -5,8 +5,9 @@ import { CURRENT_WORKSPACE_VERSION } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 import {
   adjustAllocationDay,
-  applyTaskRecurrence,
   autoScheduleTask,
+  clearTaskSchedule,
+  helpScheduleTask,
   moveTaskGroupToBacklog,
   moveTaskGroupToTimeline,
   moveTask,
@@ -371,7 +372,7 @@ describe('workspace operations', () => {
       }),
     );
 
-    const next = changed(applyTaskRecurrence(original, 'project-a', 'task-a'));
+    const next = changed(helpScheduleTask(original, 'project-a', 'task-a'));
 
     expect(next.projects[0].tasks[0]).toMatchObject({
       status: 'scheduled',
@@ -397,11 +398,11 @@ describe('workspace operations', () => {
         },
       }),
     );
-    const applied = changed(applyTaskRecurrence(original, 'project-a', 'task-a'));
+    const applied = changed(helpScheduleTask(original, 'project-a', 'task-a'));
     const manuallyAdjusted = changed(
       adjustAllocationDay(applied, 'project-a', 'task-a', '2026-01-02', 1),
     );
-    const next = changed(applyTaskRecurrence(manuallyAdjusted, 'project-a', 'task-a'));
+    const next = changed(helpScheduleTask(manuallyAdjusted, 'project-a', 'task-a'));
 
     expect(next.allocations).toEqual(
       expect.arrayContaining([expect.objectContaining({ date: '2026-01-02', allocatedHours: 3 })]),
@@ -410,16 +411,18 @@ describe('workspace operations', () => {
       'recurrenceId',
     );
     expect(next.allocations.filter(item => item.recurrenceId === 'task-a')).toHaveLength(2);
+    expect(next.projects[0].tasks[0].estimatedHours).toBe(7);
   });
 
-  it('clears generated occurrences without deleting manual allocations', () => {
+  it('fills only missing recurring dates and keeps every existing allocation', () => {
     const original = workspace(
       task({
         status: 'scheduled',
+        estimatedHours: 6,
         recurrence: {
           frequency: 'daily',
           startDate: '2026-01-01',
-          endDate: '2026-01-02',
+          endDate: '2026-01-03',
           hoursPerOccurrence: 2,
           weekdays: [],
           monthDays: [],
@@ -433,29 +436,117 @@ describe('workspace operations', () => {
           allocatedHours: 2,
           recurrenceId: 'task-a',
         },
-        { id: 'manual', taskId: 'task-a', date: '2026-01-03', allocatedHours: 1 },
+        { id: 'manual', taskId: 'task-a', date: '2026-01-02', allocatedHours: 1 },
+        { id: 'extra', taskId: 'task-a', date: '2026-01-05', allocatedHours: 4 },
       ],
     );
 
-    const next = changed(
-      applyTaskRecurrence(
-        {
-          ...original,
-          projects: [
-            {
-              ...original.projects[0],
-              tasks: [{ ...original.projects[0].tasks[0], recurrence: null }],
-            },
-          ],
+    const next = changed(helpScheduleTask(original, 'project-a', 'task-a'));
+
+    expect(next.allocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'generated', date: '2026-01-01', allocatedHours: 2 }),
+        expect.objectContaining({ id: 'manual', date: '2026-01-02', allocatedHours: 1 }),
+        expect.objectContaining({ date: '2026-01-03', allocatedHours: 2, recurrenceId: 'task-a' }),
+        expect.objectContaining({ id: 'extra', date: '2026-01-05', allocatedHours: 4 }),
+      ]),
+    );
+    expect(next.projects[0].tasks[0].estimatedHours).toBe(9);
+  });
+
+  it('fills extended recurring dates and removes only obsolete generated dates when shortened', () => {
+    const original = workspace(
+      task({
+        status: 'scheduled',
+        recurrence: {
+          frequency: 'daily',
+          startDate: '2026-01-01',
+          endDate: '2026-01-03',
+          hoursPerOccurrence: 2,
+          weekdays: [],
+          monthDays: [],
         },
-        'project-a',
-        'task-a',
-      ),
+      }),
+      [
+        {
+          id: 'day-1',
+          taskId: 'task-a',
+          date: '2026-01-01',
+          allocatedHours: 2,
+          recurrenceId: 'task-a',
+        },
+        {
+          id: 'day-2',
+          taskId: 'task-a',
+          date: '2026-01-02',
+          allocatedHours: 2,
+          recurrenceId: 'task-a',
+        },
+        {
+          id: 'day-3',
+          taskId: 'task-a',
+          date: '2026-01-03',
+          allocatedHours: 2,
+          recurrenceId: 'task-a',
+        },
+        { id: 'manual-outside', taskId: 'task-a', date: '2026-01-05', allocatedHours: 1 },
+      ],
     );
 
-    expect(next.allocations).toEqual([
-      { id: 'manual', taskId: 'task-a', date: '2026-01-03', allocatedHours: 1 },
-    ]);
+    const extended = changed(
+      helpScheduleTask(original, 'project-a', 'task-a', {
+        ...original.projects[0].tasks[0],
+        recurrence: { ...original.projects[0].tasks[0].recurrence!, endDate: '2026-01-05' },
+      }),
+    );
+    expect(extended.allocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ date: '2026-01-04', recurrenceId: 'task-a' }),
+        expect.objectContaining({ id: 'manual-outside', date: '2026-01-05' }),
+      ]),
+    );
+
+    const shortened = changed(
+      helpScheduleTask(extended, 'project-a', 'task-a', {
+        ...extended.projects[0].tasks[0],
+        recurrence: { ...extended.projects[0].tasks[0].recurrence!, endDate: '2026-01-02' },
+      }),
+    );
+    expect(shortened.allocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'day-1' }),
+        expect.objectContaining({ id: 'day-2' }),
+        expect.objectContaining({ id: 'manual-outside' }),
+      ]),
+    );
+    expect(shortened.allocations.some(item => item.id === 'day-3')).toBe(false);
+    expect(shortened.allocations.some(item => item.date === '2026-01-04')).toBe(false);
+  });
+
+  it('clears all allocations while retaining a recurring rule', () => {
+    const original = workspace(
+      task({
+        status: 'scheduled',
+        recurrence: {
+          frequency: 'daily',
+          startDate: '2026-01-01',
+          endDate: '2026-01-03',
+          hoursPerOccurrence: 2,
+          weekdays: [],
+          monthDays: [],
+        },
+      }),
+      [{ id: 'manual', taskId: 'task-a', date: '2026-01-01', allocatedHours: 1 }],
+    );
+
+    const next = changed(clearTaskSchedule(original, 'project-a', 'task-a'));
+
+    expect(next.allocations).toEqual([]);
+    expect(next.projects[0].tasks[0]).toMatchObject({
+      status: 'scheduled',
+      estimatedHours: 6,
+      recurrence: original.projects[0].tasks[0].recurrence,
+    });
   });
 
   it('moves a parent recurrence rule with preserved direct work into the unsplit child', () => {

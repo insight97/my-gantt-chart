@@ -152,6 +152,39 @@ export function recalculateAutomaticAllocations(
   return { allocations: result };
 }
 
+/**
+ * Adds only the missing hours for a Task while preserving its existing
+ * Allocation. The caller can use an explicit clear operation when a full
+ * rebuild is intended.
+ */
+export function fillAutomaticAllocations(
+  task: Task,
+  allocations: Allocation[],
+  startDate = today(),
+  options: RecalculateOptions = {},
+): AllocationResult {
+  const horizonDays = options.horizonDays ?? DEFAULT_PLANNING_HORIZON_DAYS;
+  const taskAllocations = allocations.filter(item => item.taskId === task.id);
+  let remaining = Math.max(0, task.estimatedHours - getTaskAllocatedHours(task.id, allocations));
+  if (remaining <= 0) return { allocations: taskAllocations };
+
+  const allocatedByDate = allocatedHoursByDate(allocations);
+  const anchor = task.start || startDate;
+  const searchDates = forwardDates(anchor, horizonDays);
+  const added: Allocation[] = [];
+  for (const date of searchDates) {
+    if (remaining <= 0) break;
+    const available = DEFAULT_DAILY_CAPACITY_HOURS - (allocatedByDate.get(date) || 0);
+    if (available <= 0) continue;
+    const hours = Math.min(remaining, available);
+    added.push(createAllocation(task.id, date, hours));
+    allocatedByDate.set(date, (allocatedByDate.get(date) || 0) + hours);
+    remaining -= hours;
+  }
+
+  return { allocations: [...taskAllocations, ...added] };
+}
+
 export function recalculateTaskSchedule(
   task: Task,
   allocations: Allocation[],

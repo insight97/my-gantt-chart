@@ -48,6 +48,8 @@ import type { TaskTreeIndex } from './task-tree';
 import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
+  clearTaskSchedule as clearTaskScheduleOperation,
+  helpScheduleTask as helpScheduleTaskOperation,
   moveTaskToBacklog as moveTaskToBacklogOperation,
   moveTaskGroupToBacklog as moveTaskGroupToBacklogOperation,
   moveTaskGroupToTimeline as moveTaskGroupToTimelineOperation,
@@ -57,6 +59,7 @@ import {
   moveTask as moveTaskOperation,
   syncParentEstimatedHours,
 } from './workspace-operations';
+import { getRecurringEstimatedHours } from './recurring-allocation';
 import type { WorkspaceOperationResult } from './workspace-operations';
 
 const clone = <T,>(value: T): T => structuredClone(value);
@@ -383,12 +386,7 @@ export default function App() {
     setExpandedBacklogTaskIds(ids => new Set([...ids, parent.id]));
   };
 
-  const saveTask = (
-    projectId: string,
-    draft: Task,
-    scheduleOnSave = false,
-    applyRecurrence = false,
-  ): string | null => {
+  const saveTask = (projectId: string, draft: Task, scheduleOnSave = false): string | null => {
     if (!workspace) return '目前沒有可編輯的工作區。';
     if (scheduleOnSave) {
       const result = autoScheduleTaskOperation(workspace, projectId, draft.id, draft);
@@ -402,9 +400,7 @@ export default function App() {
       setEditingTask(null);
       return null;
     }
-    const error = commitOperation(
-      saveTaskOperation(workspace, projectId, draft, { applyRecurrence }),
-    );
+    const error = commitOperation(saveTaskOperation(workspace, projectId, draft));
     if (error) return error;
     if (draft.parentId) {
       setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
@@ -414,16 +410,22 @@ export default function App() {
     return null;
   };
 
-  const autoScheduleTask = (projectId: string, taskId: string, draft?: Task): boolean => {
-    if (!workspace) return false;
-    const result = autoScheduleTaskOperation(workspace, projectId, taskId, draft);
-    if (!result.ok) {
-      setNotice(result.error);
-      return false;
-    }
-    if (!result.changed) return false;
+  const helpScheduleTask = (projectId: string, taskId: string, draft: Task): string | null => {
+    if (!workspace) return '目前沒有可編輯的工作區。';
+    const result = helpScheduleTaskOperation(workspace, projectId, taskId, draft);
+    if (!result.ok) return result.error;
+    if (!result.changed) return '目前沒有可補上的排程。';
     commit(result.workspace);
-    return true;
+    return null;
+  };
+
+  const clearTaskSchedule = (projectId: string, taskId: string, draft: Task): string | null => {
+    if (!workspace) return '目前沒有可編輯的工作區。';
+    const result = clearTaskScheduleOperation(workspace, projectId, taskId, draft);
+    if (!result.ok) return result.error;
+    if (!result.changed) return '目前沒有可清除的排程。';
+    commit(result.workspace);
+    return null;
   };
 
   const adjustAllocationDay = (
@@ -878,13 +880,18 @@ export default function App() {
           scheduleOnSave={editingTask.scheduleOnSave}
           onClose={() => setEditingTask(null)}
           onSave={task => saveTask(editingTask.projectId, task, editingTask.scheduleOnSave)}
-          onAutoSchedule={draft => {
-            if (autoScheduleTask(editingTask.projectId, editingTask.task.id, draft))
-              setEditingTask(null);
+          onHelpSchedule={draft => {
+            const error = helpScheduleTask(editingTask.projectId, editingTask.task.id, draft);
+            if (error) return error;
+            setEditingTask(null);
+            return null;
           }}
-          onApplyRecurrence={draft =>
-            saveTask(editingTask.projectId, draft, editingTask.scheduleOnSave, true)
-          }
+          onClearSchedule={draft => {
+            const error = clearTaskSchedule(editingTask.projectId, editingTask.task.id, draft);
+            if (error) return error;
+            setEditingTask(null);
+            return null;
+          }}
         />
       )}
       <footer>
@@ -1182,8 +1189,8 @@ function TaskDialog({
   scheduleOnSave,
   onClose,
   onSave,
-  onAutoSchedule,
-  onApplyRecurrence,
+  onHelpSchedule,
+  onClearSchedule,
 }: {
   task: Task;
   tasks: Task[];
@@ -1192,8 +1199,8 @@ function TaskDialog({
   scheduleOnSave: boolean;
   onClose: () => void;
   onSave: (task: Task) => string | null;
-  onAutoSchedule: (task: Task) => void;
-  onApplyRecurrence: (task: Task) => string | null;
+  onHelpSchedule: (task: Task) => string | null;
+  onClearSchedule: (task: Task) => string | null;
 }) {
   const [draft, setDraft] = useState(task);
   const [error, setError] = useState('');
@@ -1209,16 +1216,15 @@ function TaskDialog({
   );
   const recurrence = draft.recurrence ?? null;
   const recurrenceError = recurrence ? recurrenceRuleError(recurrence) : null;
-  const recurrenceOccurrenceHours = recurrenceHours(recurrence);
-  const hasRecurringAllocations = allocations.some(
-    allocation => allocation.recurrenceId === task.id,
-  );
+  const recurrenceRuleHours = recurrenceHours(recurrence);
+  const recurringEstimatedHours =
+    recurrence && !recurrenceError ? getRecurringEstimatedHours(draft, allocations) : null;
   useLayoutEffect(() => {
     nameInputRef.current?.focus();
   }, []);
   const draftForSave = () => ({
     ...draft,
-    estimatedHours: recurrenceOccurrenceHours ?? Number(draft.estimatedHours),
+    estimatedHours: recurringEstimatedHours ?? Number(draft.estimatedHours),
   });
   const saveDraft = () => {
     const result = onSave(draftForSave());
@@ -1306,7 +1312,7 @@ function TaskDialog({
               min="0"
               step="0.5"
               readOnly={Boolean(recurrence)}
-              value={recurrenceOccurrenceHours ?? draft.estimatedHours}
+              value={recurringEstimatedHours ?? draft.estimatedHours}
               onChange={event =>
                 setDraft(current => ({ ...current, estimatedHours: Number(event.target.value) }))
               }
@@ -1452,9 +1458,9 @@ function TaskDialog({
                 <p className="form-hint recurrence-hint">
                   {recurrenceError
                     ? recurrenceError
-                    : recurrenceOccurrenceHours === null
+                    : recurrenceRuleHours === null
                       ? '重複排程範圍過大，請縮短日期範圍。'
-                      : `共 ${Math.round(recurrenceOccurrenceHours / recurrence.hoursPerOccurrence)} 次、${hourValueLabel(recurrenceOccurrenceHours)}。儲存只保存規則；按「套用重複排程」才會建立或更新 Allocation。`}
+                      : `規則共 ${Math.round(recurrenceRuleHours / recurrence.hoursPerOccurrence)} 次、${hourValueLabel(recurrenceRuleHours)}；目前預估 ${hourValueLabel(recurringEstimatedHours ?? recurrenceRuleHours)}。按「幫我排程」會補上未安排日期，既有 Allocation 會保留。`}
                 </p>
               </div>
             )}
@@ -1472,41 +1478,44 @@ function TaskDialog({
           {hasChildren
             ? '此父任務的截止日期會限制整個子樹；預估工時與 Allocation 由子任務彙總。'
             : allocations.length
-              ? `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待安排 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
+              ? recurrence
+                ? `目前已排 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，尚有 ${hourValueLabel(getTaskPendingHours({ ...draft, estimatedHours: recurringEstimatedHours ?? draft.estimatedHours }, allocations))} 小時 recurring 日期未安排。`
+                : `目前已分配 ${hourValueLabel(getTaskAllocatedHours(task.id, allocations))} 小時，待安排 ${hourValueLabel(getTaskPendingHours(task, allocations))} 小時。儲存 metadata 不會改變 Allocation。`
               : scheduleOnSave
                 ? '儲存此 Timeline Task 時會自動建立 Allocation。'
-                : '尚未產生 Allocation；按下自動排程或拖入 Allocation Timeline 後才會建立。'}
+                : recurrence
+                  ? '尚未產生 Allocation；按「幫我排程」會依規則補上。'
+                  : '尚未產生 Allocation；按「幫我排程」或拖入 Allocation Timeline 後才會建立。'}
         </p>
         {error && <p className="error">{error}</p>}
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>
             取消
           </button>
-          {task.status !== 'completed' && (
+          {!hasChildren && task.status !== 'completed' && (
             <button
               type="button"
-              onClick={() =>
-                onAutoSchedule({ ...draft, estimatedHours: Number(draft.estimatedHours) })
-              }
+              onClick={() => {
+                const result = onHelpSchedule(draftForSave());
+                if (result) setError(result);
+                else setError('');
+              }}
             >
-              自動排程
+              幫我排程
             </button>
           )}
-          {!scheduleOnSave &&
-            !hasChildren &&
-            draft.status !== 'completed' &&
-            (recurrence || hasRecurringAllocations) && (
-              <button
-                type="button"
-                onClick={() => {
-                  const result = onApplyRecurrence(draftForSave());
-                  if (result) setError(result);
-                  else setError('');
-                }}
-              >
-                {recurrence ? '套用重複排程' : '清除重複排程'}
-              </button>
-            )}
+          {!hasChildren && draft.status !== 'completed' && allocations.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const result = onClearSchedule(draftForSave());
+                if (result) setError(result);
+                else setError('');
+              }}
+            >
+              清除排程
+            </button>
+          )}
           <button className="primary" type="submit">
             儲存
           </button>

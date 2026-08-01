@@ -1,5 +1,6 @@
 import {
   adjustAllocationDay as adjustAllocationDayEngine,
+  fillAutomaticAllocations,
   returnTaskToBacklog,
   scheduleTaskAt,
   today,
@@ -12,7 +13,8 @@ import {
   uid,
   validateDeadlineHierarchy,
 } from './data';
-import { recurrenceDates, recurrenceRuleError } from './recurrence';
+import { recurrenceRuleError } from './recurrence';
+import { getRecurringEstimatedHours, planRecurringAllocations } from './recurring-allocation';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 export type WorkspaceOperationResult =
@@ -291,7 +293,6 @@ export function saveTask(
   workspace: WorkspaceData,
   projectId: string,
   draft: Task,
-  options: { applyRecurrence?: boolean } = {},
 ): WorkspaceOperationResult {
   const prepared = prepareTaskForPersistence(workspace, projectId, draft);
   if ('error' in prepared) return invalid(prepared.error);
@@ -305,6 +306,19 @@ export function saveTask(
     taskAllocations = result.allocations;
   }
 
+  if (nextTask.recurrence) {
+    const effectiveAllocations = taskAllocations
+      ? [
+          ...nextWorkspace.allocations.filter(item => item.taskId !== nextTask.id),
+          ...taskAllocations,
+        ]
+      : nextWorkspace.allocations;
+    nextTask = {
+      ...nextTask,
+      estimatedHours: getRecurringEstimatedHours(nextTask, effectiveAllocations),
+    };
+  }
+
   const savedWorkspace = replaceTaskAndAllocations(
     nextWorkspace,
     project.id,
@@ -312,7 +326,6 @@ export function saveTask(
     taskAllocations,
     existingTask?.status === 'backlog' && nextTask.status !== 'backlog',
   );
-  if (options.applyRecurrence) return applyTaskRecurrence(savedWorkspace, project.id, nextTask.id);
   return updated(savedWorkspace);
 }
 
@@ -323,71 +336,7 @@ function withoutRecurrenceMarker(allocation: Allocation) {
 }
 
 type TaskPlacementPlan = { task: Task; allocations?: Allocation[] };
-type RecurrencePlanResult = TaskPlacementPlan | { error: string } | null;
 type TaskPlacementPlanResult = TaskPlacementPlan | { error: string };
-
-/** Builds the recurrence-owned part of a placement without committing it. */
-function planRecurringTask(
-  task: Task,
-  allocations: Allocation[],
-  preserveManualAllocations: boolean,
-): RecurrencePlanResult {
-  const generated = allocations.filter(
-    allocation => allocation.taskId === task.id && allocation.recurrenceId === task.id,
-  );
-  if (!task.recurrence) {
-    if (!generated.length) return null;
-    return {
-      task,
-      allocations: allocations.filter(
-        allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
-      ),
-    };
-  }
-
-  const ruleError = recurrenceRuleError(task.recurrence);
-  if (ruleError) return { error: ruleError };
-  let dates: string[];
-  try {
-    dates = recurrenceDates(task.recurrence);
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : '重複排程日期無效。' };
-  }
-  if (!dates.length) return { error: '重複排程範圍內沒有符合的日期。' };
-
-  const retained = preserveManualAllocations
-    ? allocations.filter(
-        allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
-      )
-    : allocations.filter(allocation => allocation.taskId !== task.id);
-  const manualDates = new Set(
-    retained.filter(allocation => allocation.taskId === task.id).map(allocation => allocation.date),
-  );
-  const generatedAllocations: Allocation[] = dates
-    .filter(date => !manualDates.has(date))
-    .map(date => ({
-      id: uid(),
-      taskId: task.id,
-      date,
-      allocatedHours: task.recurrence!.hoursPerOccurrence,
-      recurrenceId: task.id,
-    }));
-  const nextTask: Task = {
-    ...task,
-    status: task.status === 'backlog' ? 'scheduled' : task.status,
-    estimatedHours: dates.length * task.recurrence.hoursPerOccurrence,
-    start: dates[0],
-    end: dates.at(-1)!,
-    updatedAt: now(),
-  };
-  return {
-    task: nextTask,
-    allocations: [
-      ...retained.filter(allocation => allocation.taskId === task.id),
-      ...generatedAllocations,
-    ],
-  };
-}
 
 /** Plans a Timeline placement; preview and commit both cross this seam. */
 function planTimelinePlacement(
@@ -402,7 +351,7 @@ function planTimelinePlacement(
     };
 
   if (task.recurrence) {
-    const recurringPlan = planRecurringTask(task, allocations, false);
+    const recurringPlan = planRecurringAllocations(task, allocations, 'replace');
     if (!recurringPlan) return { error: '重複排程沒有可套用的日期。' };
     if ('error' in recurringPlan) return recurringPlan;
     return recurringPlan;
@@ -427,22 +376,73 @@ export function previewTimelinePlacement(
   return 'error' in planned ? null : planned.task;
 }
 
-/** Applies one leaf's rule while preserving manual allocations as one-off overrides. */
-export function applyTaskRecurrence(
+/**
+ * Fills only the missing schedule for a Task. Existing Allocation is always
+ * retained; recurring generated records outside the current rule are cleaned
+ * by the recurring allocation module.
+ */
+export function helpScheduleTask(
   workspace: WorkspaceData,
   projectId: string,
   taskId: string,
+  draft?: Task,
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
-  const task = project && findTask(project, taskId);
-  if (!project || !task) return invalid('找不到 Task。');
-  if (buildTaskTree(project.tasks).hasChildren(task.id)) return invalid('父任務不可套用重複排程。');
-  if (task.status === 'completed') return invalid('已完成 Task 不可套用重複排程。');
+  if (!project) return invalid('找不到 Project。');
+  const sourceTask = draft || findTask(project, taskId);
+  if (!sourceTask || sourceTask.status === 'completed') return unchanged();
+  if (buildTaskTree(project.tasks).hasChildren(sourceTask.id))
+    return invalid('有子任務的工作項目不可直接排程。');
+  const prepared = prepareTaskForPersistence(workspace, projectId, sourceTask);
+  if ('error' in prepared) return invalid(prepared.error);
+  const { workspace: nextWorkspace, project: nextProject, task } = prepared;
 
-  const plan = planRecurringTask(task, workspace.allocations, true);
-  if (!plan) return unchanged();
-  if ('error' in plan) return invalid(plan.error);
-  return updated(replaceTaskAndAllocations(workspace, project.id, plan.task, plan.allocations));
+  if (task.recurrence) {
+    const plan = planRecurringAllocations(task, nextWorkspace.allocations, 'fill');
+    if (!plan) return unchanged();
+    if ('error' in plan) return invalid(plan.error);
+    return updated(
+      replaceTaskAndAllocations(nextWorkspace, nextProject.id, plan.task, plan.allocations),
+    );
+  }
+
+  const startDate = task.status === 'backlog' ? today() : task.start || today();
+  const scheduledTask: Task = {
+    ...task,
+    status: task.status === 'backlog' ? 'scheduled' : task.status,
+    start: task.start || startDate,
+    updatedAt: now(),
+  };
+  const plan = fillAutomaticAllocations(scheduledTask, nextWorkspace.allocations, startDate);
+  return updated(
+    replaceTaskAndAllocations(nextWorkspace, nextProject.id, scheduledTask, plan.allocations),
+  );
+}
+
+/** Clears all current Allocation while keeping the Task and recurring rule. */
+export function clearTaskSchedule(
+  workspace: WorkspaceData,
+  projectId: string,
+  taskId: string,
+  draft?: Task,
+): WorkspaceOperationResult {
+  const project = findProject(workspace, projectId);
+  if (!project) return invalid('找不到 Project。');
+  const sourceTask = draft || findTask(project, taskId);
+  if (!sourceTask || sourceTask.status === 'completed') return unchanged();
+  if (buildTaskTree(project.tasks).hasChildren(sourceTask.id))
+    return invalid('有子任務的工作項目不可直接清除排程。');
+  const prepared = prepareTaskForPersistence(workspace, projectId, sourceTask);
+  if ('error' in prepared) return invalid(prepared.error);
+  const { workspace: nextWorkspace, project: nextProject, task } = prepared;
+  const clearedTask = task.recurrence
+    ? {
+        ...task,
+        estimatedHours: getRecurringEstimatedHours(task, []),
+        updatedAt: now(),
+      }
+    : { ...task, updatedAt: now() };
+  return updated(replaceTaskAndAllocations(nextWorkspace, nextProject.id, clearedTask, []));
 }
 
 function scheduleTaskTransition(

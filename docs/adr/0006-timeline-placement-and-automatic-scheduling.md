@@ -12,8 +12,9 @@ Leaf Task 進入 Allocation Timeline、在 Timeline 內改變日期或排序位�
 
 - `Timeline Placement` 是改變 Leaf Task Timeline 狀態、日期或同視圖順序的操作。
 - `Automatic Scheduling` 是 Placement 建立或重建 Allocation 的排程策略；preview 與 commit 使用同一個 placement plan。
+- `Help Scheduling` 是獨立的填補式操作；它保留既有 Allocation，只補上尚未滿足的工時或 recurring 日期。
 - 「拖入或新增時自動排程」開關只控制隱含入口：Backlog 拖入 Timeline、Group Transfer，以及 Timeline 新增 Task 或子任務。關閉時只改變 Timeline 狀態，不建立 Allocation。
-- 使用者明確按下「自動排程」時，仍執行 Automatic Scheduling，不受開關阻擋。
+- 使用者明確進行 Timeline Placement 時，仍執行 Automatic Scheduling，不受開關阻擋；任務編輯器的「幫我排程」不重建既有 Allocation。
 - 使用者將既有 Timeline Leaf Task 拖到新日期時，視為明確 Placement，仍會依一般或 Recurring 規則重建 Allocation。
 - Recurring Placement 以 Recurrence Rule 的日期與每次時數為來源；放下日期不平移規則。
 - Group Transfer 維持一次可復原的 workspace transition，內部的 Leaf Placement 使用同一個 plan。
