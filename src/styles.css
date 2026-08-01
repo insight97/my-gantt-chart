@@ -132,6 +132,39 @@ header {
   margin: auto;
   padding: 20px 26px;
 }
+.project-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.project-list-toolbar p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.project-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.auto-schedule-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #506474;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.auto-schedule-switch input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+}
 .projectbar {
   display: flex;
   align-items: end;

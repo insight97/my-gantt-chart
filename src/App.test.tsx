@@ -136,6 +136,48 @@ describe('Work Item hierarchy UI', () => {
     expect(saved?.allocations.every(allocation => allocation.recurrenceId === 'task-a')).toBe(true);
   });
 
+  it('persists the automatic scheduling toggle', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
+    render(<App />);
+    const toggle = await screen.findByLabelText('拖入 Timeline 時自動排程');
+
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(localStorage.getItem('gantt-auto-schedule')).toBe('false');
+
+    cleanup();
+    render(<App />);
+    expect(await screen.findByLabelText('拖入 Timeline 時自動排程')).not.toBeChecked();
+  });
+
+  it('does not preview automatic allocation when dragging with the toggle off', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '待安排工作')]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('待安排工作')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('拖入 Timeline 時自動排程'));
+
+    const source = screen.getByText('待安排工作').closest('.task-card')!;
+    const timeline = document.querySelector('.timeline')!;
+    vi.spyOn(timeline, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(source, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(timeline, { clientX: 50, clientY: 50 });
+
+    expect(document.querySelector('.drop-preview')).not.toBeInTheDocument();
+  });
+
   it('keeps Backlog and Timeline hierarchy toggles independent', async () => {
     const parent = workItem('parent', '父工作');
     const backlogChild = workItem('backlog-child', 'Backlog 子工作', { parentId: 'parent' });
