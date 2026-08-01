@@ -241,6 +241,29 @@ describe('Work Item hierarchy UI', () => {
     });
   });
 
+  it('preserves recurrence settings when toggled off and on in the same editor', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '固定例會')]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('固定例會')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('固定例會'));
+    const recurrenceToggle = screen.getByLabelText('啟用重複排程');
+    fireEvent.click(recurrenceToggle);
+    fireEvent.change(screen.getByLabelText('頻率'), { target: { value: 'weekly' } });
+    fireEvent.change(screen.getByLabelText('開始日期'), { target: { value: '2026-01-05' } });
+    fireEvent.change(screen.getByLabelText('結束日期'), { target: { value: '2026-02-05' } });
+    fireEvent.change(screen.getByLabelText('每次時數'), { target: { value: '4' } });
+    fireEvent.click(recurrenceToggle);
+
+    expect(screen.queryByLabelText('頻率')).not.toBeInTheDocument();
+    fireEvent.click(recurrenceToggle);
+
+    expect(screen.getByLabelText('頻率')).toHaveValue('weekly');
+    expect(screen.getByLabelText('開始日期')).toHaveValue('2026-01-05');
+    expect(screen.getByLabelText('結束日期')).toHaveValue('2026-02-05');
+    expect(screen.getByLabelText('每次時數')).toHaveValue(4);
+  });
+
   it('applies recurring hours when a new Timeline task is saved', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([]));
     render(<App />);
