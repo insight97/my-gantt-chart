@@ -12,6 +12,7 @@ import {
   uid,
   validateDeadlineHierarchy,
 } from './data';
+import { recurrenceDates, recurrenceRuleError } from './recurrence';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 export type WorkspaceOperationResult =
@@ -151,7 +152,11 @@ function preserveParentWorkAsUnsplit(
 ): WorkspaceData {
   const project = findProject(workspace, projectId);
   const tree = project ? buildTaskTree(project.tasks) : null;
-  if (!project || tree?.hasChildren(parent.id) || !parentHasDirectWork(workspace, parent))
+  if (
+    !project ||
+    tree?.hasChildren(parent.id) ||
+    (!parentHasDirectWork(workspace, parent) && !parent.recurrence)
+  )
     return workspace;
 
   const unsplitTask: Task = {
@@ -166,12 +171,23 @@ function preserveParentWorkAsUnsplit(
     ...workspace,
     projects: workspace.projects.map(item =>
       item.id === projectId
-        ? { ...item, tasks: [...item.tasks, unsplitTask], updatedAt: now() }
+        ? {
+            ...item,
+            tasks: item.tasks.flatMap(task =>
+              task.id === parent.id
+                ? [{ ...task, recurrence: null, updatedAt: now() }, unsplitTask]
+                : [task],
+            ),
+            updatedAt: now(),
+          }
         : item,
     ),
-    allocations: workspace.allocations.map(allocation =>
-      allocation.taskId === parent.id ? { ...allocation, taskId: unsplitTask.id } : allocation,
-    ),
+    allocations: workspace.allocations.map(allocation => {
+      if (allocation.taskId !== parent.id) return allocation;
+      const moved = { ...allocation, taskId: unsplitTask.id };
+      if (allocation.recurrenceId) moved.recurrenceId = unsplitTask.id;
+      return moved;
+    }),
   };
 }
 
@@ -219,6 +235,8 @@ function prepareTaskForPersistence(
   if (!draft.name.trim()) return { error: '請輸入 Task 名稱。' };
   if (!Number.isFinite(draft.estimatedHours) || draft.estimatedHours < 0)
     return { error: '請輸入有效的預估工時。' };
+  if (draft.recurrence && recurrenceRuleError(draft.recurrence))
+    return { error: recurrenceRuleError(draft.recurrence)! };
   const initialTree = buildTaskTree(project.tasks);
   const parentError = parentValidationError(project, draft, initialTree);
   if (parentError) return { error: parentError };
@@ -227,6 +245,7 @@ function prepareTaskForPersistence(
   const existingTask = findTask(initialProject, draft.id);
   if (initialTree.hasChildren(draft.id)) {
     if (draft.status === 'completed') return { error: '有子任務的工作項目不可標記為已完成。' };
+    if (draft.recurrence) return { error: '父任務不可設定重複排程。' };
     draft = {
       ...draft,
       estimatedHours: initialProject.tasks
@@ -247,7 +266,12 @@ function prepareTaskForPersistence(
     project = findProject(nextWorkspace, project.id)!;
   }
 
-  let task: Task = { ...draft, name: draft.name.trim(), updatedAt: now() };
+  let task: Task = {
+    ...draft,
+    name: draft.name.trim(),
+    recurrence: draft.recurrence ?? null,
+    updatedAt: now(),
+  };
   if (!existingTask && task.parentId && !task.deadline)
     task = {
       ...task,
@@ -267,6 +291,7 @@ export function saveTask(
   workspace: WorkspaceData,
   projectId: string,
   draft: Task,
+  options: { applyRecurrence?: boolean } = {},
 ): WorkspaceOperationResult {
   const prepared = prepareTaskForPersistence(workspace, projectId, draft);
   if ('error' in prepared) return invalid(prepared.error);
@@ -280,15 +305,84 @@ export function saveTask(
     taskAllocations = result.allocations;
   }
 
-  return updated(
-    replaceTaskAndAllocations(
-      nextWorkspace,
-      project.id,
-      nextTask,
-      taskAllocations,
-      existingTask?.status === 'backlog' && nextTask.status !== 'backlog',
-    ),
+  const savedWorkspace = replaceTaskAndAllocations(
+    nextWorkspace,
+    project.id,
+    nextTask,
+    taskAllocations,
+    existingTask?.status === 'backlog' && nextTask.status !== 'backlog',
   );
+  if (options.applyRecurrence) return applyTaskRecurrence(savedWorkspace, project.id, nextTask.id);
+  return updated(savedWorkspace);
+}
+
+function withoutRecurrenceMarker(allocation: Allocation) {
+  const manualAllocation = { ...allocation };
+  delete manualAllocation.recurrenceId;
+  return manualAllocation;
+}
+
+/** Applies one leaf's rule while preserving manual allocations as one-off overrides. */
+export function applyTaskRecurrence(
+  workspace: WorkspaceData,
+  projectId: string,
+  taskId: string,
+): WorkspaceOperationResult {
+  const project = findProject(workspace, projectId);
+  const task = project && findTask(project, taskId);
+  if (!project || !task) return invalid('找不到 Task。');
+  if (buildTaskTree(project.tasks).hasChildren(task.id)) return invalid('父任務不可套用重複排程。');
+  if (task.status === 'completed') return invalid('已完成 Task 不可套用重複排程。');
+
+  const generated = workspace.allocations.filter(
+    allocation => allocation.taskId === task.id && allocation.recurrenceId === task.id,
+  );
+  if (!task.recurrence) {
+    if (!generated.length) return unchanged();
+    const retained = workspace.allocations.filter(
+      allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
+    );
+    return updated(replaceTaskAndAllocations(workspace, project.id, task, retained));
+  }
+
+  const ruleError = recurrenceRuleError(task.recurrence);
+  if (ruleError) return invalid(ruleError);
+  let dates: string[];
+  try {
+    dates = recurrenceDates(task.recurrence);
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : '重複排程日期無效。');
+  }
+  if (!dates.length) return invalid('重複排程範圍內沒有符合的日期。');
+
+  const retained = workspace.allocations.filter(
+    allocation => !(allocation.taskId === task.id && allocation.recurrenceId === task.id),
+  );
+  const manualDates = new Set(
+    retained.filter(allocation => allocation.taskId === task.id).map(allocation => allocation.date),
+  );
+  const generatedAllocations: Allocation[] = dates
+    .filter(date => !manualDates.has(date))
+    .map(date => ({
+      id: uid(),
+      taskId: task.id,
+      date,
+      allocatedHours: task.recurrence!.hoursPerOccurrence,
+      recurrenceId: task.id,
+    }));
+  const nextTask: Task = {
+    ...task,
+    status: task.status === 'backlog' ? 'scheduled' : task.status,
+    estimatedHours: dates.length * task.recurrence.hoursPerOccurrence,
+    start: dates[0],
+    end: dates.at(-1)!,
+    updatedAt: now(),
+  };
+  const taskAllocations = [
+    ...retained.filter(allocation => allocation.taskId === task.id),
+    ...generatedAllocations,
+  ];
+  return updated(replaceTaskAndAllocations(workspace, project.id, nextTask, taskAllocations));
 }
 
 function scheduleTaskTransition(
@@ -362,12 +456,17 @@ export function adjustAllocationDay(
 
   try {
     const result = adjustAllocationDayEngine(task, workspace.allocations, date, delta);
+    const allocations = result.allocations.map(allocation =>
+      allocation.taskId === task.id && allocation.date === date && allocation.recurrenceId
+        ? withoutRecurrenceMarker(allocation)
+        : allocation,
+    );
     const savedTask: Task = {
       ...task,
       status: task.status === 'in_progress' ? 'in_progress' : 'scheduled',
       updatedAt: now(),
     };
-    return updated(replaceTaskAndAllocations(workspace, project.id, savedTask, result.allocations));
+    return updated(replaceTaskAndAllocations(workspace, project.id, savedTask, allocations));
   } catch (error) {
     return invalid(error instanceof Error ? error.message : 'Allocation 更新失敗。');
   }

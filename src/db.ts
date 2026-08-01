@@ -2,6 +2,7 @@ import { normalizeWorkspaceData, now, sampleWorkspace, uid } from './data';
 import { addDays, datesBetween, defaultDailyCapacity, normalizeCapacity, today } from './capacity';
 import type { DailyCapacity, Project, Task, WorkspaceData } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
+import { normalizeRecurrenceRule } from './recurrence';
 
 const DB = 'gantt-local-db';
 // IndexedDB's own store-schema version — bumps only when object stores are added or
@@ -79,6 +80,7 @@ function migrateTask(value: Partial<Task> & Record<string, unknown>, order = 0):
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : timestamp,
     parentId: typeof value.parentId === 'string' ? value.parentId : null,
     order: typeof value.order === 'number' && Number.isFinite(value.order) ? value.order : order,
+    recurrence: normalizeRecurrenceRule(value.recurrence),
   };
 }
 

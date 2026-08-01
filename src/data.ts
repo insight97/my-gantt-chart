@@ -11,6 +11,7 @@ import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, datesBetween, defaultDailyCapacity, today } from './capacity';
 import { buildTaskTree } from './task-tree';
 import type { TaskTreeIndex } from './task-tree';
+import { isValidRecurrenceRule } from './recurrence';
 
 export { buildTaskTree } from './task-tree';
 export type { TaskTreeIndex } from './task-tree';
@@ -36,6 +37,7 @@ export const emptyTask = (): Task => ({
   updatedAt: now(),
   parentId: null,
   order: 0,
+  recurrence: null,
 });
 
 export const sampleProject = (): Project => {
@@ -104,7 +106,10 @@ function validTask(value: unknown): value is Task {
     typeof task.status === 'string' &&
     statuses.has(task.status) &&
     typeof task.createdAt === 'string' &&
-    typeof task.updatedAt === 'string'
+    typeof task.updatedAt === 'string' &&
+    (task.recurrence === undefined ||
+      task.recurrence === null ||
+      isValidRecurrenceRule(task.recurrence))
   );
 }
 
@@ -144,7 +149,8 @@ function validAllocation(value: unknown): value is Allocation {
     isDate(allocation.date) &&
     typeof allocation.allocatedHours === 'number' &&
     Number.isFinite(allocation.allocatedHours) &&
-    allocation.allocatedHours >= 0
+    allocation.allocatedHours >= 0 &&
+    (allocation.recurrenceId === undefined || typeof allocation.recurrenceId === 'string')
   );
 }
 
@@ -204,15 +210,21 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
           priority: task.priority ?? 'medium',
           parentId: task.parentId ?? null,
           order: Number.isFinite(task.order) ? task.order : index,
+          recurrence: task.recurrence ?? null,
         };
       }),
     })),
-    allocations: value.allocations.map(allocation => ({
-      id: allocation.id,
-      taskId: allocation.taskId,
-      date: allocation.date,
-      allocatedHours: allocation.allocatedHours,
-    })),
+    allocations: value.allocations.map(allocation => {
+      const normalized: Allocation = {
+        id: allocation.id,
+        taskId: allocation.taskId,
+        date: allocation.date,
+        allocatedHours: allocation.allocatedHours,
+      };
+      if (typeof allocation.recurrenceId === 'string')
+        normalized.recurrenceId = allocation.recurrenceId;
+      return normalized;
+    }),
   };
 }
 

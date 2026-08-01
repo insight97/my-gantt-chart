@@ -861,6 +861,10 @@ h1 {
   background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
   font-weight: 700;
 }
+.allocation-cell.recurring-allocation,
+.allocation-summary.recurring-allocation {
+  border-bottom: 2px dotted var(--blue);
+}
 .timeline-row .deadline-marker {
   z-index: 4;
 }
@@ -1065,6 +1069,13 @@ h1 {
 }
 .task-card-info b {
   font-size: 13px;
+}
+.task-card-recurring {
+  display: inline-block;
+  margin-left: 5px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
 }
 .task-card-info small {
   font-size: 10px;
