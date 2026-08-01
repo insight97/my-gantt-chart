@@ -1221,7 +1221,7 @@ function TaskDialog({
             autoFocus
             required
             value={draft.name}
-            onChange={event => setDraft({ ...draft, name: event.target.value })}
+            onChange={event => setDraft(current => ({ ...current, name: event.target.value }))}
           />
         </label>
         <div className="form-grid">
@@ -1229,7 +1229,9 @@ function TaskDialog({
             父節點
             <select
               value={draft.parentId || ''}
-              onChange={event => setDraft({ ...draft, parentId: event.target.value || null })}
+              onChange={event =>
+                setDraft(current => ({ ...current, parentId: event.target.value || null }))
+              }
             >
               <option value="">無（根項目）</option>
               {parentOptions.map(parent => (
@@ -1245,7 +1247,7 @@ function TaskDialog({
             <select
               value={draft.priority}
               onChange={event =>
-                setDraft({ ...draft, priority: event.target.value as TaskPriority })
+                setDraft(current => ({ ...current, priority: event.target.value as TaskPriority }))
               }
             >
               {Object.entries(priorityLabels).map(([value, label]) => (
@@ -1263,7 +1265,9 @@ function TaskDialog({
               step="0.5"
               readOnly={Boolean(recurrence)}
               value={recurrenceOccurrenceHours ?? draft.estimatedHours}
-              onChange={event => setDraft({ ...draft, estimatedHours: Number(event.target.value) })}
+              onChange={event =>
+                setDraft(current => ({ ...current, estimatedHours: Number(event.target.value) }))
+              }
             />
           </label>
           <label>
@@ -1271,14 +1275,18 @@ function TaskDialog({
             <input
               type="date"
               value={draft.deadline || ''}
-              onChange={event => setDraft({ ...draft, deadline: event.target.value || null })}
+              onChange={event =>
+                setDraft(current => ({ ...current, deadline: event.target.value || null }))
+              }
             />
           </label>
           <label>
             狀態
             <select
               value={draft.status}
-              onChange={event => setDraft({ ...draft, status: event.target.value as TaskStatus })}
+              onChange={event =>
+                setDraft(current => ({ ...current, status: event.target.value as TaskStatus }))
+              }
             >
               {Object.entries(statusLabels)
                 .filter(([value]) => !hasChildren || value !== 'completed')
@@ -1298,12 +1306,12 @@ function TaskDialog({
                 type="checkbox"
                 checked={Boolean(recurrence)}
                 onChange={event =>
-                  setDraft({
-                    ...draft,
+                  setDraft(current => ({
+                    ...current,
                     recurrence: event.target.checked
-                      ? (draft.recurrence ?? defaultRecurrence(draft))
+                      ? (current.recurrence ?? defaultRecurrence(current))
                       : null,
-                  })
+                  }))
                 }
               />
               啟用重複排程
@@ -1415,7 +1423,7 @@ function TaskDialog({
           <textarea
             rows={3}
             value={draft.notes}
-            onChange={event => setDraft({ ...draft, notes: event.target.value })}
+            onChange={event => setDraft(current => ({ ...current, notes: event.target.value }))}
           />
         </label>
         <p className="form-hint">

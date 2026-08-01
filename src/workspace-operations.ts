@@ -425,6 +425,16 @@ export function autoScheduleTask(
   const prepared = prepareTaskForPersistence(workspace, projectId, sourceTask);
   if ('error' in prepared) return invalid(prepared.error);
   const { workspace: nextWorkspace, project: nextProject, task, existingTask } = prepared;
+  if (task.recurrence) {
+    const savedWorkspace = replaceTaskAndAllocations(
+      nextWorkspace,
+      nextProject.id,
+      task,
+      undefined,
+      !existingTask || task.status === 'backlog',
+    );
+    return applyTaskRecurrence(savedWorkspace, nextProject.id, task.id);
+  }
   return scheduleTaskTransition(
     nextWorkspace,
     nextProject,
