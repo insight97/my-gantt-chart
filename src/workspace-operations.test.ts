@@ -182,6 +182,26 @@ describe('workspace operations', () => {
     expect(next.allocations.map(item => item.date)).toEqual(['2026-01-05', '2026-01-06']);
   });
 
+  it('can place a backlog task in Timeline without creating allocations', () => {
+    const next = changed(
+      scheduleTaskAtDate(
+        workspace(task({ status: 'backlog', estimatedHours: 10 })),
+        'project-a',
+        'task-a',
+        '2026-01-05',
+        true,
+        false,
+      ),
+    );
+
+    expect(next.projects[0].tasks[0]).toMatchObject({
+      status: 'scheduled',
+      start: '2026-01-05',
+      end: '2026-01-05',
+    });
+    expect(next.allocations).toEqual([]);
+  });
+
   it('reschedules an existing Timeline task when dropped on an explicit date', () => {
     const original = workspace(
       task({ id: 'task-a', status: 'scheduled', start: '2026-01-01', estimatedHours: 8 }),
@@ -465,6 +485,26 @@ describe('workspace operations', () => {
       ['second', '2026-01-05', 2],
       ['second', '2026-01-06', 4],
     ]);
+  });
+
+  it('can move a group into Timeline without automatically allocating its leaves', () => {
+    const original = workspace(task({ id: 'group', name: 'Group' }));
+    original.projects[0].tasks.push(
+      task({ id: 'first', name: 'First', parentId: 'group', estimatedHours: 6 }),
+      task({ id: 'second', name: 'Second', parentId: 'group', estimatedHours: 6 }),
+    );
+
+    const next = changed(
+      moveTaskGroupToTimeline(original, 'project-a', 'group', '2026-01-05', false),
+    );
+
+    expect(next.projects[0].tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'first', status: 'scheduled', start: '2026-01-05' }),
+        expect.objectContaining({ id: 'second', status: 'scheduled', start: '2026-01-05' }),
+      ]),
+    );
+    expect(next.allocations).toEqual([]);
   });
 
   it('returns only unfinished Timeline leaves in a group while preserving completed leaves', () => {

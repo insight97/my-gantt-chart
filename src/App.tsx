@@ -69,6 +69,7 @@ const statusLabels: Record<TaskStatus, string> = {
   completed: '已完成',
 };
 const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+const AUTO_SCHEDULE_STORAGE_KEY = 'gantt-auto-schedule';
 
 function defaultRecurrence(task: Task): RecurrenceRule {
   const startDate = task.start || today();
@@ -109,6 +110,10 @@ function initialTimelineInputMode(): TimelineInputMode {
   return localStorage.getItem('gantt-input-mode') === 'mouse' ? 'mouse' : 'trackpad';
 }
 
+function initialAutoScheduleEnabled() {
+  return localStorage.getItem(AUTO_SCHEDULE_STORAGE_KEY) !== 'false';
+}
+
 function sameDropTarget(a: TaskDropTarget | null, b: TaskDropTarget | null) {
   if (!a || !b) return a === b;
   return (
@@ -145,6 +150,7 @@ export default function App() {
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoom>(initialTimelineZoom);
   const [timelineInputMode, setTimelineInputMode] =
     useState<TimelineInputMode>(initialTimelineInputMode);
+  const [autoScheduleEnabled, setAutoScheduleEnabled] = useState(initialAutoScheduleEnabled);
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
   const [ready, setReady] = useState(false);
   const [editingTask, setEditingTask] = useState<EditingTask | null>(null);
@@ -195,6 +201,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('gantt-input-mode', timelineInputMode);
   }, [timelineInputMode]);
+  useEffect(() => {
+    localStorage.setItem(AUTO_SCHEDULE_STORAGE_KEY, String(autoScheduleEnabled));
+  }, [autoScheduleEnabled]);
 
   // One pass over allocations instead of a per-project scan with a nested task lookup.
   const allocationsByProject = useMemo(() => {
@@ -275,7 +284,14 @@ export default function App() {
     ) => {
       if (!workspace) return;
       const result = scheduleFromBacklog
-        ? moveTaskToTimelineOperation(workspace, projectId, sourceTaskId, targetTaskId, relation)
+        ? moveTaskToTimelineOperation(
+            workspace,
+            projectId,
+            sourceTaskId,
+            targetTaskId,
+            relation,
+            autoScheduleEnabled,
+          )
         : moveTaskOperation(workspace, projectId, sourceTaskId, targetTaskId, relation);
       if (!result.ok) setNotice(result.error);
       else if (result.changed) {
@@ -286,7 +302,7 @@ export default function App() {
         }
       }
     },
-    [workspace, commit],
+    [workspace, commit, autoScheduleEnabled],
   );
   const undo = () => {
     if (!workspace || !history.length) return;
@@ -404,9 +420,16 @@ export default function App() {
   };
 
   const scheduleTaskAtDate = useCallback(
-    (projectId: string, taskId: string, date: string) => {
+    (projectId: string, taskId: string, date: string, autoSchedule = true) => {
       if (!workspace) return;
-      const result = scheduleTaskAtDateOperation(workspace, projectId, taskId, date);
+      const result = scheduleTaskAtDateOperation(
+        workspace,
+        projectId,
+        taskId,
+        date,
+        true,
+        autoSchedule,
+      );
       if (!result.ok) setNotice(result.error);
       else if (result.changed) commit(result.workspace);
     },
@@ -431,11 +454,17 @@ export default function App() {
   const moveTaskGroupToTimeline = useCallback(
     (projectId: string, groupId: string, date: string) => {
       if (!workspace) return;
-      const result = moveTaskGroupToTimelineOperation(workspace, projectId, groupId, date);
+      const result = moveTaskGroupToTimelineOperation(
+        workspace,
+        projectId,
+        groupId,
+        date,
+        autoScheduleEnabled,
+      );
       if (!result.ok) setNotice(result.error);
       else if (result.changed) commit(result.workspace);
     },
-    [workspace, commit],
+    [workspace, commit, autoScheduleEnabled],
   );
   const moveTaskGroupToBacklog = useCallback(
     (projectId: string, groupId: string) => {
@@ -509,7 +538,12 @@ export default function App() {
             );
             break;
           case 'schedule-task':
-            scheduleTaskAtDate(command.projectId, command.taskId, command.date);
+            scheduleTaskAtDate(
+              command.projectId,
+              command.taskId,
+              command.date,
+              current.origin === 'gantt' || autoScheduleEnabled,
+            );
             break;
         }
       }
@@ -541,6 +575,7 @@ export default function App() {
     moveTaskToBacklog,
     moveTask,
     scheduleTaskAtDate,
+    autoScheduleEnabled,
   ]);
 
   const saveCapacity = (date: string, total: number, unavailable: number): string | null => {
@@ -707,6 +742,15 @@ export default function App() {
               <p>所有工作項目使用同一種階層物件；根項目沒有父項目，最多三層</p>
             </div>
             <div className="project-list-actions">
+              <label className="auto-schedule-switch">
+                <input
+                  type="checkbox"
+                  aria-label="拖入 Timeline 時自動排程"
+                  checked={autoScheduleEnabled}
+                  onChange={event => setAutoScheduleEnabled(event.target.checked)}
+                />
+                <span>拖入時自動排程</span>
+              </label>
               <div className="input-mode-switch" role="group" aria-label="時間軸操作模式">
                 <span>時間軸操作</span>
                 <div className="mode-switch">
@@ -756,6 +800,7 @@ export default function App() {
                   view={view}
                   timelineZoom={timelineZoom}
                   timelineInputMode={timelineInputMode}
+                  autoScheduleEnabled={autoScheduleEnabled}
                   timelineScrollLeft={timelineScrollLeft}
                   taskDrag={taskDrag}
                   expandedTaskIds={expandedTaskIds}
@@ -857,6 +902,7 @@ type ProjectPanelProps = {
   view: ViewMode;
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
+  autoScheduleEnabled: boolean;
   timelineScrollLeft: number;
   taskDrag: TaskDragState | null;
   expandedTaskIds: Set<string>;
@@ -894,6 +940,7 @@ function ProjectPanel({
   view,
   timelineZoom,
   timelineInputMode,
+  autoScheduleEnabled,
   timelineScrollLeft,
   taskDrag,
   expandedTaskIds,
@@ -978,6 +1025,7 @@ function ProjectPanel({
               capacities={capacities}
               timelineZoom={timelineZoom}
               timelineInputMode={timelineInputMode}
+              autoScheduleEnabled={autoScheduleEnabled}
               scrollLeft={timelineScrollLeft}
               taskDrag={taskDrag}
               onZoomChange={onZoomChange}

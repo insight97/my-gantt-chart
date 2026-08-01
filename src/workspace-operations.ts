@@ -478,11 +478,32 @@ export function scheduleTaskAtDate(
   taskId: string,
   date: string,
   moveToSiblingEnd = true,
+  autoSchedule = true,
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
   const task = project && findTask(project, taskId);
   if (!project || !task || task.status === 'completed') return unchanged();
+  if (!autoSchedule) return placeTaskOnTimeline(workspace, project, task, date, moveToSiblingEnd);
   return scheduleTaskTransition(workspace, project, task, date, moveToSiblingEnd);
+}
+
+function placeTaskOnTimeline(
+  workspace: WorkspaceData,
+  project: Project,
+  task: Task,
+  date: string,
+  moveToSiblingEnd: boolean,
+): WorkspaceOperationResult {
+  if (buildTaskTree(project.tasks).hasChildren(task.id))
+    return invalid('有子任務的工作項目不可直接放入 Timeline。');
+  const nextTask: Task = {
+    ...task,
+    status: 'scheduled',
+    start: date,
+    end: date,
+    updatedAt: now(),
+  };
+  return updated(replaceTaskAndAllocations(workspace, project.id, nextTask, [], moveToSiblingEnd));
 }
 
 export function moveTaskToBacklog(
@@ -523,6 +544,7 @@ export function moveTaskGroupToTimeline(
   projectId: string,
   groupId: string,
   date: string,
+  autoSchedule = true,
 ): WorkspaceOperationResult {
   const project = findProject(workspace, projectId);
   const group = project && findTask(project, groupId);
@@ -537,12 +559,23 @@ export function moveTaskGroupToTimeline(
     for (const leaf of groupLeafTasks(project, group.id, tree)) {
       if (leaf.status !== 'backlog') continue;
       const current = tasks.find(task => task.id === leaf.id)!;
-      const result = scheduleTaskAt(
-        { ...current, status: 'scheduled' },
-        allocations,
-        workspace.dailyCapacities,
-        date,
-      );
+      const result = autoSchedule
+        ? scheduleTaskAt(
+            { ...current, status: 'scheduled' },
+            allocations,
+            workspace.dailyCapacities,
+            date,
+          )
+        : {
+            task: {
+              ...current,
+              status: 'scheduled' as const,
+              start: date,
+              end: date,
+              updatedAt: now(),
+            },
+            allocations: [],
+          };
       tasks = tasks.map(task =>
         task.id === current.id ? { ...result.task, updatedAt: now() } : task,
       );
@@ -685,10 +718,11 @@ export function moveTaskToTimeline(
   sourceId: string,
   targetId: string,
   relation: TaskMoveRelation,
+  autoSchedule = true,
 ): WorkspaceOperationResult {
   const moved = moveTask(workspace, projectId, sourceId, targetId, relation);
   if (!moved.ok || !moved.changed) return moved;
-  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today(), false);
+  return scheduleTaskAtDate(moved.workspace, projectId, sourceId, today(), false, autoSchedule);
 }
 
 /** Move a backlog leaf under a timeline item and schedule it as a child. */
@@ -697,6 +731,7 @@ export function moveTaskToTimelineAsChild(
   projectId: string,
   sourceId: string,
   targetId: string,
+  autoSchedule = true,
 ): WorkspaceOperationResult {
-  return moveTaskToTimeline(workspace, projectId, sourceId, targetId, 'inside');
+  return moveTaskToTimeline(workspace, projectId, sourceId, targetId, 'inside', autoSchedule);
 }

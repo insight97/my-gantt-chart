@@ -58,6 +58,7 @@ export type CapacityGanttProps = {
   capacities: DailyCapacity[];
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
+  autoScheduleEnabled: boolean;
   scrollLeft: number;
   taskDrag: TaskDragState | null;
   onZoomChange: (next: TimelineZoom) => void;
@@ -659,6 +660,7 @@ export default function CapacityGantt({
   capacities,
   timelineZoom,
   timelineInputMode,
+  autoScheduleEnabled,
   scrollLeft,
   taskDrag,
   onZoomChange,
@@ -733,6 +735,7 @@ export default function CapacityGantt({
   const dropTargetTaskId = dropTargetDate ? taskDrag?.task.id : undefined;
   const dropPreview = useMemo(() => {
     if (!dropTargetTaskId || !dropTargetDate) return null;
+    if (!autoScheduleEnabled && taskDrag?.origin === 'backlog') return null;
     const task =
       backlogTasks.find(item => item.id === dropTargetTaskId) ||
       tasks.find(item => item.id === dropTargetTaskId);
@@ -748,7 +751,16 @@ export default function CapacityGantt({
     } catch {
       return { ...task, start: dropTargetDate, end: dropTargetDate, status: 'scheduled' as const };
     }
-  }, [dropTargetTaskId, dropTargetDate, backlogTasks, capacityAllocations, capacities, tasks]);
+  }, [
+    dropTargetTaskId,
+    dropTargetDate,
+    backlogTasks,
+    capacityAllocations,
+    capacities,
+    tasks,
+    autoScheduleEnabled,
+    taskDrag?.origin,
+  ]);
 
   useEffect(() => {
     latestRef.current = { timelineZoom, periods, scale, onZoomChange };
