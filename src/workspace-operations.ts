@@ -430,7 +430,7 @@ export function autoScheduleTask(
       nextWorkspace,
       nextProject.id,
       task,
-      undefined,
+      [],
       !existingTask || task.status === 'backlog',
     );
     return applyTaskRecurrence(savedWorkspace, nextProject.id, task.id);
