@@ -1,6 +1,6 @@
 import type { Task, TaskPriority } from './types';
 
-export const priorityLabels: Record<TaskPriority, string> = { high: '高', medium: '中', low: '低' };
+export const priorityLabels: Record<TaskPriority, string> = { low: '低', medium: '中', high: '高' };
 export const priorityOrder: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
 
 export function compactDateLabel(date: string) {

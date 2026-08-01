@@ -16,7 +16,9 @@
 
 **Group Transfer**：使用者將群組拖曳到另一個視圖時的立即批次操作。拖入 Timeline 會依穩定樹序排程其中的 Backlog Leaf；拖回 Backlog 會移回未完成的 Timeline Leaf 並清除其 Allocation。已完成 Leaf 不變，因此群組可能仍同時出現在兩個視圖；整批操作可作為單次歷史紀錄復原。
 
-**Backlog Task**：尚未被使用者放入 Allocation Timeline 的 Leaf Task。它通常沒有 Allocation 與排程日期，但仍可保留建立日期、截止日期、優先順序與估計工時。
+**Importance**：Work Item 的影響程度，分為低、中、高。低表示可以延後且影響小；高表示延後會明顯影響成果。Importance 與 Deadline 分開，前者描述影響程度，後者描述時間限制。
+
+**Backlog Task**：尚未被使用者放入 Allocation Timeline 的 Leaf Task。它通常沒有 Allocation 與排程日期，但仍可保留建立日期、截止日期、重要性與估計工時。
 
 **Scheduled Task**：已被使用者放入 Allocation Timeline 的 Leaf Task。它可以是完整分配、部分分配，或因使用者清除所有 Allocation 而暫時沒有分配；只要沒有被明確移回 Backlog，就仍屬於 Allocation Timeline。
 

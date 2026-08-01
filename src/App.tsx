@@ -1251,7 +1251,7 @@ function TaskDialog({
             </select>
           </label>
           <label>
-            優先順序
+            重要性
             <select
               value={draft.priority}
               onChange={event =>
