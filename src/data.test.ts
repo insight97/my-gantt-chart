@@ -15,7 +15,7 @@ import {
   returnTaskToBacklog,
   scheduleTaskAt,
 } from './capacity';
-import { emptyTask, partitionProjectTasks, validateImport } from './data';
+import { buildTaskTree, emptyTask, partitionProjectTasks, validateImport } from './data';
 import type { Allocation, DailyCapacity, Project, Task } from './types';
 
 const capacity = (date: string, total = 8, unavailable = 0): DailyCapacity => ({
@@ -131,6 +131,19 @@ describe('容量 domain', () => {
 
     expect(result.backlog.map(item => item.id)).toEqual(['parent', 'child']);
     expect(result.scheduled).toEqual([]);
+  });
+
+  it('allows Backlog and Timeline to keep separate expansion state', () => {
+    const parent = task({ id: 'parent' });
+    const backlogChild = task({ id: 'backlog-child', parentId: 'parent' });
+    const scheduledChild = task({ id: 'scheduled-child', parentId: 'parent', status: 'scheduled' });
+    const project = { tasks: [parent, backlogChild, scheduledChild] } as Project;
+    const tree = buildTaskTree(project.tasks);
+
+    const result = partitionProjectTasks(project, new Set(['parent']), tree, new Set());
+
+    expect(result.backlog.map(item => item.id)).toEqual(['parent']);
+    expect(result.scheduled.map(item => item.id)).toEqual(['parent', 'scheduled-child']);
   });
 
   it('排程保留 end metadata，end 不限制實際 Allocation 日期', () => {

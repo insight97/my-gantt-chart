@@ -92,6 +92,13 @@ function sameDropTarget(a: TaskDropTarget | null, b: TaskDropTarget | null) {
   );
 }
 
+function workspaceGroupTaskIds(workspace: WorkspaceData) {
+  return workspace.projects.flatMap(project => {
+    const tree = buildTaskTree(project.tasks);
+    return project.tasks.filter(task => tree.hasChildren(task.id)).map(task => task.id);
+  });
+}
+
 function download(data: string, name: string, type: string) {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(new Blob([data], { type }));
@@ -104,6 +111,9 @@ export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => new Set());
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(() => new Set());
+  const [expandedBacklogTaskIds, setExpandedBacklogTaskIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoom>(initialTimelineZoom);
   const [timelineInputMode, setTimelineInputMode] =
     useState<TimelineInputMode>(initialTimelineInputMode);
@@ -129,14 +139,9 @@ export default function App() {
         const next = migrateWorkspace(value || createEmptyWorkspace());
         setWorkspace(next);
         setExpandedProjectIds(new Set(next.projects.slice(0, 1).map(item => item.id)));
-        setExpandedTaskIds(
-          new Set(
-            next.projects.flatMap(project => {
-              const tree = buildTaskTree(project.tasks);
-              return project.tasks.filter(task => tree.hasChildren(task.id)).map(task => task.id);
-            }),
-          ),
-        );
+        const groupTaskIds = new Set(workspaceGroupTaskIds(next));
+        setExpandedTaskIds(new Set(groupTaskIds));
+        setExpandedBacklogTaskIds(new Set(groupTaskIds));
         setReady(true);
       })
       .catch(() => setNotice('無法開啟瀏覽器本機資料庫。'));
@@ -247,7 +252,10 @@ export default function App() {
       if (!result.ok) setNotice(result.error);
       else if (result.changed) {
         commit(result.workspace);
-        if (relation === 'inside') setExpandedTaskIds(ids => new Set([...ids, targetTaskId]));
+        if (relation === 'inside') {
+          setExpandedTaskIds(ids => new Set([...ids, targetTaskId]));
+          setExpandedBacklogTaskIds(ids => new Set([...ids, targetTaskId]));
+        }
       }
     },
     [workspace, commit],
@@ -311,6 +319,7 @@ export default function App() {
     }
     addTask(projectId, 'backlog', parent.id);
     setExpandedTaskIds(ids => new Set([...ids, parent.id]));
+    setExpandedBacklogTaskIds(ids => new Set([...ids, parent.id]));
   };
 
   const saveTask = (projectId: string, draft: Task, scheduleOnSave = false): string | null => {
@@ -320,13 +329,19 @@ export default function App() {
       if (!result.ok) return result.error;
       if (!result.changed) return 'Timeline Task 無法自動排程。';
       commit(result.workspace);
-      if (draft.parentId) setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
+      if (draft.parentId) {
+        setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
+        setExpandedBacklogTaskIds(ids => new Set([...ids, draft.parentId!]));
+      }
       setEditingTask(null);
       return null;
     }
     const error = commitOperation(saveTaskOperation(workspace, projectId, draft));
     if (error) return error;
-    if (draft.parentId) setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
+    if (draft.parentId) {
+      setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
+      setExpandedBacklogTaskIds(ids => new Set([...ids, draft.parentId!]));
+    }
     setEditingTask(null);
     return null;
   };
@@ -571,6 +586,9 @@ export default function App() {
       if (!confirm('匯入會取代目前工作區。請先確認已建立備份。')) return;
       commit(migrated);
       setExpandedProjectIds(new Set(migrated.projects.slice(0, 1).map(item => item.id)));
+      const groupTaskIds = new Set(workspaceGroupTaskIds(migrated));
+      setExpandedTaskIds(new Set(groupTaskIds));
+      setExpandedBacklogTaskIds(new Set(groupTaskIds));
       setNotice('匯入完成。');
     } catch (error) {
       setNotice(error instanceof Error ? `匯入失敗：${error.message}` : '匯入失敗。');
@@ -579,17 +597,19 @@ export default function App() {
 
   if (!ready || !workspace) return <main className="loading">正在開啟本機工作區…</main>;
 
-  const expandableTaskIds = workspace.projects.flatMap(project => {
-    const tree = buildTaskTree(project.tasks);
-    return project.tasks.filter(task => tree.hasChildren(task.id)).map(task => task.id);
-  });
+  const expandableTaskIds = workspaceGroupTaskIds(workspace);
   const allExpanded =
-    expandableTaskIds.length > 0 && expandableTaskIds.every(taskId => expandedTaskIds.has(taskId));
+    expandableTaskIds.length > 0 &&
+    expandableTaskIds.every(
+      taskId => expandedTaskIds.has(taskId) && expandedBacklogTaskIds.has(taskId),
+    );
   const expandAll = () => {
     setExpandedTaskIds(new Set(expandableTaskIds));
+    setExpandedBacklogTaskIds(new Set(expandableTaskIds));
   };
   const collapseAll = () => {
     setExpandedTaskIds(new Set());
+    setExpandedBacklogTaskIds(new Set());
   };
   const editingProject =
     editingTask && workspace.projects.find(project => project.id === editingTask.projectId);
@@ -704,6 +724,7 @@ export default function App() {
                   timelineScrollLeft={timelineScrollLeft}
                   taskDrag={taskDrag}
                   expandedTaskIds={expandedTaskIds}
+                  expandedBacklogTaskIds={expandedBacklogTaskIds}
                   expanded={expandedProjectIds.has(project.id)}
                   onAddTask={() => addTask(project.id, 'backlog')}
                   onAddTimelineTask={() => addTask(project.id, 'timeline')}
@@ -718,6 +739,14 @@ export default function App() {
                   onDeleteTask={taskId => deleteTask(project.id, taskId)}
                   onToggleTask={taskId =>
                     setExpandedTaskIds(ids => {
+                      const next = new Set(ids);
+                      if (next.has(taskId)) next.delete(taskId);
+                      else next.add(taskId);
+                      return next;
+                    })
+                  }
+                  onToggleBacklogTask={taskId =>
+                    setExpandedBacklogTaskIds(ids => {
                       const next = new Set(ids);
                       if (next.has(taskId)) next.delete(taskId);
                       else next.add(taskId);
@@ -793,6 +822,7 @@ type ProjectPanelProps = {
   timelineScrollLeft: number;
   taskDrag: TaskDragState | null;
   expandedTaskIds: Set<string>;
+  expandedBacklogTaskIds: Set<string>;
   expanded: boolean;
   onAddTask: () => void;
   onAddTimelineTask: () => void;
@@ -811,6 +841,7 @@ type ProjectPanelProps = {
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
   onDeleteTask: (taskId: string) => void;
   onToggleTask: (taskId: string) => void;
+  onToggleBacklogTask: (taskId: string) => void;
   onEditCapacity: (date: string) => void;
   onViewChange: (view: ViewMode) => void;
   onZoomChange: (next: TimelineZoom) => void;
@@ -828,6 +859,7 @@ function ProjectPanel({
   timelineScrollLeft,
   taskDrag,
   expandedTaskIds,
+  expandedBacklogTaskIds,
   expanded,
   onAddTask,
   onAddTimelineTask,
@@ -838,6 +870,7 @@ function ProjectPanel({
   onAdjustAllocation,
   onDeleteTask,
   onToggleTask,
+  onToggleBacklogTask,
   onEditCapacity,
   onViewChange,
   onZoomChange,
@@ -848,6 +881,7 @@ function ProjectPanel({
     project,
     expandedTaskIds,
     taskTree,
+    expandedBacklogTaskIds,
   );
   return (
     <article className={`project-card workspace-card${expanded ? ' expanded' : ' collapsed'}`}>
@@ -877,7 +911,9 @@ function ProjectPanel({
             <Backlog
               projectId={project.id}
               tasks={backlogTasks}
+              allTasks={project.tasks}
               taskTree={taskTree}
+              expandedTaskIds={expandedBacklogTaskIds}
               taskDrag={taskDrag}
               draggingTaskId={
                 taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
@@ -890,6 +926,7 @@ function ProjectPanel({
                 onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
               }
               onTaskDropTarget={onTaskDropTarget}
+              onToggleTask={onToggleBacklogTask}
             />
             <CapacityGantt
               projectId={project.id}
@@ -937,7 +974,9 @@ function ProjectPanel({
 function Backlog({
   projectId,
   tasks,
+  allTasks,
   taskTree,
+  expandedTaskIds,
   taskDrag,
   draggingTaskId,
   onEdit,
@@ -946,10 +985,13 @@ function Backlog({
   onAddChild,
   onTaskPointerDown,
   onTaskDropTarget,
+  onToggleTask,
 }: {
   projectId: string;
   tasks: Task[];
+  allTasks: Task[];
   taskTree: TaskTreeIndex;
+  expandedTaskIds: Set<string>;
   taskDrag: TaskDragState | null;
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
@@ -958,6 +1000,7 @@ function Backlog({
   onAddChild: (task: Task) => void;
   onTaskPointerDown: (task: Task, event: ReactPointerEvent<HTMLElement>, isGroup?: boolean) => void;
   onTaskDropTarget: TaskDropTargetHandler;
+  onToggleTask: (taskId: string) => void;
 }) {
   const handleTaskPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const target = event.target;
@@ -1003,6 +1046,8 @@ function Backlog({
           hasChildren={isGroup}
           isGroup={isGroup}
           depth={taskTree.depth(task.id)}
+          expanded={expandedTaskIds.has(task.id)}
+          onToggle={isGroup ? item => onToggleTask(item.id) : undefined}
           onAddChild={task => onAddChild(task)}
           onPointerDown={event => onTaskPointerDown(task, event, isGroup)}
         />
@@ -1020,7 +1065,7 @@ function Backlog({
           <h2>Backlog</h2>
           <small>
             {
-              tasks.filter(task => !taskTree.hasChildren(task.id) && task.status === 'backlog')
+              allTasks.filter(task => !taskTree.hasChildren(task.id) && task.status === 'backlog')
                 .length
             }{' '}
             個待排程 Task
