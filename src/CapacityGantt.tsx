@@ -120,6 +120,7 @@ function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeri
       {periods.map((period, index) => {
         const allocated = periodHours(period, allocatedByDate);
         const available = periodAvailableHours(period);
+        const remaining = Math.max(0, available - allocated);
         const weekend = weekendClass(period.start, view);
         const className = ['capacity-period', capacityState(allocated, available), density, weekend]
           .filter(Boolean)
@@ -135,8 +136,12 @@ function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeri
             style={{ left: index * scale, width: scale, top: TIMELINE_CONTEXT_ROW_HEIGHT }}
           >
             <b>{periodDisplayLabel(period, view, scale)}</b>
-            <strong>{periodCapacityLabel(allocated, available, scale)}</strong>
-            {scale >= 56 && <small>{period.dates.length} 天合計</small>}
+            <strong>
+              {view === 'day'
+                ? `剩餘 ${hoursLabel(remaining)}`
+                : periodCapacityLabel(allocated, available, scale)}
+            </strong>
+            {view !== 'day' && scale >= 56 && <small>{period.dates.length} 天合計</small>}
           </span>
         );
       })}
