@@ -29,6 +29,7 @@ Allocation Timeline 的日期欄在日檢視顯示剩餘時數，週／月檢視
 - 拖曳 Backlog 卡片到 Allocation Timeline 後立即執行 Automatic Scheduling，不需要確認按鈕；一般 Task 以放下位置作為 fastest 排程起點，recurring Task 依重複規則日期與每次時數安排，新 Task 放到清單最下方。
 - 拖曳父群組到另一個區域會立即批次搬移其葉節點：拖入 Timeline 排程所有 Backlog Leaf，拖回 Backlog 移回所有未完成 Timeline Leaf；整批可用一次復原還原。已完成 Leaf 不會被搬動，因此父群組可繼續同時出現在兩邊。
 - 按下 Work Item 的「自動排程」也會讓 Backlog Work Item 進入 Allocation Timeline；排程起點由 Allocation 日期決定。
+- 從 Backlog 父項目按「新增子任務」會建立 Backlog 子任務；從 Timeline 父項目按同一按鈕則直接建立 Timeline 子任務，儲存時自動建立 Allocation。
 - 拖曳 Timeline 的 Leaf Task card 回 Backlog，或在 editor 切換狀態，會清除所有 Allocation，但保留 `parentId`、截止日期與其他 metadata；放在同一父項目的 Backlog Leaf 前後時會保留插入順序。
 - Task card 不再提供開始／結束日期；時間軸範圍由 Allocation 日期與 Deadline 推導。
 - 收合有子項目的 Work Item 時，Timeline 顯示所有後代 Allocation 的彙總，摘要格不可編輯。

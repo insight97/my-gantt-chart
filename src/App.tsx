@@ -98,6 +98,7 @@ function recurrenceHours(rule: RecurrenceRule | null) {
     return null;
   }
 }
+type TaskEntryPoint = 'backlog' | 'timeline';
 type EditingTask = { projectId: string; task: Task; scheduleOnSave: boolean };
 
 function initialTimelineZoom(): TimelineZoom {
@@ -344,7 +345,7 @@ export default function App() {
 
   const addTask = (
     projectId: string,
-    entryPoint: 'backlog' | 'timeline' = 'backlog',
+    entryPoint: TaskEntryPoint = 'backlog',
     parentId: string | null = null,
   ) => {
     if (!workspace || !workspace.projects.some(project => project.id === projectId)) return;
@@ -357,7 +358,11 @@ export default function App() {
     setEditingTask({ projectId, task, scheduleOnSave: entryPoint === 'timeline' });
   };
 
-  const addChildTask = (projectId: string, parent: Task) => {
+  const addChildTask = (
+    projectId: string,
+    parent: Task,
+    entryPoint: TaskEntryPoint = 'backlog',
+  ) => {
     if (!workspace) return;
     const project = workspace.projects.find(item => item.id === projectId);
     if (!project) return;
@@ -369,7 +374,7 @@ export default function App() {
       setNotice('任務階層最多三層。');
       return;
     }
-    addTask(projectId, 'backlog', parent.id);
+    addTask(projectId, entryPoint, parent.id);
     setExpandedTaskIds(ids => new Set([...ids, parent.id]));
     setExpandedBacklogTaskIds(ids => new Set([...ids, parent.id]));
   };
@@ -809,7 +814,7 @@ export default function App() {
                   expanded={expandedProjectIds.has(project.id)}
                   onAddTask={() => addTask(project.id, 'backlog')}
                   onAddTimelineTask={() => addTask(project.id, 'timeline')}
-                  onAddChild={task => addChildTask(project.id, task)}
+                  onAddChild={(task, entryPoint) => addChildTask(project.id, task, entryPoint)}
                   onEditTask={task => editTask(project.id, task)}
                   onBeginTaskDrag={beginTaskDrag}
                   onTaskDropTarget={updateTaskDropTarget}
@@ -902,7 +907,7 @@ type ProjectPanelProps = {
   expanded: boolean;
   onAddTask: () => void;
   onAddTimelineTask: () => void;
-  onAddChild: (task: Task) => void;
+  onAddChild: (task: Task, entryPoint: TaskEntryPoint) => void;
   onEditTask: (task: Task) => void;
   onBeginTaskDrag: (
     projectId: string,
@@ -996,7 +1001,7 @@ function ProjectPanel({
               onEdit={onEditTask}
               onAddTask={onAddTask}
               onDelete={onDeleteTask}
-              onAddChild={onAddChild}
+              onAddChild={task => onAddChild(task, 'backlog')}
               onTaskPointerDown={(task, event, isGroup) =>
                 onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
               }
@@ -1035,7 +1040,7 @@ function ProjectPanel({
               onTaskDropTarget={onTaskDropTarget}
               onAdjustAllocation={onAdjustAllocation}
               onDelete={onDeleteTask}
-              onAddChild={onAddChild}
+              onAddChild={task => onAddChild(task, 'timeline')}
               onToggleTask={onToggleTask}
               onTimelineScroll={onTimelineScroll}
             />
