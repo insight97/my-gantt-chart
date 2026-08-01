@@ -52,6 +52,7 @@ export type CapacityGanttProps = {
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
   autoScheduleEnabled: boolean;
+  allocationStep: number;
   scrollLeft: number;
   taskDrag: TaskDragState | null;
   onZoomChange: (next: TimelineZoom) => void;
@@ -240,6 +241,7 @@ function AllocationSummaries({
   periods,
   scale,
   view,
+  allocationStep,
   allocationWindow,
   recurringDates,
   onAdjustAllocation,
@@ -251,6 +253,7 @@ function AllocationSummaries({
   periods: TimelinePeriod[];
   scale: number;
   view: ViewMode;
+  allocationStep: number;
   allocationWindow: AllocationWindow;
   recurringDates: Set<string>;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
@@ -283,16 +286,16 @@ function AllocationSummaries({
               className={className}
               disabled={!editable}
               style={{ left: index * scale, width: scale }}
-              title={`${period.label} · ${hoursLabel(hours)}${isRecurring ? ' · 重複排程' : ''}${editable ? ' · 左鍵 +1h，右鍵 -1h' : ` · ${readOnlyLabel}`}`}
-              aria-label={`${task.name} ${period.label} ${hoursLabel(hours)}${editable ? '，左鍵增加一小時，右鍵減少一小時' : `，${readOnlyLabel}`}`}
+              title={`${period.label} · ${hoursLabel(hours)}${isRecurring ? ' · 重複排程' : ''}${editable ? ` · 左鍵 +${hoursLabel(allocationStep)}，右鍵 -${hoursLabel(allocationStep)}` : ` · ${readOnlyLabel}`}`}
+              aria-label={`${task.name} ${period.label} ${hoursLabel(hours)}${editable ? `，左鍵增加${hoursLabel(allocationStep)}，右鍵減少${hoursLabel(allocationStep)}` : `，${readOnlyLabel}`}`}
               onClick={event => {
                 event.stopPropagation();
-                onAdjustAllocation(task.id, period.start, 1);
+                onAdjustAllocation(task.id, period.start, allocationStep);
               }}
               onContextMenu={event => {
                 event.preventDefault();
                 event.stopPropagation();
-                onAdjustAllocation(task.id, period.start, -1);
+                onAdjustAllocation(task.id, period.start, -allocationStep);
               }}
             >
               {hours ? hoursLabel(hours) : ''}
@@ -324,6 +327,7 @@ function TimelineTaskRows({
   periods,
   scale,
   view,
+  allocationStep,
   onAdjustAllocation,
 }: {
   tasks: Task[];
@@ -333,6 +337,7 @@ function TimelineTaskRows({
   periods: TimelinePeriod[];
   scale: number;
   view: ViewMode;
+  allocationStep: number;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
 }) {
   return (
@@ -363,6 +368,7 @@ function TimelineTaskRows({
               periods={periods}
               scale={scale}
               view={view}
+              allocationStep={allocationStep}
               allocationWindow={taskAllocationWindow}
               recurringDates={recurringDates}
               editable={task.status !== 'completed' && !hasChildren}
@@ -416,6 +422,7 @@ function TimelineGrid({
   hoursByTask,
   allocationsByTask,
   dropPreview,
+  allocationStep,
   onAdjustAllocation,
 }: {
   periods: TimelinePeriod[];
@@ -426,6 +433,7 @@ function TimelineGrid({
   hoursByTask: Map<string, Map<string, number>>;
   allocationsByTask: Map<string, Allocation[]>;
   dropPreview: Task | null;
+  allocationStep: number;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
 }) {
   const style = {
@@ -443,6 +451,7 @@ function TimelineGrid({
         periods={periods}
         scale={scale}
         view={view}
+        allocationStep={allocationStep}
         onAdjustAllocation={onAdjustAllocation}
       />
       {dropPreview && (
@@ -615,6 +624,7 @@ export default function CapacityGantt({
   timelineZoom,
   timelineInputMode,
   autoScheduleEnabled,
+  allocationStep,
   scrollLeft,
   taskDrag,
   onZoomChange,
@@ -882,8 +892,8 @@ export default function CapacityGantt({
         <div>
           <h2>Capacity Allocation</h2>
           <small>
-            每日固定 24 小時；日層級左鍵 +1h、右鍵 -1h；淺底＝Allocation
-            範圍、深底＝實際工時、標題標記＝週末。
+            每日固定 24 小時；日層級左鍵 +{hoursLabel(allocationStep)}、右鍵 -
+            {hoursLabel(allocationStep)}；淺底＝Allocation 範圍、深底＝實際工時、標題標記＝週末。
             {timelineInputMode === 'trackpad'
               ? '兩指滑動捲動、兩指捏合縮放、拖曳平移時間軸'
               : '滑鼠滾輪縮放、拖曳平移時間軸'}
@@ -948,6 +958,7 @@ export default function CapacityGantt({
               hoursByTask={hoursByTask}
               allocationsByTask={taskAllocations}
               dropPreview={dropPreview}
+              allocationStep={allocationStep}
               onAdjustAllocation={onAdjustAllocation}
             />
             <TodayMarker periods={periods} scale={scale} />
