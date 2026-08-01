@@ -21,13 +21,10 @@ import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } 
 import CapacityGantt from './CapacityGantt';
 import { hourValueLabel, priorityLabels } from './formatters';
 import TaskCard from './TaskCard';
-import { backlogDropRelation, pointerLeftElement, resolveTaskDrop } from './task-drag';
-import type {
-  TaskDragOrigin,
-  TaskDragState,
-  TaskDropTarget,
-  TaskDropTargetHandler,
-} from './task-drag';
+import { backlogDropRelation, pointerLeftElement } from './task-drag';
+import type { TaskDragOrigin, TaskDragState, TaskDropTargetHandler } from './task-drag';
+import { createTaskDragSession } from './task-drag-session';
+import type { TaskDragSession } from './task-drag-session';
 import { timelineZoomPreset } from './timeline';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { recurrenceDates, recurrenceRuleError } from './recurrence';
@@ -123,17 +120,6 @@ function initialAutoScheduleEnabled() {
   return localStorage.getItem(AUTO_SCHEDULE_STORAGE_KEY) !== 'false';
 }
 
-function sameDropTarget(a: TaskDropTarget | null, b: TaskDropTarget | null) {
-  if (!a || !b) return a === b;
-  return (
-    a.kind === b.kind &&
-    a.projectId === b.projectId &&
-    a.taskId === b.taskId &&
-    a.date === b.date &&
-    a.relation === b.relation
-  );
-}
-
 function workspaceGroupTaskIds(workspace: WorkspaceData) {
   return workspace.projects.flatMap(project => {
     const tree = buildTaskTree(project.tasks);
@@ -169,8 +155,7 @@ export default function App() {
   const [future, setFuture] = useState<WorkspaceData[]>([]);
   const [taskDrag, setTaskDrag] = useState<TaskDragState | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const taskDragRef = useRef<TaskDragState | null>(null);
-  const taskDropRef = useRef<{ target: TaskDropTarget; element: HTMLElement } | null>(null);
+  const dragSessionRef = useRef<TaskDragSession>(createTaskDragSession());
   const dragLayerRef = useRef<HTMLDivElement>(null);
   const suppressTaskClickRef = useRef(false);
 
@@ -260,7 +245,7 @@ export default function App() {
     isGroup = false,
   ) => {
     if (event.button !== 0 || task.status === 'completed') return;
-    const next: TaskDragState = {
+    const next = dragSessionRef.current.begin({
       projectId,
       task,
       origin,
@@ -269,22 +254,12 @@ export default function App() {
       pendingHours,
       x: event.clientX,
       y: event.clientY,
-      active: false,
-      target: null,
-    };
-    taskDragRef.current = next;
-    taskDropRef.current = null;
+    });
     setTaskDrag(next);
   };
   const updateTaskDropTarget: TaskDropTargetHandler = (target, element) => {
-    const current = taskDragRef.current;
-    if (!current?.active) return;
-    const nextTarget = target && element && target.projectId === current.projectId ? target : null;
-    taskDropRef.current = nextTarget && element ? { target: nextTarget, element } : null;
-    if (sameDropTarget(current.target, nextTarget)) return;
-    const next = { ...current, target: nextTarget };
-    taskDragRef.current = next;
-    setTaskDrag(next);
+    const next = dragSessionRef.current.updateTarget(target, element);
+    if (next) setTaskDrag(next);
   };
   const moveTask = useCallback(
     (
@@ -499,38 +474,28 @@ export default function App() {
   useEffect(() => {
     if (!hasTaskDrag) return;
     const handlePointerMove = (event: globalThis.PointerEvent) => {
-      const current = taskDragRef.current;
-      if (!current) return;
-      if (!current.active && Math.hypot(event.clientX - current.x, event.clientY - current.y) < 5)
-        return;
-      current.x = event.clientX;
-      current.y = event.clientY;
+      const moved = dragSessionRef.current.move(event.clientX, event.clientY);
+      if (!moved) return;
       // Position the ghost straight from the ref; re-rendering every project per pointer event is far too costly.
       const layer = dragLayerRef.current;
       if (layer) {
-        layer.style.left = `${current.x + 12}px`;
-        layer.style.top = `${current.y + 12}px`;
+        layer.style.left = `${moved.state.x + 12}px`;
+        layer.style.top = `${moved.state.y + 12}px`;
       }
-      if (current.active) return;
-      current.active = true;
-      setTaskDrag({ ...current });
+      if (moved.activated) setTaskDrag(moved.state);
     };
     const handlePointerUp = (event: globalThis.PointerEvent) => {
-      const current = taskDragRef.current;
-      if (!current) return;
-      if (!current.active) {
-        taskDragRef.current = null;
-        taskDropRef.current = null;
-        setTaskDrag(null);
-        return;
-      }
-      const tracked = taskDropRef.current;
       const hit =
         typeof document.elementFromPoint === 'function'
           ? document.elementFromPoint(event.clientX, event.clientY)
           : null;
-      const target = tracked && (!hit || tracked.element.contains(hit)) ? tracked.target : null;
-      const command = resolveTaskDrop(current, target, today());
+      const released = dragSessionRef.current.release(event.clientX, event.clientY, hit, today());
+      if (!released) return;
+      if (!released.state.active) {
+        setTaskDrag(null);
+        return;
+      }
+      const command = released.command;
       if (command) {
         switch (command.type) {
           case 'move-group-to-backlog':
@@ -561,7 +526,7 @@ export default function App() {
               command.projectId,
               command.taskId,
               command.date,
-              current.origin === 'gantt' || autoScheduleEnabled,
+              released.state.origin === 'gantt' || autoScheduleEnabled,
             );
             break;
         }
@@ -570,13 +535,10 @@ export default function App() {
       setTimeout(() => {
         suppressTaskClickRef.current = false;
       }, 0);
-      taskDragRef.current = null;
-      taskDropRef.current = null;
       setTaskDrag(null);
     };
     const handlePointerCancel = () => {
-      taskDragRef.current = null;
-      taskDropRef.current = null;
+      dragSessionRef.current.cancel();
       setTaskDrag(null);
     };
     window.addEventListener('pointermove', handlePointerMove);

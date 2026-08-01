@@ -54,6 +54,8 @@
 
 **Timeline Placement**：Leaf Task 進入 Allocation Timeline、在 Timeline 內改變日期，或在同一視圖中改變排序位置的明確操作。Backlog 進入 Timeline 與 Timeline 新增 Task 這類隱含入口在自動排程關閉時只改變 Timeline 狀態；使用者明確將既有 Timeline Task 拖到新日期時仍會重建 Allocation。Placement 不改變 Work Item hierarchy 的父子關係語意。
 
+**Task Drag Session**：從 Leaf 或群組的 pointer down 開始，到 pointer up／cancel 結束的一次拖曳互動。Session 負責 5px activation threshold、同 Project 的 drop target tracking、release 時的 hit-test 驗證與 `TaskDropCommand` 解析，但不直接修改 Workspace；React render、ghost DOM 定位與 workspace operation commit 由 App adapter 負責。
+
 **Backlog to Allocation Timeline**：同一份 Leaf Task 資料在兩個位置之間移動，不建立副本。拖曳到時間軸空白區會依自動排程開關決定是否觸發 Automatic Scheduling；一般 Task 使用放下日期作為最快排程起點，recurring Task 依規則日期與每次時數建立 Allocation。拖曳到另一個 Work Item 則依落點加入子項目或改變同層順序。拖曳群組時改用 Group Transfer，一次依開關排程其中所有 Backlog Leaf；祖先不因此獲得可分配工時。
 
 **Allocation Timeline to Backlog**：使用者可以將 Timeline 的 Leaf Task card 拖回 Backlog，或在 editor 明確切換狀態。兩者都是同一個移回操作：清除所有 Allocation、保留 `parentId`、Deadline 與其他 metadata；若放在同一父項目的 Backlog 同層項目前後，則一併更新其同層順序。Backlog 中的群組也可在同層項目前後重排，並連同完整子樹一起移動。拖曳群組回 Backlog 時，以 Group Transfer 一次移回其中所有未完成 Timeline Leaf；已完成 Leaf 保留在 Timeline。
