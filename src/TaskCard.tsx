@@ -104,7 +104,18 @@ export default function TaskCard({
         </button>
       )}
       <div className={`task-card-info${variant === 'gantt' ? ' task-link' : ''}`} draggable={false}>
-        <b>{task.name}</b>
+        <b>
+          {task.name}
+          {task.recurrence && (
+            <span
+              className="task-card-recurring"
+              title="已設定重複排程"
+              aria-label="已設定重複排程"
+            >
+              ↻
+            </span>
+          )}
+        </b>
         {variant === 'backlog' && (
           <small>
             {isGroup ? (

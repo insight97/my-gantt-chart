@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyTask } from './data';
+import { CURRENT_WORKSPACE_VERSION } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 import './styles.css';
 import './capacity-header.css';
@@ -44,7 +45,7 @@ const workspace = (
   extraProjects: Project[] = [],
   allocations: Allocation[] = [],
 ): WorkspaceData => ({
-  version: 3,
+  version: CURRENT_WORKSPACE_VERSION,
   projects: [
     {
       id: 'project-a',
@@ -109,6 +110,30 @@ describe('Work Item hierarchy UI', () => {
 
     await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
     expect(document.querySelector('.backlog .task-card-group')).toHaveTextContent('根工作');
+  });
+
+  it('configures and explicitly applies a recurring schedule from the task editor', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '固定例會')]));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('固定例會')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('固定例會'));
+    fireEvent.click(screen.getByLabelText('啟用重複排程'));
+    fireEvent.change(screen.getByLabelText('頻率'), { target: { value: 'daily' } });
+    fireEvent.change(screen.getByLabelText('開始日期'), { target: { value: '2026-01-01' } });
+    fireEvent.change(screen.getByLabelText('結束日期'), { target: { value: '2026-01-03' } });
+    fireEvent.change(screen.getByLabelText('每次時數'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: '套用重複排程' }));
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalled());
+    const saved = saveWorkspaceMock.mock.calls.at(-1)?.[0];
+    expect(saved?.projects[0].tasks[0]).toMatchObject({
+      status: 'scheduled',
+      estimatedHours: 6,
+      recurrence: expect.objectContaining({ frequency: 'daily' }),
+    });
+    expect(saved?.allocations).toHaveLength(3);
+    expect(saved?.allocations.every(allocation => allocation.recurrenceId === 'task-a')).toBe(true);
   });
 
   it('keeps Backlog and Timeline hierarchy toggles independent', async () => {

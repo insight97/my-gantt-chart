@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, today } from './capacity';
 import { emptyTask } from './data';
+import { CURRENT_WORKSPACE_VERSION } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 import {
   adjustAllocationDay,
+  applyTaskRecurrence,
   autoScheduleTask,
   moveTaskGroupToBacklog,
   moveTaskGroupToTimeline,
@@ -33,7 +35,7 @@ function workspace(taskValue: Task, allocations: Allocation[] = []): WorkspaceDa
     tasks: [taskValue],
   };
   return {
-    version: 3,
+    version: CURRENT_WORKSPACE_VERSION,
     projects: [project],
     dailyCapacities: [],
     allocations,
@@ -220,6 +222,153 @@ describe('workspace operations', () => {
       { date: '2026-01-01', allocatedHours: 3 },
       { date: '2026-01-02', allocatedHours: 1 },
     ]);
+  });
+
+  it('applies a recurring rule as marked allocations and derives total hours', () => {
+    const original = workspace(
+      task({
+        id: 'task-a',
+        status: 'backlog',
+        recurrence: {
+          frequency: 'weekly',
+          startDate: '2026-01-05',
+          endDate: '2026-01-19',
+          hoursPerOccurrence: 2,
+          weekdays: [1],
+          monthDays: [],
+        },
+      }),
+    );
+
+    const next = changed(applyTaskRecurrence(original, 'project-a', 'task-a'));
+
+    expect(next.projects[0].tasks[0]).toMatchObject({
+      status: 'scheduled',
+      estimatedHours: 6,
+      start: '2026-01-05',
+      end: '2026-01-19',
+    });
+    expect(next.allocations).toHaveLength(3);
+    expect(next.allocations.every(item => item.recurrenceId === 'task-a')).toBe(true);
+  });
+
+  it('preserves a manually adjusted occurrence when recurring allocations are reapplied', () => {
+    const original = workspace(
+      task({
+        status: 'backlog',
+        recurrence: {
+          frequency: 'daily',
+          startDate: '2026-01-01',
+          endDate: '2026-01-03',
+          hoursPerOccurrence: 2,
+          weekdays: [],
+          monthDays: [],
+        },
+      }),
+    );
+    const applied = changed(applyTaskRecurrence(original, 'project-a', 'task-a'));
+    const manuallyAdjusted = changed(
+      adjustAllocationDay(applied, 'project-a', 'task-a', '2026-01-02', 1),
+    );
+    const next = changed(applyTaskRecurrence(manuallyAdjusted, 'project-a', 'task-a'));
+
+    expect(next.allocations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ date: '2026-01-02', allocatedHours: 3 })]),
+    );
+    expect(next.allocations.find(item => item.date === '2026-01-02')).not.toHaveProperty(
+      'recurrenceId',
+    );
+    expect(next.allocations.filter(item => item.recurrenceId === 'task-a')).toHaveLength(2);
+  });
+
+  it('clears generated occurrences without deleting manual allocations', () => {
+    const original = workspace(
+      task({
+        status: 'scheduled',
+        recurrence: {
+          frequency: 'daily',
+          startDate: '2026-01-01',
+          endDate: '2026-01-02',
+          hoursPerOccurrence: 2,
+          weekdays: [],
+          monthDays: [],
+        },
+      }),
+      [
+        {
+          id: 'generated',
+          taskId: 'task-a',
+          date: '2026-01-01',
+          allocatedHours: 2,
+          recurrenceId: 'task-a',
+        },
+        { id: 'manual', taskId: 'task-a', date: '2026-01-03', allocatedHours: 1 },
+      ],
+    );
+
+    const next = changed(
+      applyTaskRecurrence(
+        {
+          ...original,
+          projects: [
+            {
+              ...original.projects[0],
+              tasks: [{ ...original.projects[0].tasks[0], recurrence: null }],
+            },
+          ],
+        },
+        'project-a',
+        'task-a',
+      ),
+    );
+
+    expect(next.allocations).toEqual([
+      { id: 'manual', taskId: 'task-a', date: '2026-01-03', allocatedHours: 1 },
+    ]);
+  });
+
+  it('moves a parent recurrence rule with preserved direct work into the unsplit child', () => {
+    const original = workspace(
+      task({
+        id: 'parent',
+        name: 'Parent',
+        status: 'scheduled',
+        recurrence: {
+          frequency: 'daily',
+          startDate: '2026-01-01',
+          endDate: '2026-01-02',
+          hoursPerOccurrence: 2,
+          weekdays: [],
+          monthDays: [],
+        },
+      }),
+      [
+        {
+          id: 'generated',
+          taskId: 'parent',
+          date: '2026-01-01',
+          allocatedHours: 2,
+          recurrenceId: 'parent',
+        },
+      ],
+    );
+
+    const next = changed(
+      saveTask(original, 'project-a', task({ id: 'child', name: 'Child', parentId: 'parent' })),
+    );
+    const unsplit = next.projects[0].tasks.find(item => item.name === '未拆分工作');
+
+    expect(next.projects[0].tasks.find(item => item.id === 'parent')).toMatchObject({
+      recurrence: null,
+    });
+    expect(unsplit).toMatchObject({
+      parentId: 'parent',
+      recurrence: original.projects[0].tasks[0].recurrence,
+    });
+    expect(next.allocations[0]).toMatchObject({
+      taskId: unsplit?.id,
+      recurrenceId: unsplit?.id,
+    });
   });
 
   it('does not create a history-changing workspace update for an empty negative adjustment', () => {

@@ -15,6 +15,7 @@ import {
   getProjectEstimatedHours,
   getTaskAllocatedHours,
   getTaskPendingHours,
+  addDays,
   today,
 } from './capacity';
 import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } from './db';
@@ -30,15 +31,18 @@ import type {
 } from './task-drag';
 import { timelineZoomPreset } from './timeline';
 import { CURRENT_WORKSPACE_VERSION } from './types';
+import { recurrenceDates, recurrenceRuleError } from './recurrence';
 import type {
   Allocation,
   DailyCapacity,
   ExportFile,
   Project,
+  RecurrenceRule,
   Task,
   TaskPriority,
   TaskStatus,
   ViewMode,
+  Weekday,
   WorkspaceData,
 } from './types';
 import type { TimelineInputMode, TimelineZoom } from './timeline';
@@ -64,6 +68,30 @@ const statusLabels: Record<TaskStatus, string> = {
   in_progress: '進行中',
   completed: '已完成',
 };
+const weekdayLabels = ['日', '一', '二', '三', '四', '五', '六'];
+
+function defaultRecurrence(task: Task): RecurrenceRule {
+  const startDate = task.start || today();
+  const endDate = task.end && task.end >= startDate ? task.end : addDays(startDate, 30);
+  const weekday = new Date(`${startDate}T00:00:00.000Z`).getUTCDay() as Weekday;
+  return {
+    frequency: 'weekly',
+    startDate,
+    endDate,
+    hoursPerOccurrence: 1,
+    weekdays: [weekday],
+    monthDays: [Number(startDate.slice(-2))],
+  };
+}
+
+function recurrenceHours(rule: RecurrenceRule | null) {
+  if (!rule || recurrenceRuleError(rule)) return null;
+  try {
+    return recurrenceDates(rule).length * rule.hoursPerOccurrence;
+  } catch {
+    return null;
+  }
+}
 type EditingTask = { projectId: string; task: Task; scheduleOnSave: boolean };
 
 function initialTimelineZoom(): TimelineZoom {
@@ -322,7 +350,12 @@ export default function App() {
     setExpandedBacklogTaskIds(ids => new Set([...ids, parent.id]));
   };
 
-  const saveTask = (projectId: string, draft: Task, scheduleOnSave = false): string | null => {
+  const saveTask = (
+    projectId: string,
+    draft: Task,
+    scheduleOnSave = false,
+    applyRecurrence = false,
+  ): string | null => {
     if (!workspace) return '目前沒有可編輯的工作區。';
     if (scheduleOnSave) {
       const result = autoScheduleTaskOperation(workspace, projectId, draft.id, draft);
@@ -336,7 +369,9 @@ export default function App() {
       setEditingTask(null);
       return null;
     }
-    const error = commitOperation(saveTaskOperation(workspace, projectId, draft));
+    const error = commitOperation(
+      saveTaskOperation(workspace, projectId, draft, { applyRecurrence }),
+    );
     if (error) return error;
     if (draft.parentId) {
       setExpandedTaskIds(ids => new Set([...ids, draft.parentId!]));
@@ -793,6 +828,9 @@ export default function App() {
             if (autoScheduleTask(editingTask.projectId, editingTask.task.id, draft))
               setEditingTask(null);
           }}
+          onApplyRecurrence={draft =>
+            saveTask(editingTask.projectId, draft, editingTask.scheduleOnSave, true)
+          }
         />
       )}
       {capacityDate && (
@@ -1099,6 +1137,7 @@ function TaskDialog({
   onClose,
   onSave,
   onAutoSchedule,
+  onApplyRecurrence,
 }: {
   task: Task;
   tasks: Task[];
@@ -1108,6 +1147,7 @@ function TaskDialog({
   onClose: () => void;
   onSave: (task: Task) => string | null;
   onAutoSchedule: (task: Task) => void;
+  onApplyRecurrence: (task: Task) => string | null;
 }) {
   const [draft, setDraft] = useState(task);
   const [error, setError] = useState('');
@@ -1121,13 +1161,32 @@ function TaskDialog({
       !descendantIds.has(candidate.id) &&
       taskTree.depth(candidate.id) < 3,
   );
+  const recurrence = draft.recurrence ?? null;
+  const recurrenceError = recurrence ? recurrenceRuleError(recurrence) : null;
+  const recurrenceOccurrenceHours = recurrenceHours(recurrence);
+  const hasRecurringAllocations = allocations.some(
+    allocation => allocation.recurrenceId === task.id,
+  );
   useLayoutEffect(() => {
     nameInputRef.current?.focus();
   }, []);
+  const draftForSave = () => ({
+    ...draft,
+    estimatedHours: recurrenceOccurrenceHours ?? Number(draft.estimatedHours),
+  });
   const saveDraft = () => {
-    const result = onSave({ ...draft, estimatedHours: Number(draft.estimatedHours) });
+    const result = onSave(draftForSave());
     if (result) setError(result);
     else setError('');
+  };
+  const updateRecurrence = (changes: Partial<RecurrenceRule>) => {
+    setDraft(current => ({
+      ...current,
+      recurrence: {
+        ...(current.recurrence ?? defaultRecurrence(current)),
+        ...changes,
+      },
+    }));
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -1198,7 +1257,8 @@ function TaskDialog({
               type="number"
               min="0"
               step="0.5"
-              value={draft.estimatedHours}
+              readOnly={Boolean(recurrence)}
+              value={recurrenceOccurrenceHours ?? draft.estimatedHours}
               onChange={event => setDraft({ ...draft, estimatedHours: Number(event.target.value) })}
             />
           </label>
@@ -1226,6 +1286,126 @@ function TaskDialog({
             </select>
           </label>
         </div>
+        {!hasChildren && (
+          <fieldset className="recurrence-settings">
+            <legend>重複排程</legend>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={Boolean(recurrence)}
+                onChange={event =>
+                  setDraft({
+                    ...draft,
+                    recurrence: event.target.checked
+                      ? (draft.recurrence ?? defaultRecurrence(draft))
+                      : null,
+                  })
+                }
+              />
+              啟用重複排程
+            </label>
+            {recurrence && (
+              <div className="recurrence-fields">
+                <label>
+                  頻率
+                  <select
+                    value={recurrence.frequency}
+                    onChange={event =>
+                      updateRecurrence({
+                        frequency: event.target.value as RecurrenceRule['frequency'],
+                      })
+                    }
+                  >
+                    <option value="daily">每天</option>
+                    <option value="weekly">每週</option>
+                    <option value="monthly">每月</option>
+                  </select>
+                </label>
+                <label>
+                  開始日期
+                  <input
+                    type="date"
+                    value={recurrence.startDate}
+                    onChange={event => updateRecurrence({ startDate: event.target.value })}
+                  />
+                </label>
+                <label>
+                  結束日期
+                  <input
+                    type="date"
+                    value={recurrence.endDate}
+                    onChange={event => updateRecurrence({ endDate: event.target.value })}
+                  />
+                </label>
+                <label>
+                  每次時數
+                  <input
+                    type="number"
+                    min="0.25"
+                    step="0.25"
+                    value={recurrence.hoursPerOccurrence}
+                    onChange={event =>
+                      updateRecurrence({ hoursPerOccurrence: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                {recurrence.frequency === 'weekly' && (
+                  <div className="recurrence-choice-group">
+                    <span>星期</span>
+                    <div className="recurrence-weekdays">
+                      {weekdayLabels.map((label, weekday) => (
+                        <label key={label} className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={recurrence.weekdays.includes(weekday as Weekday)}
+                            onChange={event => {
+                              const value = weekday as Weekday;
+                              const weekdays = event.target.checked
+                                ? [...new Set([...recurrence.weekdays, value])].sort()
+                                : recurrence.weekdays.filter(item => item !== value);
+                              updateRecurrence({ weekdays });
+                            }}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {recurrence.frequency === 'monthly' && (
+                  <label>
+                    每月日期
+                    <select
+                      multiple
+                      size={4}
+                      value={recurrence.monthDays.map(String)}
+                      onChange={event =>
+                        updateRecurrence({
+                          monthDays: [...event.target.selectedOptions].map(option =>
+                            Number(option.value),
+                          ),
+                        })
+                      }
+                    >
+                      {Array.from({ length: 31 }, (_, index) => index + 1).map(day => (
+                        <option key={day} value={day}>
+                          {day} 日
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <p className="form-hint recurrence-hint">
+                  {recurrenceError
+                    ? recurrenceError
+                    : recurrenceOccurrenceHours === null
+                      ? '重複排程範圍過大，請縮短日期範圍。'
+                      : `共 ${Math.round(recurrenceOccurrenceHours / recurrence.hoursPerOccurrence)} 次、${hourValueLabel(recurrenceOccurrenceHours)}。儲存只保存規則；按「套用重複排程」才會建立或更新 Allocation。`}
+                </p>
+              </div>
+            )}
+          </fieldset>
+        )}
         <label>
           備註
           <textarea
@@ -1258,6 +1438,21 @@ function TaskDialog({
               自動排程
             </button>
           )}
+          {!scheduleOnSave &&
+            !hasChildren &&
+            draft.status !== 'completed' &&
+            (recurrence || hasRecurringAllocations) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const result = onApplyRecurrence(draftForSave());
+                  if (result) setError(result);
+                  else setError('');
+                }}
+              >
+                {recurrence ? '套用重複排程' : '清除重複排程'}
+              </button>
+            )}
           <button className="primary" type="submit">
             儲存
           </button>

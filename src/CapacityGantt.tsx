@@ -285,6 +285,7 @@ function AllocationSummaries({
   scale,
   view,
   allocationWindow,
+  recurringDates,
   onAdjustAllocation,
   editable = true,
   readOnlyReason,
@@ -295,6 +296,7 @@ function AllocationSummaries({
   scale: number;
   view: ViewMode;
   allocationWindow: AllocationWindow;
+  recurringDates: Set<string>;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
   editable?: boolean;
   readOnlyReason?: AllocationReadOnlyReason;
@@ -307,12 +309,14 @@ function AllocationSummaries({
       {periods.map((period, index) => {
         const hours = periodHours(period, hoursByDate);
         const windowState = periodInAllocationWindow(period, allocationWindow);
+        const isRecurring = period.dates.some(date => recurringDates.has(date));
         const className = [
           view === 'day' ? 'allocation-cell' : 'allocation-summary',
           windowState.active ? 'in-allocation-window' : '',
           windowState.start ? 'window-start' : '',
           windowState.end ? 'window-end' : '',
           hours ? 'has-hours' : '',
+          isRecurring ? 'recurring-allocation' : '',
         ]
           .filter(Boolean)
           .join(' ');
@@ -323,7 +327,7 @@ function AllocationSummaries({
               className={className}
               disabled={!editable}
               style={{ left: index * scale, width: scale }}
-              title={`${period.label} · ${hoursLabel(hours)}${editable ? ' · 左鍵 +1h，右鍵 -1h' : ` · ${readOnlyLabel}`}`}
+              title={`${period.label} · ${hoursLabel(hours)}${isRecurring ? ' · 重複排程' : ''}${editable ? ' · 左鍵 +1h，右鍵 -1h' : ` · ${readOnlyLabel}`}`}
               aria-label={`${task.name} ${period.label} ${hoursLabel(hours)}${editable ? '，左鍵增加一小時，右鍵減少一小時' : `，${readOnlyLabel}`}`}
               onClick={event => {
                 event.stopPropagation();
@@ -343,7 +347,7 @@ function AllocationSummaries({
             key={period.start}
             className={className}
             style={{ left: index * scale, width: scale }}
-            title={`${period.label} · ${hoursLabel(hours)}`}
+            title={`${period.label} · ${hoursLabel(hours)}${isRecurring ? ' · 重複排程' : ''}`}
           >
             {hours ? hoursLabel(hours) : ''}
           </span>
@@ -378,7 +382,13 @@ function TimelineTaskRows({
   return (
     <>
       {tasks.map(task => {
-        const taskAllocationWindow = allocationWindow(allocationsByTask.get(task.id) || []);
+        const taskAllocations = allocationsByTask.get(task.id) || [];
+        const taskAllocationWindow = allocationWindow(taskAllocations);
+        const recurringDates = new Set(
+          taskAllocations
+            .filter(allocation => allocation.recurrenceId)
+            .map(allocation => allocation.date),
+        );
         const hasChildren = taskTree.hasChildren(task.id);
         return (
           <div
@@ -398,6 +408,7 @@ function TimelineTaskRows({
               scale={scale}
               view={view}
               allocationWindow={taskAllocationWindow}
+              recurringDates={recurringDates}
               editable={task.status !== 'completed' && !hasChildren}
               readOnlyReason={
                 task.status === 'completed' ? 'completed' : hasChildren ? 'parent' : undefined

@@ -15,6 +15,7 @@ import {
   moveTaskToTimelineAsChild,
   saveTask,
 } from './workspace-operations';
+import { CURRENT_WORKSPACE_VERSION } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 const workItem = (id: string, parentId: string | null = null, estimatedHours = 0): Task => ({
@@ -27,7 +28,7 @@ const workItem = (id: string, parentId: string | null = null, estimatedHours = 0
 });
 
 const workspace = (tasks: Task[], allocations: Allocation[] = []): WorkspaceData => ({
-  version: 3,
+  version: CURRENT_WORKSPACE_VERSION,
   projects: [
     {
       id: 'workspace-root',
