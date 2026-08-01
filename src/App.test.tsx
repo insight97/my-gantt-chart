@@ -112,6 +112,34 @@ describe('Work Item hierarchy UI', () => {
     expect(document.querySelector('.backlog .task-card-group')).toHaveTextContent('根工作');
   });
 
+  it('adds a child created from Timeline directly to Timeline', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace([workItem('parent', 'Timeline 父工作', { status: 'scheduled' })]),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Timeline 父工作')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: '新增 Timeline 父工作 的子任務' }));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: 'Timeline 子工作' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(screen.getByText('Timeline 子工作')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        saveWorkspaceMock.mock.calls.some(([value]) =>
+          value.projects[0].tasks.some(task => task.name === 'Timeline 子工作'),
+        ),
+      ).toBe(true),
+    );
+    const saved = [...saveWorkspaceMock.mock.calls]
+      .reverse()
+      .map(([value]) => value)
+      .find(value => value.projects[0].tasks.some(task => task.name === 'Timeline 子工作'))!;
+    const child = saved?.projects[0].tasks.find(task => task.name === 'Timeline 子工作');
+    expect(child).toMatchObject({ status: 'scheduled', parentId: 'parent' });
+    expect(saved?.allocations.some(allocation => allocation.taskId === child?.id)).toBe(true);
+  });
+
   it('configures and explicitly applies a recurring schedule from the task editor', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '固定例會')]));
     render(<App />);
