@@ -1185,6 +1185,7 @@ h1 {
   color: var(--muted);
 }
 .task-card-gantt {
+  position: relative;
   height: 70px;
   width: 100%;
   box-sizing: border-box;
@@ -1200,6 +1201,21 @@ h1 {
   text-align: left;
   min-width: 0;
   margin-left: 0;
+}
+.task-card-gantt::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+}
+.task-card-gantt.importance-low::before {
+  background: #46677b;
+}
+.task-card-gantt.importance-medium::before {
+  background: #63751d;
+}
+.task-card-gantt.importance-high::before {
+  background: #a3472f;
 }
 .task-card-gantt .task-card-info {
   padding-left: calc(36px + (var(--task-depth, 1) - 1) * 24px);
