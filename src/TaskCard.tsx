@@ -43,6 +43,7 @@ export default function TaskCard({
   const className = [
     'task-card',
     `task-card-${variant}`,
+    `importance-${task.priority}`,
     isGroup ? 'task-card-group' : '',
     onPointerDown ? 'task-card-draggable' : '',
     isDragging ? 'dragging-source' : '',
