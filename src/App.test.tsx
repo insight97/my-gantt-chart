@@ -100,6 +100,19 @@ describe('Work Item hierarchy UI', () => {
     expect(screen.queryByText('資料只儲存在這台裝置')).not.toBeInTheDocument();
   });
 
+  it('shows workspace capacity metrics', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([workItem('pending', '待安排工作')]));
+    render(<App />);
+
+    const metrics = await screen.findByRole('region', { name: '工作區關鍵指標' });
+    expect(metrics).toHaveTextContent('未來 7 天空閒');
+    expect(metrics).toHaveTextContent('168h');
+    expect(metrics).toHaveTextContent('未來 30 天空閒');
+    expect(metrics).toHaveTextContent('720h');
+    expect(metrics).toHaveTextContent('待安排事項');
+    expect(metrics).toHaveTextContent('1 件');
+  });
+
   it('deletes a task immediately and restores it with undo', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '可復原工作')]));
     render(<App />);

@@ -8,6 +8,7 @@ import {
   getRemainingCapacity,
   getTaskAllocatedHours,
   getTaskPendingHours,
+  getWorkspaceCapacityMetrics,
   isTaskOverdue,
   recalculateAutomaticAllocations,
   recalculateTaskSchedule,
@@ -26,6 +27,42 @@ describe('容量 domain', () => {
     ];
     expect(getDailyAllocatedHours('2026-01-01', allocations)).toBe(3);
     expect(getRemainingCapacity('2026-01-01', allocations)).toBe(21);
+  });
+
+  it('計算未來空閒容量與待安排葉節點數量', () => {
+    const parent = task({ id: 'parent', estimatedHours: 999 });
+    const scheduled = task({
+      id: 'scheduled',
+      parentId: 'parent',
+      estimatedHours: 8,
+      status: 'scheduled',
+    });
+    const pending = task({
+      id: 'pending',
+      parentId: 'parent',
+      estimatedHours: 10,
+      status: 'backlog',
+    });
+    const completed = task({
+      id: 'completed',
+      parentId: 'parent',
+      estimatedHours: 6,
+      status: 'completed',
+    });
+    const metrics = getWorkspaceCapacityMetrics(
+      [{ ...({} as Project), tasks: [parent, scheduled, pending, completed] }],
+      [
+        { id: 'a', taskId: 'scheduled', date: '2026-01-01', allocatedHours: 8 },
+        { id: 'b', taskId: 'pending', date: '2026-01-02', allocatedHours: 4 },
+      ],
+      '2026-01-01',
+    );
+
+    expect(metrics).toEqual({
+      futureSevenDayFreeHours: 156,
+      futureThirtyDayFreeHours: 708,
+      pendingTaskCount: 1,
+    });
   });
 
   it('計算 Project 下所有 Task 的預估總工時', () => {

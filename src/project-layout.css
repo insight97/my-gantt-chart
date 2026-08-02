@@ -29,6 +29,47 @@
   gap: 8px;
 }
 
+.workspace-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.workspace-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 13px 15px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-top: 3px solid #9dc5dd;
+  border-radius: 9px;
+}
+
+.workspace-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace-metric strong {
+  color: var(--navy);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.workspace-metric small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-metric-pending {
+  border-top-color: #d9b48e;
+}
+
 .input-mode-switch {
   display: flex;
   align-items: center;
@@ -223,6 +264,10 @@
   .project-list-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .workspace-metrics {
+    grid-template-columns: 1fr;
   }
 
   .project-card-header {
