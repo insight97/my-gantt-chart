@@ -274,6 +274,7 @@ function AllocationSummaries({
         const windowState = periodInAllocationWindow(period, allocationWindow);
         const isRecurring = period.dates.some(date => recurringDates.has(date));
         const className = [
+          'allocation-period',
           view === 'day' ? 'allocation-cell' : 'allocation-summary',
           windowState.active ? 'in-allocation-window' : '',
           windowState.start ? 'window-start' : '',
