@@ -276,6 +276,7 @@ function AllocationSummaries({
         const className = [
           'allocation-period',
           view === 'day' ? 'allocation-cell' : 'allocation-summary',
+          !editable ? 'allocation-read-only' : '',
           windowState.active ? 'in-allocation-window' : '',
           windowState.start ? 'window-start' : '',
           windowState.end ? 'window-end' : '',
