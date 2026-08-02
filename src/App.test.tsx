@@ -111,6 +111,8 @@ describe('Work Item hierarchy UI', () => {
     expect(metrics).toHaveTextContent('720h');
     expect(metrics).toHaveTextContent('待安排事項');
     expect(metrics).toHaveTextContent('1 件');
+    expect(metrics).not.toHaveTextContent('每日容量');
+    expect(metrics).not.toHaveTextContent('葉節點');
   });
 
   it('deletes a task immediately and restores it with undo', async () => {

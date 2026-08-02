@@ -756,17 +756,14 @@ export default function App() {
             <article className="workspace-metric">
               <span>未來 7 天空閒</span>
               <strong>{hoursLabel(workspaceMetrics.futureSevenDayFreeHours)}</strong>
-              <small>含今日 · 每日容量 24h</small>
             </article>
             <article className="workspace-metric">
               <span>未來 30 天空閒</span>
               <strong>{hoursLabel(workspaceMetrics.futureThirtyDayFreeHours)}</strong>
-              <small>含今日 · 每日容量 24h</small>
             </article>
             <article className="workspace-metric">
               <span>待安排事項</span>
               <strong>{workspaceMetrics.pendingTaskCount} 件</strong>
-              <small>未設定或尚有剩餘工時的葉節點</small>
             </article>
           </section>
           {workspace.projects.length === 0 ? (
