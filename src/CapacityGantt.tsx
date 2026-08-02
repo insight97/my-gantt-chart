@@ -263,8 +263,12 @@ function AllocationSummaries({
   const taskStyle = { '--task-color': task.color } as CSSProperties;
   const readOnlyLabel =
     readOnlyReason === 'completed' ? '已完成，不可修改' : '父任務工時由子任務彙總，不可直接修改';
+  const density = periodDensity(scale);
   return (
-    <div className={`allocation-summaries ${view === 'day' ? 'editable' : ''}`} style={taskStyle}>
+    <div
+      className={`allocation-summaries ${density}${view === 'day' ? ' editable' : ''}`}
+      style={taskStyle}
+    >
       {periods.map((period, index) => {
         const hours = periodHours(period, hoursByDate);
         const windowState = periodInAllocationWindow(period, allocationWindow);
@@ -298,7 +302,7 @@ function AllocationSummaries({
                 onAdjustAllocation(task.id, period.start, -allocationStep);
               }}
             >
-              {hours ? hoursLabel(hours) : ''}
+              {hours ? <span className="allocation-hours-label">{hoursLabel(hours)}</span> : null}
             </button>
           );
         return (
@@ -308,7 +312,7 @@ function AllocationSummaries({
             style={{ left: index * scale, width: scale }}
             title={`${period.label} · ${hoursLabel(hours)}${isRecurring ? ' · 重複排程' : ''}`}
           >
-            {hours ? hoursLabel(hours) : ''}
+            {hours ? <span className="allocation-hours-label">{hoursLabel(hours)}</span> : null}
           </span>
         );
       })}
