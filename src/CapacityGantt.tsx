@@ -14,7 +14,6 @@ import {
   buildTimelinePeriods,
   capacityState,
   periodAvailableHours,
-  periodCapacityLabel,
   periodDensity,
   periodDisplayLabel,
   periodHours,
@@ -127,22 +126,17 @@ function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeri
           .filter(Boolean)
           .join(' ');
         const weekendLabel = weekend ? ' · 週末' : '';
-        const title = `${period.label}${weekendLabel} · ${period.dates.length} 天總容量 ${hoursLabel(available)} · 已分配 ${hoursLabel(allocated)} · 剩餘 ${hoursLabel(Math.max(0, available - allocated))}`;
+        const title = `${period.label}${weekendLabel} · 已分配 ${hoursLabel(allocated)} · 剩餘 ${hoursLabel(remaining)}`;
         return (
           <span
             className={className}
             key={period.start}
             title={title}
-            aria-label={`${period.label}${weekendLabel}，每日固定 24 小時，已分配 ${hoursLabel(allocated)}，剩餘 ${hoursLabel(Math.max(0, available - allocated))}`}
+            aria-label={`${period.label}${weekendLabel}，已分配 ${hoursLabel(allocated)}，剩餘 ${hoursLabel(remaining)}`}
             style={{ left: index * scale, width: scale, top: TIMELINE_CONTEXT_ROW_HEIGHT }}
           >
             <b>{periodDisplayLabel(period, view, scale)}</b>
-            <strong>
-              {view === 'day'
-                ? hoursLabel(remaining)
-                : periodCapacityLabel(allocated, available, scale)}
-            </strong>
-            {view !== 'day' && scale >= 56 && <small>{period.dates.length} 天合計</small>}
+            <strong>{hoursLabel(remaining)}</strong>
           </span>
         );
       })}
