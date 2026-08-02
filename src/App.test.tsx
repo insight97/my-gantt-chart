@@ -596,6 +596,38 @@ describe('Work Item hierarchy UI', () => {
     );
   });
 
+  it('uses the same allocation visual states for parent aggregates in every timeline view', async () => {
+    const parent = workItem('parent', '父工作');
+    const child = workItem('child', '子工作', {
+      parentId: 'parent',
+      status: 'scheduled',
+      estimatedHours: 8,
+    });
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [parent, child],
+        [],
+        [{ id: 'child-allocation', taskId: 'child', date: '2026-02-03', allocatedHours: 4 }],
+      ),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+
+    for (const [label, elementClass] of [
+      ['日', 'allocation-cell'],
+      ['週', 'allocation-summary'],
+      ['月', 'allocation-summary'],
+    ] as const) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      const parentRow = document.querySelectorAll('.timeline-row')[0];
+      const allocation = Array.from(parentRow.querySelectorAll(`.${elementClass}`)).find(cell =>
+        cell.classList.contains('has-hours'),
+      );
+
+      expect(allocation).toHaveClass('allocation-period', 'in-allocation-window', 'has-hours');
+    }
+  });
+
   it('makes projected parent groups draggable for immediate group transfer', async () => {
     const parent = workItem('parent', '父工作');
     const backlogChild = workItem('backlog-child', 'Backlog 子工作', { parentId: 'parent' });

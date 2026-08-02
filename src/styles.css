@@ -895,8 +895,7 @@ h1 {
   z-index: 4;
   pointer-events: none;
 }
-.allocation-cell,
-.allocation-summary {
+.allocation-period {
   position: absolute;
   top: 0;
   height: 70px;
@@ -907,32 +906,28 @@ h1 {
   box-sizing: border-box;
   font-variant-numeric: tabular-nums;
 }
-.allocation-cell.in-allocation-window,
-.allocation-summary.in-allocation-window {
+.allocation-period.in-allocation-window {
   background: #eef6f7;
   background: color-mix(in srgb, var(--task-color, #4f9aa3) 11%, #fff);
   box-shadow:
     inset 0 1px 0 #d5e9eb,
     inset 0 -1px 0 #d5e9eb;
 }
-.allocation-cell.window-start,
-.allocation-summary.window-start {
+.allocation-period.window-start {
   border-radius: 7px 0 0 7px;
   box-shadow:
     inset 2px 0 0 #c1dfe2,
     inset 0 1px 0 #d5e9eb,
     inset 0 -1px 0 #d5e9eb;
 }
-.allocation-cell.window-end,
-.allocation-summary.window-end {
+.allocation-period.window-end {
   border-radius: 0 7px 7px 0;
   box-shadow:
     inset -2px 0 0 #c1dfe2,
     inset 0 1px 0 #d5e9eb,
     inset 0 -1px 0 #d5e9eb;
 }
-.allocation-cell.window-start.window-end,
-.allocation-summary.window-start.window-end {
+.allocation-period.window-start.window-end {
   border-radius: 7px;
   box-shadow: inset 0 0 0 2px #c1dfe2;
 }
@@ -945,14 +940,14 @@ h1 {
   font-size: 11px;
   padding: 0;
 }
-.allocation-cell:hover {
-  background: #eaf4f8;
-}
-.allocation-cell.has-hours {
+.allocation-period.has-hours {
   background: #b8dfe1;
   background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
   font-weight: 700;
   color: #24566a;
+}
+.allocation-cell:hover {
+  background: #eaf4f8;
 }
 .allocation-summary {
   pointer-events: none;
@@ -971,13 +966,7 @@ h1 {
 .allocation-summaries.minimal .allocation-hours-label {
   font-size: 8px;
 }
-.allocation-summary.has-hours {
-  background: #b8dfe1;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
-  font-weight: 700;
-}
-.allocation-cell.recurring-allocation,
-.allocation-summary.recurring-allocation {
+.allocation-period.recurring-allocation {
   border-bottom: 2px dotted var(--blue);
 }
 .timeline-row .deadline-marker {
