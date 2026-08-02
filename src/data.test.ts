@@ -21,6 +21,10 @@ import type { Allocation, Project, Task } from './types';
 const task = (overrides: Partial<Task> = {}): Task => ({ ...emptyTask(), ...overrides });
 
 describe('容量 domain', () => {
+  it('新工作項目的預設預估工時為 0', () => {
+    expect(emptyTask().estimatedHours).toBe(0);
+  });
+
   it('以固定 24 小時計算每日剩餘容量', () => {
     const allocations: Allocation[] = [
       { id: 'a', taskId: 'other', date: '2026-01-01', allocatedHours: 3 },
@@ -43,6 +47,12 @@ describe('容量 domain', () => {
       estimatedHours: 10,
       status: 'backlog',
     });
+    const zeroHours = task({
+      id: 'zero-hours',
+      parentId: 'parent',
+      estimatedHours: 0,
+      status: 'backlog',
+    });
     const completed = task({
       id: 'completed',
       parentId: 'parent',
@@ -50,7 +60,7 @@ describe('容量 domain', () => {
       status: 'completed',
     });
     const metrics = getWorkspaceCapacityMetrics(
-      [{ ...({} as Project), tasks: [parent, scheduled, pending, completed] }],
+      [{ ...({} as Project), tasks: [parent, scheduled, pending, zeroHours, completed] }],
       [
         { id: 'a', taskId: 'scheduled', date: '2026-01-01', allocatedHours: 8 },
         { id: 'b', taskId: 'pending', date: '2026-01-02', allocatedHours: 4 },
@@ -61,7 +71,7 @@ describe('容量 domain', () => {
     expect(metrics).toEqual({
       futureSevenDayFreeHours: 156,
       futureThirtyDayFreeHours: 708,
-      pendingTaskCount: 1,
+      pendingTaskCount: 2,
     });
   });
 
