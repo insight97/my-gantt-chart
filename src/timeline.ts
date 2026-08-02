@@ -5,7 +5,7 @@ import {
   DEFAULT_DAILY_CAPACITY_HOURS,
   today,
 } from './capacity';
-import { compactDateLabel, hourValueLabel, hoursLabel } from './formatters';
+import { compactDateLabel } from './formatters';
 import type { Allocation, Task, ViewMode } from './types';
 
 export const TIMELINE_CONTEXT_ROW_HEIGHT = 20;
@@ -137,7 +137,7 @@ export function periodDisplayLabel(period: TimelinePeriod, view: ViewMode, scale
 
   if (view === 'week') {
     const end = dateParts(period.end);
-    if (scale >= 88) return `${start.month}/${start.day}–${end.month}/${end.day}`;
+    if (scale >= 56) return `${start.month}/${start.day}–${end.month}/${end.day}`;
     if (scale >= 40) return `${start.month}/${start.day}–${end.day}`;
     if (scale >= 18) return `${start.month}/${start.day}`;
     return String(start.day);
@@ -152,12 +152,6 @@ export function periodDensity(scale: number) {
   if (scale >= 56) return 'regular';
   if (scale >= 24) return 'compact';
   return 'minimal';
-}
-
-export function periodCapacityLabel(allocated: number, available: number, scale: number) {
-  if (scale >= 56) return `${hoursLabel(allocated)} / ${hoursLabel(available)}`;
-  if (scale >= 20) return `${hourValueLabel(allocated)}/${hourValueLabel(available)}`;
-  return hourValueLabel(available);
 }
 
 export function buildTimelinePeriods(start: string, end: string, view: ViewMode): TimelinePeriod[] {

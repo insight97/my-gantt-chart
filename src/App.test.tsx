@@ -442,19 +442,22 @@ describe('Work Item hierarchy UI', () => {
     );
   });
 
-  it('shows only remaining hours in daily capacity headers', async () => {
+  it('shows only remaining hours in every capacity header', async () => {
     loadWorkspaceMock.mockResolvedValue(
       workspace([workItem('task-a', '每日工作', { status: 'scheduled' })]),
     );
     render(<App />);
     await waitFor(() => expect(screen.getByText('每日工作')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: '日' }));
+    for (const view of ['日', '週', '月']) {
+      fireEvent.click(screen.getByRole('button', { name: view }));
 
-    const header = document.querySelector('.capacity-period');
-    expect(header).not.toHaveTextContent('1 天合計');
-    expect(header).not.toHaveTextContent('剩餘');
-    expect(header).toHaveTextContent('24h');
+      const header = document.querySelector('.capacity-period');
+      expect(header).not.toHaveTextContent('天合計');
+      expect(header).not.toHaveTextContent(' / ');
+      expect(header).not.toHaveTextContent('剩餘');
+      expect(header?.querySelector('strong')).toHaveTextContent(/\dh/);
+    }
   });
 
   it('does not preview automatic allocation when dragging with the toggle off', async () => {
