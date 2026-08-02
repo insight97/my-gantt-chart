@@ -946,7 +946,10 @@ h1 {
   font-weight: 700;
   color: #24566a;
 }
-.allocation-cell:hover {
+.allocation-period.allocation-read-only {
+  opacity: 0.4;
+}
+.allocation-cell:not(:disabled):hover {
   background: #eaf4f8;
 }
 .allocation-summary {

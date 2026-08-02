@@ -625,6 +625,7 @@ describe('Work Item hierarchy UI', () => {
       );
 
       expect(allocation).toHaveClass('allocation-period', 'in-allocation-window', 'has-hours');
+      expect(allocation).toHaveClass('allocation-read-only');
     }
   });
 
