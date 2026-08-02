@@ -1209,13 +1209,13 @@ h1 {
   width: 4px;
 }
 .task-card-gantt.importance-low::before {
-  background: #46677b;
+  background: #8eb6c5;
 }
 .task-card-gantt.importance-medium::before {
-  background: #63751d;
+  background: #b7c27d;
 }
 .task-card-gantt.importance-high::before {
-  background: #a3472f;
+  background: #e5a080;
 }
 .task-card-gantt .task-card-info {
   padding-left: calc(36px + (var(--task-depth, 1) - 1) * 24px);
