@@ -1,4 +1,4 @@
-import type { Allocation, Task } from './types';
+import type { Allocation, Project, Task } from './types';
 import { buildTaskTree } from './task-tree';
 
 const DAY_MS = 86400000;
@@ -16,6 +16,12 @@ export interface ScheduleResult {
 
 export interface RecalculateOptions {
   horizonDays?: number;
+}
+
+export interface WorkspaceCapacityMetrics {
+  futureSevenDayFreeHours: number;
+  futureThirtyDayFreeHours: number;
+  pendingTaskCount: number;
 }
 
 export function getProjectEstimatedHours(project: { tasks: Task[] }) {
@@ -78,6 +84,45 @@ export function allocatedHoursByDate(allocations: Allocation[]) {
   for (const allocation of allocations)
     index.set(allocation.date, (index.get(allocation.date) || 0) + allocation.allocatedHours);
   return index;
+}
+
+export function getWorkspaceCapacityMetrics(
+  projects: Project[],
+  allocations: Allocation[],
+  startDate = today(),
+): WorkspaceCapacityMetrics {
+  const allocatedByDate = allocatedHoursByDate(allocations);
+  const allocatedByTask = new Map<string, number>();
+  for (const allocation of allocations)
+    allocatedByTask.set(
+      allocation.taskId,
+      (allocatedByTask.get(allocation.taskId) || 0) + allocation.allocatedHours,
+    );
+
+  const freeHours = (days: number) =>
+    datesBetween(startDate, addDays(startDate, days - 1)).reduce(
+      (sum, date) =>
+        sum + Math.max(0, DEFAULT_DAILY_CAPACITY_HOURS - (allocatedByDate.get(date) || 0)),
+      0,
+    );
+  const pendingTaskCount = projects.reduce((count, project) => {
+    const tree = buildTaskTree(project.tasks);
+    return (
+      count +
+      project.tasks.filter(
+        task =>
+          task.status !== 'completed' &&
+          !tree.hasChildren(task.id) &&
+          task.estimatedHours - (allocatedByTask.get(task.id) || 0) > 0,
+      ).length
+    );
+  }, 0);
+
+  return {
+    futureSevenDayFreeHours: freeHours(7),
+    futureThirtyDayFreeHours: freeHours(30),
+    pendingTaskCount,
+  };
 }
 
 export function getRemainingCapacity(

@@ -14,12 +14,13 @@ import {
   getProjectEstimatedHours,
   getTaskAllocatedHours,
   getTaskPendingHours,
+  getWorkspaceCapacityMetrics,
   addDays,
   today,
 } from './capacity';
 import { createEmptyWorkspace, loadWorkspace, migrateWorkspace, saveWorkspace } from './db';
 import CapacityGantt from './CapacityGantt';
-import { hourValueLabel, priorityLabels } from './formatters';
+import { hourValueLabel, hoursLabel, priorityLabels } from './formatters';
 import TaskCard from './TaskCard';
 import { backlogDropRelation, pointerLeftElement } from './task-drag';
 import type { TaskDragOrigin, TaskDragState, TaskDropTargetHandler } from './task-drag';
@@ -640,6 +641,7 @@ export default function App() {
   const editingProject =
     editingTask && workspace.projects.find(project => project.id === editingTask.projectId);
   const editingTaskTree = editingProject ? buildTaskTree(editingProject.tasks) : null;
+  const workspaceMetrics = getWorkspaceCapacityMetrics(workspace.projects, workspace.allocations);
   const editTask = (projectId: string, task: Task) => {
     if (task.status === 'completed') {
       setNotice('已完成 Task 不可修改。');
@@ -750,6 +752,23 @@ export default function App() {
               </button>
             </div>
           </div>
+          <section className="workspace-metrics" aria-label="工作區關鍵指標">
+            <article className="workspace-metric workspace-metric-free">
+              <span>未來 7 天空閒</span>
+              <strong>{hoursLabel(workspaceMetrics.futureSevenDayFreeHours)}</strong>
+              <small>含今日 · 每日容量 24h</small>
+            </article>
+            <article className="workspace-metric workspace-metric-free">
+              <span>未來 30 天空閒</span>
+              <strong>{hoursLabel(workspaceMetrics.futureThirtyDayFreeHours)}</strong>
+              <small>含今日 · 每日容量 24h</small>
+            </article>
+            <article className="workspace-metric workspace-metric-pending">
+              <span>待安排事項</span>
+              <strong>{workspaceMetrics.pendingTaskCount} 件</strong>
+              <small>尚有剩餘工時的葉節點</small>
+            </article>
+          </section>
           {workspace.projects.length === 0 ? (
             <div className="empty-projects">
               <p>目前還沒有工作項目。</p>
