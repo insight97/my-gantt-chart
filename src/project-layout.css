@@ -30,14 +30,16 @@
 }
 
 .workspace-metrics {
+  background: #fff;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 18px;
+  border-top: 1px solid #c9d5dc;
+  border-bottom: 1px solid #c9d5dc;
+  margin-bottom: 20px;
 }
 
 .workspace-metric {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
@@ -46,7 +48,25 @@
   column-gap: 16px;
   align-items: center;
   min-width: 0;
-  padding: 11px 16px;
+  padding: 14px 18px 14px 21px;
+}
+
+.workspace-metric::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 3px;
+  background: #9fc3d8;
+  content: '';
+}
+
+.workspace-metric:nth-child(2)::before {
+  background: #a8cbbd;
+}
+
+.workspace-metric:nth-child(3)::before {
+  background: #d8b995;
 }
 
 .workspace-metric + .workspace-metric {
@@ -55,14 +75,16 @@
 
 .workspace-metric span {
   grid-area: label;
-  color: var(--muted);
+  color: #506474;
   font-size: 12px;
+  font-weight: 600;
 }
 
 .workspace-metric strong {
   grid-area: value;
   color: var(--navy);
-  font-size: 22px;
+  font-size: 25px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.1;
   white-space: nowrap;
 }
@@ -277,7 +299,7 @@
   }
 
   .workspace-metric {
-    padding: 11px 0;
+    padding: 12px 0 12px 14px;
   }
 
   .workspace-metric + .workspace-metric {
