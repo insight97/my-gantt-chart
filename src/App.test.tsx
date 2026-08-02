@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
@@ -497,17 +497,64 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, backlogChild, timelineChild]));
     render(<App />);
 
+    await waitFor(() => expect(screen.getAllByText('父工作')).toHaveLength(2));
+    expect(screen.queryByText('Backlog 子工作')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeline 子工作')).not.toBeInTheDocument();
+
+    fireEvent.click(document.querySelector('.gantt-side-row .task-card-toggle')!);
+    await waitFor(() => expect(screen.getByText('Timeline 子工作')).toBeInTheDocument());
+    expect(screen.queryByText('Backlog 子工作')).not.toBeInTheDocument();
+
+    fireEvent.click(document.querySelector('.backlog .task-card-toggle')!);
     await waitFor(() => expect(screen.getByText('Backlog 子工作')).toBeInTheDocument());
+    expect(screen.getByText('Timeline 子工作')).toBeInTheDocument();
+
     fireEvent.click(document.querySelector('.gantt-side-row .task-card-toggle')!);
     await waitFor(() => expect(screen.queryByText('Timeline 子工作')).not.toBeInTheDocument());
     expect(screen.getByText('Backlog 子工作')).toBeInTheDocument();
 
-    fireEvent.click(document.querySelector('.backlog .task-card-toggle')!);
-    await waitFor(() => expect(screen.queryByText('Backlog 子工作')).not.toBeInTheDocument());
-
     fireEvent.click(screen.getByRole('button', { name: '全部展開' }));
     expect(await screen.findByText('Timeline 子工作')).toBeInTheDocument();
     expect(screen.getByText('Backlog 子工作')).toBeInTheDocument();
+  });
+
+  it('starts with Backlog and Timeline task groups collapsed', async () => {
+    const parent = workItem('parent', '父工作');
+    const backlogChild = workItem('backlog-child', 'Backlog 子工作', { parentId: 'parent' });
+    const timelineChild = workItem('timeline-child', 'Timeline 子工作', {
+      parentId: 'parent',
+      status: 'scheduled',
+    });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, backlogChild, timelineChild]));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByText('父工作')).toHaveLength(2));
+    expect(screen.queryByText('Backlog 子工作')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeline 子工作')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '展開 父工作' })).toHaveLength(2);
+  });
+
+  it('renders the today marker on a whole-pixel position', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
+    try {
+      loadWorkspaceMock.mockResolvedValue(
+        workspace(
+          [workItem('today-task', '今日工作', { status: 'scheduled' })],
+          [],
+          [{ id: 'today-allocation', taskId: 'today-task', date: '2026-08-02', allocatedHours: 1 }],
+        ),
+      );
+      render(<App />);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const marker = screen.getByLabelText('今天 2026-08-02');
+      expect(Number.isInteger(Number.parseFloat(marker.style.left))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('inherits the parent deadline when creating a child', async () => {
@@ -581,6 +628,7 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child], []));
     render(<App />);
     await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    fireEvent.click(document.querySelector('.gantt-side-row .task-card-toggle')!);
     fireEvent.click(screen.getByRole('button', { name: '日' }));
 
     const rows = document.querySelectorAll('.timeline-row');
@@ -639,7 +687,7 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, backlogChild, scheduledChild]));
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText('Timeline 子工作')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('父工作')).toHaveLength(2));
     expect(document.querySelectorAll('.task-card-group.task-card-draggable')).toHaveLength(2);
   });
 
@@ -793,6 +841,8 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
     render(<App />);
 
+    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    fireEvent.click(document.querySelector('.gantt-side-row .task-card-toggle')!);
     await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
     const rows = document.querySelectorAll('.gantt-side-row');
     const childCard = rows[1].querySelector('.task-card-gantt');
@@ -810,10 +860,10 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
     render(<App />);
 
-    const toggle = await screen.findByRole('button', { name: '收合 父工作' });
+    const toggle = await screen.findByRole('button', { name: '展開 父工作' });
     expect(toggle).toHaveClass('task-card-toggle');
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle.querySelector('svg')).toHaveClass('task-card-toggle-icon', 'is-expanded');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle.querySelector('svg')).not.toHaveClass('is-expanded');
   });
 
   it('removes the secondary explanation from Timeline task cards', async () => {
@@ -834,6 +884,8 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, nextParent, child]));
     render(<App />);
 
+    await waitFor(() => expect(screen.getByText('原父節點')).toBeInTheDocument());
+    fireEvent.click(document.querySelector('.backlog .task-card-toggle')!);
     await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
     fireEvent.click(screen.getByText('子工作'));
 
@@ -876,6 +928,8 @@ describe('Work Item hierarchy UI', () => {
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
     render(<App />);
 
+    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    fireEvent.click(document.querySelector('.backlog .task-card-toggle')!);
     await waitFor(() => expect(screen.getByText('Backlog 子工作')).toBeInTheDocument());
     const card = screen.getByText('Backlog 子工作').closest('.task-card-backlog');
     expect(card).not.toBeNull();

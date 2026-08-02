@@ -167,9 +167,8 @@ export default function App() {
         const next = migrateWorkspace(value || createEmptyWorkspace());
         setWorkspace(next);
         setExpandedProjectIds(new Set(next.projects.slice(0, 1).map(item => item.id)));
-        const groupTaskIds = new Set(workspaceGroupTaskIds(next));
-        setExpandedTaskIds(new Set(groupTaskIds));
-        setExpandedBacklogTaskIds(new Set(groupTaskIds));
+        setExpandedTaskIds(new Set());
+        setExpandedBacklogTaskIds(new Set());
         setReady(true);
       })
       .catch(() => setNotice('無法開啟瀏覽器本機資料庫。'));

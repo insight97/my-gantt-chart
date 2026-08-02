@@ -178,7 +178,7 @@ function TimelineHeader({
 
 function TodayMarker({ periods, scale }: { periods: TimelinePeriod[]; scale: number }) {
   const date = today();
-  const left = timelinePositionForDate(date, periods, scale);
+  const left = Math.round(timelinePositionForDate(date, periods, scale));
   return (
     <span
       className="timeline-today-marker"
