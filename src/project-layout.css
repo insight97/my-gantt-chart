@@ -45,9 +45,7 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'label value'
-    'detail value';
+  grid-template-areas: 'label value';
   column-gap: 16px;
   align-items: center;
   min-width: 0;
@@ -86,15 +84,6 @@
   font-size: 24px;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  white-space: nowrap;
-}
-
-.workspace-metric small {
-  grid-area: detail;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
