@@ -165,7 +165,7 @@ describe('Work Item hierarchy UI', () => {
       .find(value => value.projects[0].tasks.some(task => task.name === 'Timeline 子工作'))!;
     const child = saved?.projects[0].tasks.find(task => task.name === 'Timeline 子工作');
     expect(child).toMatchObject({ status: 'scheduled', parentId: 'parent' });
-    expect(saved?.allocations.some(allocation => allocation.taskId === child?.id)).toBe(true);
+    expect(saved?.allocations.some(allocation => allocation.taskId === child?.id)).toBe(false);
   });
 
   it('configures and explicitly applies a recurring schedule from the task editor', async () => {

@@ -113,7 +113,8 @@ export function getWorkspaceCapacityMetrics(
         task =>
           task.status !== 'completed' &&
           !tree.hasChildren(task.id) &&
-          task.estimatedHours - (allocatedByTask.get(task.id) || 0) > 0,
+          (task.estimatedHours === 0 ||
+            task.estimatedHours - (allocatedByTask.get(task.id) || 0) > 0),
       ).length
     );
   }, 0);

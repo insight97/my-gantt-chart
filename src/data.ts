@@ -20,7 +20,7 @@ export const emptyTask = (): Task => ({
   start: null,
   end: null,
   deadline: null,
-  estimatedHours: 8,
+  estimatedHours: 0,
   priority: 'medium',
   status: 'backlog',
   notes: '',
