@@ -961,20 +961,14 @@ h1 {
 }
 .allocation-hours-label {
   display: inline-block;
-  padding: 1px 3px;
-  border-radius: 4px;
-  background: #ffffffb8;
   font-weight: 700;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 .allocation-summaries.compact .allocation-hours-label {
-  padding: 1px 2px;
   font-size: 10px;
 }
 .allocation-summaries.minimal .allocation-hours-label {
-  padding: 0 1px;
-  background: transparent;
   font-size: 8px;
 }
 .allocation-summary.has-hours {
