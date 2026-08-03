@@ -885,8 +885,8 @@ export default function CapacityGantt({
     handleTaskDropMove(event);
     movePan(event);
   };
-  const canvasHeight =
-    headerHeight + Math.max(TIMELINE_TASK_ROW_HEIGHT, tasks.length * TIMELINE_TASK_ROW_HEIGHT);
+  const canvasHeight = Math.max(TIMELINE_TASK_ROW_HEIGHT, tasks.length * TIMELINE_TASK_ROW_HEIGHT);
+  const timelineWidth = periods.length * scale;
   return (
     <section className="gantt-section">
       <div className="section-heading">
@@ -920,49 +920,63 @@ export default function CapacityGantt({
           onBeginTaskDrag={onBeginTaskDrag}
           onTaskDropTarget={onTaskDropTarget}
         />
-        <div
-          className={`timeline${panning ? ' panning' : ''}`}
-          data-view={view}
-          data-pixels-per-day={timelineZoom.pixelsPerDay}
-          ref={timelineRef}
-          onScroll={event => onTimelineScroll(event.currentTarget.scrollLeft)}
-          onClickCapture={event => {
-            if (suppressClickRef.current) {
-              event.preventDefault();
-              event.stopPropagation();
-              suppressClickRef.current = false;
-            }
-          }}
-          onPointerDown={beginPan}
-          onPointerMove={handleTimelinePointerMove}
-          onPointerLeave={handleTaskDropLeave}
-          onPointerUp={endPan}
-          onPointerCancel={endPan}
-        >
+        <div className="timeline-shell">
+          <div className="timeline-header-sticky" style={{ position: 'sticky', top: '66px' }}>
+            <div className="timeline-header-viewport">
+              <div
+                className="timeline-header-canvas"
+                style={{
+                  width: timelineWidth,
+                  transform: `translateX(-${scrollLeft}px)`,
+                }}
+              >
+                <TimelineHeader
+                  periods={periods}
+                  context={context}
+                  allocatedByDate={capacityAllocatedByDate}
+                  view={view}
+                  scale={scale}
+                />
+              </div>
+            </div>
+          </div>
           <div
-            className="timeline-canvas"
-            style={{ width: periods.length * scale, minHeight: canvasHeight }}
+            className={`timeline${panning ? ' panning' : ''}`}
+            data-view={view}
+            data-pixels-per-day={timelineZoom.pixelsPerDay}
+            ref={timelineRef}
+            onScroll={event => onTimelineScroll(event.currentTarget.scrollLeft)}
+            onClickCapture={event => {
+              if (suppressClickRef.current) {
+                event.preventDefault();
+                event.stopPropagation();
+                suppressClickRef.current = false;
+              }
+            }}
+            onPointerDown={beginPan}
+            onPointerMove={handleTimelinePointerMove}
+            onPointerLeave={handleTaskDropLeave}
+            onPointerUp={endPan}
+            onPointerCancel={endPan}
           >
-            <TimelineHeader
-              periods={periods}
-              context={context}
-              allocatedByDate={capacityAllocatedByDate}
-              view={view}
-              scale={scale}
-            />
-            <TimelineGrid
-              periods={periods}
-              view={view}
-              scale={scale}
-              tasks={tasks}
-              taskTree={taskTree}
-              hoursByTask={hoursByTask}
-              allocationsByTask={taskAllocations}
-              dropPreview={dropPreview}
-              allocationStep={allocationStep}
-              onAdjustAllocation={onAdjustAllocation}
-            />
-            <TodayMarker periods={periods} scale={scale} />
+            <div
+              className="timeline-canvas"
+              style={{ width: timelineWidth, minHeight: canvasHeight }}
+            >
+              <TimelineGrid
+                periods={periods}
+                view={view}
+                scale={scale}
+                tasks={tasks}
+                taskTree={taskTree}
+                hoursByTask={hoursByTask}
+                allocationsByTask={taskAllocations}
+                dropPreview={dropPreview}
+                allocationStep={allocationStep}
+                onAdjustAllocation={onAdjustAllocation}
+              />
+              <TodayMarker periods={periods} scale={scale} />
+            </div>
           </div>
         </div>
       </div>

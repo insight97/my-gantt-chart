@@ -987,7 +987,7 @@ function ProjectPanel({
               ))}
             </div>
           </div>
-          <div className="planning-layout">
+          <div className="planning-layout" style={{ alignItems: 'stretch' }}>
             <Backlog
               projectId={project.id}
               tasks={backlogTasks}
