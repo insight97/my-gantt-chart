@@ -1,4 +1,12 @@
-import type { Allocation, ExportFile, Project, Task, TaskPriority, WorkspaceData } from './types';
+import {
+  type Allocation,
+  type ExportFile,
+  type Project,
+  type Task,
+  type TaskPriority,
+  type WorkspaceData,
+  usesAutomaticEstimate,
+} from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, today } from './capacity';
 import { buildTaskTree } from './task-tree';
@@ -21,6 +29,7 @@ export const emptyTask = (): Task => ({
   end: null,
   deadline: null,
   estimatedHours: 0,
+  estimatedHoursMode: 'auto',
   priority: 'medium',
   status: 'backlog',
   notes: '',
@@ -42,13 +51,19 @@ export const sampleProject = (): Project => {
     createdAt,
     updatedAt: createdAt,
     tasks: [
-      { ...emptyTask(), name: '整理需求與訪談', estimatedHours: 12 },
+      {
+        ...emptyTask(),
+        name: '整理需求與訪談',
+        estimatedHours: 12,
+        estimatedHoursMode: 'manual',
+      },
       {
         ...emptyTask(),
         name: '介面設計',
         start: offsetDate(1),
         end: offsetDate(4),
         estimatedHours: 20,
+        estimatedHoursMode: 'manual',
       },
       {
         ...emptyTask(),
@@ -56,6 +71,7 @@ export const sampleProject = (): Project => {
         start: offsetDate(5),
         end: offsetDate(10),
         estimatedHours: 32,
+        estimatedHoursMode: 'manual',
       },
     ],
   };
@@ -93,6 +109,9 @@ function validTask(value: unknown): value is Task {
     typeof task.estimatedHours === 'number' &&
     Number.isFinite(task.estimatedHours) &&
     task.estimatedHours >= 0 &&
+    (task.estimatedHoursMode === undefined ||
+      task.estimatedHoursMode === 'auto' ||
+      task.estimatedHoursMode === 'manual') &&
     isPriority(task.priority) &&
     typeof task.status === 'string' &&
     statuses.has(task.status) &&
@@ -183,24 +202,47 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
       normalized.recurrenceId = allocation.recurrenceId;
     return normalized;
   });
-  const projects = value.projects.map(project => ({
-    ...project,
-    tasks: project.tasks.map((task, index) => {
+  const projects = value.projects.map(project => {
+    const tree = buildTaskTree(project.tasks);
+    const normalizedTasks = project.tasks.map((task, index) => {
       const currentTask = { ...(task as Task & { allocationStrategy?: unknown }) };
       delete currentTask.allocationStrategy;
-      const normalized = {
+      const normalized: Task = {
         ...currentTask,
         deadline: task.deadline ?? null,
         priority: task.priority ?? 'medium',
         parentId: task.parentId ?? null,
         order: Number.isFinite(task.order) ? task.order : index,
         recurrence: task.recurrence ?? null,
+        estimatedHoursMode: task.estimatedHoursMode === 'auto' ? 'auto' : 'manual',
       };
-      return normalized.recurrence
-        ? { ...normalized, estimatedHours: getRecurringEstimatedHours(normalized, allocations) }
-        : normalized;
-    }),
-  }));
+      if (normalized.recurrence)
+        return {
+          ...normalized,
+          estimatedHours: getRecurringEstimatedHours(normalized, allocations),
+        };
+      if (usesAutomaticEstimate(normalized) && !tree.hasChildren(task.id))
+        return {
+          ...normalized,
+          estimatedHours: allocations
+            .filter(allocation => allocation.taskId === task.id)
+            .reduce((sum, allocation) => sum + allocation.allocatedHours, 0),
+        };
+      return normalized;
+    });
+    const normalizedTree = buildTaskTree(normalizedTasks);
+    return {
+      ...project,
+      tasks: normalizedTasks.map(task =>
+        normalizedTree.hasChildren(task.id)
+          ? {
+              ...task,
+              estimatedHours: aggregateTaskEstimate(task.id, normalizedTasks, normalizedTree),
+            }
+          : task,
+      ),
+    };
+  });
   return { ...value, projects, allocations };
 }
 

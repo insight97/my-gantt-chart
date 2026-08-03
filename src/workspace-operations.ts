@@ -15,6 +15,7 @@ import {
 } from './data';
 import { recurrenceRuleError } from './recurrence';
 import { getRecurringEstimatedHours, planRecurringAllocations } from './recurring-allocation';
+import { usesAutomaticEstimate } from './types';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 export type WorkspaceOperationResult =
@@ -116,10 +117,38 @@ function replaceProjectTasksAndAllocations(
   );
 }
 
-/** Keep every persisted parent estimate equal to the sum of its leaf estimates. */
-export function syncParentEstimatedHours(workspace: WorkspaceData, projectId: string) {
+function syncAutomaticEstimatedHours(workspace: WorkspaceData, projectId: string) {
   const project = findProject(workspace, projectId);
   if (!project) return workspace;
+  const tree = buildTaskTree(project.tasks);
+  const allocatedByTask = new Map<string, number>();
+  for (const allocation of workspace.allocations)
+    allocatedByTask.set(
+      allocation.taskId,
+      (allocatedByTask.get(allocation.taskId) || 0) + allocation.allocatedHours,
+    );
+  let changed = false;
+  const tasks = project.tasks.map(task => {
+    if (!usesAutomaticEstimate(task) || tree.hasChildren(task.id)) return task;
+    const estimatedHours = allocatedByTask.get(task.id) || 0;
+    if (task.estimatedHours === estimatedHours) return task;
+    changed = true;
+    return { ...task, estimatedHours, updatedAt: now() };
+  });
+  if (!changed) return workspace;
+  return {
+    ...workspace,
+    projects: workspace.projects.map(item =>
+      item.id === projectId ? { ...item, tasks, updatedAt: now() } : item,
+    ),
+  };
+}
+
+/** Keep every persisted parent estimate equal to the sum of its leaf estimates. */
+export function syncParentEstimatedHours(workspace: WorkspaceData, projectId: string) {
+  const normalizedWorkspace = syncAutomaticEstimatedHours(workspace, projectId);
+  const project = findProject(normalizedWorkspace, projectId);
+  if (!project) return normalizedWorkspace;
   const tree = buildTaskTree(project.tasks);
   let changed = false;
   const tasks = project.tasks.map(task => {
@@ -129,10 +158,10 @@ export function syncParentEstimatedHours(workspace: WorkspaceData, projectId: st
     changed = true;
     return { ...task, estimatedHours, updatedAt: now() };
   });
-  if (!changed) return workspace;
+  if (!changed) return normalizedWorkspace;
   return {
-    ...workspace,
-    projects: workspace.projects.map(item =>
+    ...normalizedWorkspace,
+    projects: normalizedWorkspace.projects.map(item =>
       item.id === projectId ? { ...item, tasks, updatedAt: now() } : item,
     ),
   };
@@ -272,6 +301,12 @@ function prepareTaskForPersistence(
     ...draft,
     name: draft.name.trim(),
     recurrence: draft.recurrence ?? null,
+    estimatedHoursMode:
+      !draft.recurrence &&
+      ((existingTask && draft.estimatedHours !== existingTask.estimatedHours) ||
+        (!existingTask && draft.estimatedHours !== 0))
+        ? 'manual'
+        : (draft.estimatedHoursMode ?? 'manual'),
     updatedAt: now(),
   };
   if (!existingTask && task.parentId && !task.deadline)

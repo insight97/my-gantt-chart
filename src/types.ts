@@ -1,11 +1,12 @@
 // Schema version of WorkspaceData/ExportFile. The one place a future field addition
 // that isn't safely defaultable bumps — db.ts's migrateWorkspace and data.ts's
 // validation import it instead of each holding their own copy of the number.
-export const CURRENT_WORKSPACE_VERSION = 5;
+export const CURRENT_WORKSPACE_VERSION = 6;
 
 export type ViewMode = 'day' | 'week' | 'month';
 export type TaskStatus = 'backlog' | 'scheduled' | 'in_progress' | 'completed';
 export type TaskPriority = 'low' | 'medium' | 'high';
+export type EstimatedHoursMode = 'auto' | 'manual';
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly';
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -29,6 +30,8 @@ export interface Task {
   end: string | null;
   deadline: string | null;
   estimatedHours: number;
+  /** Auto follows leaf allocations until the user edits the estimate. */
+  estimatedHoursMode?: EstimatedHoursMode;
   priority: TaskPriority;
   status: TaskStatus;
   notes: string;
@@ -42,6 +45,10 @@ export interface Task {
   order?: number;
   /** A single explicit recurring schedule rule for leaf tasks. */
   recurrence?: RecurrenceRule | null;
+}
+
+export function usesAutomaticEstimate(task: Pick<Task, 'estimatedHoursMode' | 'recurrence'>) {
+  return task.estimatedHoursMode === 'auto' && !task.recurrence;
 }
 
 export interface Project {

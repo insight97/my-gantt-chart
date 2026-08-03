@@ -1305,7 +1305,11 @@ function TaskDialog({
               readOnly={Boolean(recurrence)}
               value={recurringEstimatedHours ?? draft.estimatedHours}
               onChange={event =>
-                setDraft(current => ({ ...current, estimatedHours: Number(event.target.value) }))
+                setDraft(current => ({
+                  ...current,
+                  estimatedHours: Number(event.target.value),
+                  estimatedHoursMode: 'manual',
+                }))
               }
             />
           </label>
