@@ -348,9 +348,14 @@ export function partitionProjectTasks(
   timelineExpandedIds = new Set<string>(),
   tree = buildTaskTree(project.tasks),
   backlogExpandedIds?: Set<string>,
+  showCompletedTasks = false,
 ) {
   const backlogIds = projectedTaskIds(project.tasks, task => task.status === 'backlog', tree);
-  const scheduledIds = projectedTaskIds(project.tasks, task => task.status !== 'backlog', tree);
+  const scheduledIds = projectedTaskIds(
+    project.tasks,
+    task => task.status !== 'backlog' && (showCompletedTasks || task.status !== 'completed'),
+    tree,
+  );
   return {
     backlog: flattenProjectedTaskTree(backlogIds, backlogExpandedIds ?? backlogIds, tree),
     scheduled: flattenProjectedTaskTree(scheduledIds, timelineExpandedIds, tree),

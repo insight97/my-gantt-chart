@@ -143,6 +143,7 @@ export default function App() {
   const [expandedBacklogTaskIds, setExpandedBacklogTaskIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false);
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoom>(initialTimelineZoom);
   const [timelineInputMode, setTimelineInputMode] =
     useState<TimelineInputMode>(initialTimelineInputMode);
@@ -625,6 +626,10 @@ export default function App() {
   if (!ready || !workspace) return <main className="loading">正在開啟本機工作區…</main>;
 
   const expandableTaskIds = workspaceGroupTaskIds(workspace);
+  const completedTaskCount = workspace.projects.reduce(
+    (count, project) => count + project.tasks.filter(task => task.status === 'completed').length,
+    0,
+  );
   const allExpanded =
     expandableTaskIds.length > 0 &&
     expandableTaskIds.every(
@@ -747,6 +752,14 @@ export default function App() {
               >
                 {allExpanded ? '全部收合' : '全部展開'}
               </button>
+              {completedTaskCount > 0 && (
+                <button
+                  aria-pressed={showCompletedTasks}
+                  onClick={() => setShowCompletedTasks(value => !value)}
+                >
+                  {showCompletedTasks ? '隱藏已完成' : `顯示已完成（${completedTaskCount}）`}
+                </button>
+              )}
               <button className="primary" onClick={addProject}>
                 ＋ 新增工作項目
               </button>
@@ -790,6 +803,7 @@ export default function App() {
                   taskDrag={taskDrag}
                   expandedTaskIds={expandedTaskIds}
                   expandedBacklogTaskIds={expandedBacklogTaskIds}
+                  showCompletedTasks={showCompletedTasks}
                   expanded={expandedProjectIds.has(project.id)}
                   onAddTask={() => addTask(project.id, 'backlog')}
                   onAddTimelineTask={() => addTask(project.id, 'timeline')}
@@ -888,6 +902,7 @@ type ProjectPanelProps = {
   taskDrag: TaskDragState | null;
   expandedTaskIds: Set<string>;
   expandedBacklogTaskIds: Set<string>;
+  showCompletedTasks: boolean;
   expanded: boolean;
   onAddTask: () => void;
   onAddTimelineTask: () => void;
@@ -925,6 +940,7 @@ function ProjectPanel({
   taskDrag,
   expandedTaskIds,
   expandedBacklogTaskIds,
+  showCompletedTasks,
   expanded,
   onAddTask,
   onAddTimelineTask,
@@ -946,6 +962,7 @@ function ProjectPanel({
     expandedTaskIds,
     taskTree,
     expandedBacklogTaskIds,
+    showCompletedTasks,
   );
   return (
     <article className={`project-card workspace-card${expanded ? ' expanded' : ' collapsed'}`}>
