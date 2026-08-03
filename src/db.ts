@@ -118,10 +118,10 @@ function migrateLegacyProjects(value: unknown): WorkspaceData {
 function mergeProjects(projects: Project[]): Project[] {
   const tasks = projects
     .flatMap(project => project.tasks)
-    .map((task, index) => ({
+    .map(task => ({
       ...task,
       parentId: task.parentId ?? null,
-      order: index,
+      order: task.order ?? 0,
     }));
   if (!tasks.length && !projects.length) return [];
   const timestamp = now();
