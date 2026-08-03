@@ -839,6 +839,10 @@ describe('Work Item hierarchy UI', () => {
     const task = workItem('completed', '已完成工作', { status: 'completed' });
     loadWorkspaceMock.mockResolvedValue(workspace([task]));
     render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '顯示已完成（1）' })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '顯示已完成（1）' }));
     await waitFor(() => expect(screen.getByText('已完成工作')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: '日' }));
 

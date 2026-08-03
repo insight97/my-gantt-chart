@@ -168,6 +168,20 @@ describe('容量 domain', () => {
     ).toEqual(['parent', 'scheduled-child']);
   });
 
+  it('預設隱藏已完成 Timeline Leaf，並可切換顯示', () => {
+    const active = task({ id: 'active', status: 'scheduled' });
+    const completed = task({ id: 'completed', status: 'completed' });
+    const project = { tasks: [active, completed] } as Project;
+    const tree = buildTaskTree(project.tasks);
+
+    expect(partitionProjectTasks(project).scheduled.map(item => item.id)).toEqual(['active']);
+    expect(
+      partitionProjectTasks(project, new Set(), tree, undefined, true).scheduled.map(
+        item => item.id,
+      ),
+    ).toEqual(['active', 'completed']);
+  });
+
   it('Backlog 完整顯示祖先鏈，不受 Timeline 收合狀態影響', () => {
     const parent = task({ id: 'parent' });
     const child = task({ id: 'child', parentId: 'parent' });
