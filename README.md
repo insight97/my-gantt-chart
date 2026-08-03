@@ -37,10 +37,10 @@ Allocation Timeline 的日期欄在日檢視顯示剩餘時數，週／月檢視
 
 ## Allocation 規則
 
-- 新增 Task 預設為 Backlog，預估工時預設為 8 小時，建立日期由系統記錄。
+- 新增 Task 預設為 Backlog、預估工時為 0 小時，並以自動模式跟隨已安排工時；使用者修改預估工時後切換為手動模式，建立日期由系統記錄。
 - 一般 Task 的 Automatic Scheduling 採最快完成模式，從放下日期或今天往後尋找仍有剩餘時間的日期；recurring Task 依規則日期與每次時數安排，不把總 Estimated Hours 重新塞入單日。睡眠、休息等既有 Allocation 也會先消耗當日 24 小時，沒有剩餘時間時延續到下一天。週末與假日不特殊處理。
 - Allocation Timeline 日層級可選擇每次調整 1 或 0.5 小時；左鍵增加、右鍵減少選定步進，只修改被操作的日期，不跨日期重平衡；可以超過容量或 Estimated Hours，必須清楚顯示警告。
-- Timeline Placement 的 Automatic Scheduling 會清除並重建該 Task 的 Allocation；「幫我排程」只填補缺口，「清除排程」只清除 Allocation。修改 Estimated Hours 或 Task metadata 不會改動既有 Allocation。手動調整可以暫時超過 24 小時，但必須顯示超載警告。
+- Timeline Placement 的 Automatic Scheduling 會清除並重建該 Task 的 Allocation；「幫我排程」只填補缺口，「清除排程」只清除 Allocation。手動模式修改 Estimated Hours 或 Task metadata 不會改動既有 Allocation；自動模式會在 Allocation 改變後同步預估工時。手動調整可以暫時超過 24 小時，但必須顯示超載警告。
 - 本階段不做跨 Task 的自動排程、相依關係推理或全域重新排序。
 
 ## Allocation Timeline 顯示
@@ -75,4 +75,4 @@ npm run preview
 
 資料存取集中在 [`src/db.ts`](./src/db.ts)，容量與 Allocation 規則集中在 [`src/capacity.ts`](./src/capacity.ts)，React UI 不直接操作 IndexedDB。
 
-目前使用 `gantt-capacity-local` schema version 5。舊版資料會由 IndexedDB 遷移流程把多個 Project 的 Task 合併成同一工作區的 Work Item；舊資料中的每日容量／不可用時間欄位會被忽略，既有 Task 與 Allocation 會保留，並改以固定每日 24 小時計算；`projects` 只保留作為相容的匯入／儲存邊界，不再是產品 UI 的階層。
+目前使用 `gantt-capacity-local` schema version 6。舊版資料會由 IndexedDB 遷移流程把多個 Project 的 Task 合併成同一工作區的 Work Item；舊資料中的每日容量／不可用時間欄位會被忽略，既有 Task 與 Allocation 會保留，舊 Task 會以手動預估模式遷移，並改以固定每日 24 小時計算；`projects` 只保留作為相容的匯入／儲存邊界，不再是產品 UI 的階層。

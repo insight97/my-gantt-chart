@@ -31,7 +31,7 @@ export interface Task {
   deadline: string | null;
   estimatedHours: number;
   /** Auto follows leaf allocations until the user edits the estimate. */
-  estimatedHoursMode?: EstimatedHoursMode;
+  estimatedHoursMode: EstimatedHoursMode;
   priority: TaskPriority;
   status: TaskStatus;
   notes: string;

@@ -109,9 +109,7 @@ function validTask(value: unknown): value is Task {
     typeof task.estimatedHours === 'number' &&
     Number.isFinite(task.estimatedHours) &&
     task.estimatedHours >= 0 &&
-    (task.estimatedHoursMode === undefined ||
-      task.estimatedHoursMode === 'auto' ||
-      task.estimatedHoursMode === 'manual') &&
+    (task.estimatedHoursMode === 'auto' || task.estimatedHoursMode === 'manual') &&
     isPriority(task.priority) &&
     typeof task.status === 'string' &&
     statuses.has(task.status) &&

@@ -6,7 +6,7 @@ Status: accepted
 
 ## Consequences
 
-- `WorkspaceData` 不再包含 `dailyCapacities`，並以 schema version 5 保存。
+- `WorkspaceData` 不再包含 `dailyCapacities`，並以 schema version 6 保存；舊 Task 的預估模式會以手動模式遷移。
 - 舊版資料的 Task 與 Allocation 會保留；舊的每日容量／不可用時間資料不再套用，遷移後以每日 24 小時計算。
 - 日／週／月容量摘要以期間天數乘以 24 小時計算，不再提供每日容量編輯器。
 - 手動與 recurring Allocation 可以超過 24 小時；結果保留，Timeline 以 overloaded 狀態警告，不默默移動使用者的安排。

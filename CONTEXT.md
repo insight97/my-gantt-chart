@@ -44,11 +44,11 @@
 
 **Clear Schedule**：使用者明確按下「清除排程」時，只移除該 Task 的全部 Allocation，保留 Task metadata、狀態與 recurring 規則；因此 recurring Task 可以再按「幫我排程」重新填入。此操作可由 workspace history 復原。
 
-**Estimated Hours**：一般 Task 的預計總工時，由使用者手動輸入。recurring Task 的 `Estimated Hours` 為唯讀衍生值：目前 Allocation 總和，加上仍沒有 Allocation 的 recurring 規則日期之每次時數；已有 Allocation 的日期只計算一次，手動 Allocation 也會納入，不能透過欄位直接修改。修改一般 Task 的 Estimated Hours 只重新計算 Pending Hours 與警告，不會改動既有 Allocation。
+**Estimated Hours**：一般 Task 有自動與手動兩種模式。新 Task 預設為自動模式，`Estimated Hours` 等於所有 Allocation 工時總和；使用者修改預估工時欄位後切換為手動模式，之後只重新計算 Pending Hours 與警告，不會改動既有 Allocation。recurring Task 的 `Estimated Hours` 為唯讀衍生值：目前 Allocation 總和，加上仍沒有 Allocation 的 recurring 規則日期之每次時數；已有 Allocation 的日期只計算一次，手動 Allocation 也會納入，不能透過欄位直接修改。舊資料遷移為手動模式。
 
 **Allocation Strategy**：Task 自動分配工時的方式。目前只採 `fastest`，從指定起始日往後優先填滿最近的 Capacity-Available Day；不再平均分配每日自動工時。
 
-**Pending Hours**：`Estimated Hours - 所有 Allocation 工時總和` 的有號差額。正值表示尚有未安排工時；負值表示目前已分配超過估計工時，必須顯示警告；零表示分配平衡。
+**Pending Hours**：手動模式使用 `Estimated Hours - 所有 Allocation 工時總和` 的有號差額；正值表示尚有未安排工時，負值表示目前已分配超過估計工時，必須顯示警告，零表示分配平衡。自動模式的預估工時會跟隨 Allocation，因此已有安排時差額為零；尚未安排的自動 Task 仍會計入工作區的待安排事項。
 
 ## 日期與排程邊界
 
