@@ -1,3 +1,4 @@
+import { usesAutomaticEstimate } from './types';
 import type { Allocation, Project, Task } from './types';
 import { buildTaskTree } from './task-tree';
 
@@ -54,8 +55,14 @@ export function getTaskAllocatedHours(taskId: string, allocations: Allocation[])
     .reduce((sum, allocation) => sum + allocation.allocatedHours, 0);
 }
 
+export function getTaskEstimatedHours(task: Task, allocations: Allocation[]) {
+  return usesAutomaticEstimate(task)
+    ? getTaskAllocatedHours(task.id, allocations)
+    : task.estimatedHours;
+}
+
 export function getTaskPendingHours(task: Task, allocations: Allocation[]) {
-  return task.estimatedHours - getTaskAllocatedHours(task.id, allocations);
+  return getTaskEstimatedHours(task, allocations) - getTaskAllocatedHours(task.id, allocations);
 }
 
 export function getDailyAllocatedHours(
@@ -109,13 +116,12 @@ export function getWorkspaceCapacityMetrics(
     const tree = buildTaskTree(project.tasks);
     return (
       count +
-      project.tasks.filter(
-        task =>
-          task.status !== 'completed' &&
-          !tree.hasChildren(task.id) &&
-          (task.estimatedHours === 0 ||
-            task.estimatedHours - (allocatedByTask.get(task.id) || 0) > 0),
-      ).length
+      project.tasks.filter(task => {
+        if (task.status === 'completed' || tree.hasChildren(task.id)) return false;
+        const allocated = allocatedByTask.get(task.id) || 0;
+        if (usesAutomaticEstimate(task)) return allocated === 0;
+        return task.estimatedHours === 0 || task.estimatedHours - allocated > 0;
+      }).length
     );
   }, 0);
 
@@ -184,7 +190,7 @@ export function recalculateAutomaticAllocations(
   const anchor = task.start || startDate;
   const searchDates = forwardDates(anchor, horizonDays);
   const result: Allocation[] = [];
-  let remaining = Math.max(0, task.estimatedHours);
+  let remaining = Math.max(0, getTaskEstimatedHours(task, allocations));
 
   for (const date of searchDates) {
     if (remaining <= 0) break;
@@ -211,7 +217,7 @@ export function fillAutomaticAllocations(
 ): AllocationResult {
   const horizonDays = options.horizonDays ?? DEFAULT_PLANNING_HORIZON_DAYS;
   const taskAllocations = allocations.filter(item => item.taskId === task.id);
-  let remaining = Math.max(0, task.estimatedHours - getTaskAllocatedHours(task.id, allocations));
+  let remaining = Math.max(0, getTaskPendingHours(task, allocations));
   if (remaining <= 0) return { allocations: taskAllocations };
 
   const allocatedByDate = allocatedHoursByDate(allocations);

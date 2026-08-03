@@ -24,6 +24,7 @@ const workItem = (id: string, parentId: string | null = null, estimatedHours = 0
   name: id,
   parentId,
   estimatedHours,
+  estimatedHoursMode: estimatedHours === 0 ? 'auto' : 'manual',
   order: 0,
 });
 

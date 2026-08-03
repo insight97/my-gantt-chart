@@ -39,6 +39,10 @@ const workItem = (id: string, name: string, overrides: Partial<Task> = {}): Task
   id,
   name,
   ...overrides,
+  ...(Object.prototype.hasOwnProperty.call(overrides, 'estimatedHours') &&
+  overrides.estimatedHoursMode === undefined
+    ? { estimatedHoursMode: 'manual' as const }
+    : {}),
 });
 
 const workspace = (
@@ -354,6 +358,29 @@ describe('Work Item hierarchy UI', () => {
       ['2026-01-02', 8],
       ['2026-01-03', 8],
     ]);
+  });
+
+  it('switches a new automatic estimate to manual when edited', async () => {
+    loadWorkspaceMock.mockResolvedValue(workspace([]));
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allocation Timeline 新增 Task' }));
+    fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '手動估算工作' } });
+    fireEvent.change(screen.getByLabelText('預估工時'), { target: { value: '6' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(saveWorkspaceMock).toHaveBeenCalled());
+    const saved = saveWorkspaceMock.mock.calls.at(-1)?.[0];
+    expect(saved?.projects[0].tasks[0]).toMatchObject({
+      name: '手動估算工作',
+      estimatedHours: 6,
+      estimatedHoursMode: 'manual',
+    });
   });
 
   it('allows editing a new Timeline task immediately after a refreshed workspace loads', async () => {

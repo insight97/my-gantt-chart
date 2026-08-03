@@ -25,6 +25,10 @@ function task(overrides: Partial<Task> = {}): Task {
     id: 'task-a',
     name: 'Task A',
     ...overrides,
+    ...(Object.prototype.hasOwnProperty.call(overrides, 'estimatedHours') &&
+    overrides.estimatedHoursMode === undefined
+      ? { estimatedHoursMode: 'manual' as const }
+      : {}),
   };
 }
 
@@ -354,6 +358,53 @@ describe('workspace operations', () => {
       { date: '2026-01-01', allocatedHours: 3 },
       { date: '2026-01-02', allocatedHours: 1 },
     ]);
+  });
+
+  it('syncs automatic estimates to allocations and preserves manual estimates', () => {
+    const automatic = changed(
+      adjustAllocationDay(
+        workspace(task({ estimatedHoursMode: 'auto' })),
+        'project-a',
+        'task-a',
+        '2026-01-01',
+        4,
+      ),
+    );
+    expect(automatic.projects[0].tasks[0]).toMatchObject({
+      estimatedHours: 4,
+      estimatedHoursMode: 'auto',
+    });
+
+    const manual = changed(
+      adjustAllocationDay(
+        workspace(task({ estimatedHours: 8 }), [
+          { id: 'existing', taskId: 'task-a', date: '2026-01-01', allocatedHours: 2 },
+        ]),
+        'project-a',
+        'task-a',
+        '2026-01-01',
+        1,
+      ),
+    );
+    expect(manual.projects[0].tasks[0]).toMatchObject({
+      estimatedHours: 8,
+      estimatedHoursMode: 'manual',
+    });
+  });
+
+  it('switches an automatic estimate to manual when the user changes it', () => {
+    const original = workspace(task({ estimatedHoursMode: 'auto' }));
+    const next = changed(
+      saveTask(original, 'project-a', {
+        ...original.projects[0].tasks[0],
+        estimatedHours: 6,
+      }),
+    );
+
+    expect(next.projects[0].tasks[0]).toMatchObject({
+      estimatedHours: 6,
+      estimatedHoursMode: 'manual',
+    });
   });
 
   it('applies a recurring rule as marked allocations and derives total hours', () => {

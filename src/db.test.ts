@@ -40,4 +40,34 @@ describe('workspace persistence', () => {
 
     expect(roots.map(item => item.id)).toEqual(['third', 'first', 'second']);
   });
+
+  it('migrates legacy estimates as manual and syncs explicit automatic estimates', () => {
+    const migrated = migrateWorkspace({
+      version: 5,
+      projects: [
+        {
+          id: 'project-a',
+          name: 'Project A',
+          tasks: [
+            { id: 'legacy', name: 'Legacy', estimatedHours: 8 },
+            { id: 'automatic', name: 'Automatic', estimatedHours: 0, estimatedHoursMode: 'auto' },
+          ],
+        },
+      ],
+      allocations: [
+        { id: 'automatic-allocation', taskId: 'automatic', date: '2026-01-01', allocatedHours: 3 },
+      ],
+    });
+
+    expect(migrated.projects[0].tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'legacy', estimatedHours: 8, estimatedHoursMode: 'manual' }),
+        expect.objectContaining({
+          id: 'automatic',
+          estimatedHours: 3,
+          estimatedHoursMode: 'auto',
+        }),
+      ]),
+    );
+  });
 });

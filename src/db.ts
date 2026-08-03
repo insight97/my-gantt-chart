@@ -64,6 +64,7 @@ function migrateTask(value: Partial<Task> & Record<string, unknown>, order = 0):
       typeof value.estimatedHours === 'number' && Number.isFinite(value.estimatedHours)
         ? Math.max(0, value.estimatedHours)
         : 0,
+    estimatedHoursMode: value.estimatedHoursMode === 'auto' ? 'auto' : 'manual',
     priority:
       value.priority === 'low' || value.priority === 'high' || value.priority === 'medium'
         ? value.priority

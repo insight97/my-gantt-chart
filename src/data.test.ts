@@ -18,11 +18,36 @@ import {
 import { buildTaskTree, emptyTask, partitionProjectTasks, validateImport } from './data';
 import type { Allocation, Project, Task } from './types';
 
-const task = (overrides: Partial<Task> = {}): Task => ({ ...emptyTask(), ...overrides });
+const task = (overrides: Partial<Task> = {}): Task => ({
+  ...emptyTask(),
+  ...overrides,
+  ...(Object.prototype.hasOwnProperty.call(overrides, 'estimatedHours') &&
+  overrides.estimatedHoursMode === undefined
+    ? { estimatedHoursMode: 'manual' as const }
+    : {}),
+});
 
 describe('容量 domain', () => {
   it('新工作項目的預設預估工時為 0', () => {
     expect(emptyTask().estimatedHours).toBe(0);
+    expect(emptyTask().estimatedHoursMode).toBe('auto');
+  });
+
+  it('自動預估工時跟隨已安排工時，且尚未安排時列為待安排', () => {
+    const unplanned = task({ id: 'unplanned', estimatedHoursMode: 'auto' });
+    const planned = task({ id: 'planned', estimatedHoursMode: 'auto' });
+    const allocations = [
+      { id: 'planned-allocation', taskId: planned.id, date: '2026-01-01', allocatedHours: 4 },
+    ];
+
+    expect(getTaskPendingHours(planned, allocations)).toBe(0);
+    expect(
+      getWorkspaceCapacityMetrics(
+        [{ ...({} as Project), tasks: [unplanned, planned] }],
+        allocations,
+        '2026-01-01',
+      ).pendingTaskCount,
+    ).toBe(1);
   });
 
   it('以固定 24 小時計算每日剩餘容量', () => {
