@@ -116,6 +116,32 @@ describe('Work Item hierarchy UI', () => {
     expect(screen.getByRole('button', { name: '顯示已完成（0）' })).toBeDisabled();
   });
 
+  it('stretches the planning divider and keeps timeline dates sticky', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [workItem('timeline-task', '時間軸工作', { status: 'scheduled' })],
+        [],
+        [{ id: 'allocation-a', taskId: 'timeline-task', date: '2026-08-03', allocatedHours: 2 }],
+      ),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(document.querySelector('.planning-layout')).toBeInTheDocument());
+
+    const planningLayout = document.querySelector('.planning-layout') as HTMLElement;
+    expect(planningLayout.style.alignItems).toBe('stretch');
+    const dateHeader = document.querySelector('.timeline-header-sticky');
+    expect(dateHeader).toBeInTheDocument();
+    expect((dateHeader as HTMLElement).style.position).toBe('sticky');
+    expect((dateHeader as HTMLElement).style.top).toBe('66px');
+
+    const timeline = document.querySelector('.timeline') as HTMLElement;
+    const headerCanvas = document.querySelector('.timeline-header-canvas') as HTMLElement;
+    timeline.scrollLeft = 120;
+    fireEvent.scroll(timeline);
+    await waitFor(() => expect(headerCanvas.style.transform).toBe('translateX(-120px)'));
+  });
+
   it('deletes a task immediately and restores it with undo', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '可復原工作')]));
     render(<App />);

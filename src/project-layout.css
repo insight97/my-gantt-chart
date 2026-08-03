@@ -132,7 +132,7 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 7px 22px #18334c0b;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .project-card-header {
