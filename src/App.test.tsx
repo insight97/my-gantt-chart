@@ -130,6 +130,9 @@ describe('Work Item hierarchy UI', () => {
 
     const planningLayout = document.querySelector('.planning-layout') as HTMLElement;
     expect(planningLayout.style.alignItems).toBe('stretch');
+    const sidebarHeader = document.querySelector('.capacity-gantt-head') as HTMLElement;
+    expect(sidebarHeader.style.position).toBe('sticky');
+    expect(sidebarHeader.style.top).toBe('66px');
     const dateHeader = document.querySelector('.timeline-header-sticky');
     expect(dateHeader).toBeInTheDocument();
     expect((dateHeader as HTMLElement).style.position).toBe('sticky');

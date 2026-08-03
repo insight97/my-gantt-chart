@@ -533,7 +533,13 @@ function GanttSidebar({
     >
       <div
         className="gantt-head capacity-gantt-head"
-        style={{ height: headerHeight, paddingTop: TIMELINE_CONTEXT_ROW_HEIGHT }}
+        style={{
+          height: headerHeight,
+          paddingTop: TIMELINE_CONTEXT_ROW_HEIGHT,
+          position: 'sticky',
+          top: '66px',
+          zIndex: 10,
+        }}
       >
         <span>Timeline Task</span>
         <small>工時摘要／操作</small>

@@ -415,7 +415,7 @@ h1 {
 .gantt-sidebar {
   background: #fff;
   border-right: 1px solid #cbd6de;
-  z-index: 2;
+  z-index: 9;
 }
 .gantt-head {
   height: 48px;
@@ -428,6 +428,11 @@ h1 {
   color: #6c7e8b;
   background: #f7f9fa;
   border-bottom: 1px solid var(--line);
+}
+.capacity-gantt-head {
+  position: sticky;
+  top: 66px;
+  z-index: 10;
 }
 .gantt-side-row {
   height: 70px;
