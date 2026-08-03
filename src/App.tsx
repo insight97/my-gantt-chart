@@ -752,14 +752,13 @@ export default function App() {
               >
                 {allExpanded ? '全部收合' : '全部展開'}
               </button>
-              {completedTaskCount > 0 && (
-                <button
-                  aria-pressed={showCompletedTasks}
-                  onClick={() => setShowCompletedTasks(value => !value)}
-                >
-                  {showCompletedTasks ? '隱藏已完成' : `顯示已完成（${completedTaskCount}）`}
-                </button>
-              )}
+              <button
+                aria-pressed={showCompletedTasks}
+                disabled={!completedTaskCount}
+                onClick={() => setShowCompletedTasks(value => !value)}
+              >
+                {showCompletedTasks ? '隱藏已完成' : `顯示已完成（${completedTaskCount}）`}
+              </button>
               <button className="primary" onClick={addProject}>
                 ＋ 新增工作項目
               </button>

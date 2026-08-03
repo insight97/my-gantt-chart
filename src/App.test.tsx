@@ -113,6 +113,7 @@ describe('Work Item hierarchy UI', () => {
     expect(metrics).toHaveTextContent('1 件');
     expect(metrics).not.toHaveTextContent('每日容量');
     expect(metrics).not.toHaveTextContent('葉節點');
+    expect(screen.getByRole('button', { name: '顯示已完成（0）' })).toBeDisabled();
   });
 
   it('deletes a task immediately and restores it with undo', async () => {
