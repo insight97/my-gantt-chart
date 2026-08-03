@@ -21,6 +21,7 @@ const task: Task = {
   end: '2026-07-18',
   deadline: null,
   estimatedHours: 8,
+  estimatedHoursMode: 'manual',
   priority: 'medium',
   status: 'scheduled',
   notes: '',
