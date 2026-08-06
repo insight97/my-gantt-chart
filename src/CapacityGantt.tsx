@@ -1,7 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import { allocatedHoursByDate, isTaskOverdue, today } from './capacity';
-import { hoursLabel } from './formatters';
+import {
+  allocatedHoursByDate,
+  DEFAULT_DAILY_CAPACITY_HOURS,
+  isTaskOverdue,
+  today,
+} from './capacity';
+import { hoursLabel, weekdayDateLabel } from './formatters';
 import { aggregateTaskAllocations, aggregateTaskEstimate } from './data';
 import TaskCard from './TaskCard';
 import { pointerLeftElement, taskRowDropRelation } from './task-drag';
@@ -173,6 +178,127 @@ function TimelineHeader({
         scale={scale}
       />
     </div>
+  );
+}
+
+type DailyDistributionSegment = {
+  task: Task;
+  hours: number;
+  startHour: number;
+  visibleHours: number;
+};
+
+function distributionTasks(tasks: Task[], taskTree: TaskTreeIndex) {
+  const displayedIds = new Set(tasks.map(task => task.id));
+  return tasks.filter(task => {
+    if (!taskTree.hasChildren(task.id)) return true;
+    return ![...taskTree.descendants(task.id)].some(taskId => displayedIds.has(taskId));
+  });
+}
+
+function DailyDistributionTable({
+  dates,
+  tasks,
+  taskTree,
+  hoursByTask,
+}: {
+  dates: string[];
+  tasks: Task[];
+  taskTree: TaskTreeIndex;
+  hoursByTask: Map<string, Map<string, number>>;
+}) {
+  const displayTasks = distributionTasks(tasks, taskTree);
+  const rows = dates.map(date => {
+    let allocated = 0;
+    const segments: DailyDistributionSegment[] = [];
+    for (const task of displayTasks) {
+      const hours = hoursByTask.get(task.id)?.get(date) || 0;
+      if (hours <= 0) continue;
+      const startHour = allocated;
+      allocated += hours;
+      const visibleStart = Math.min(DEFAULT_DAILY_CAPACITY_HOURS, startHour);
+      const visibleEnd = Math.min(DEFAULT_DAILY_CAPACITY_HOURS, allocated);
+      if (visibleEnd > visibleStart)
+        segments.push({
+          task,
+          hours,
+          startHour,
+          visibleHours: visibleEnd - visibleStart,
+        });
+    }
+    return { date, allocated, segments };
+  });
+
+  return (
+    <section className="daily-distribution" aria-label="每日時間分佈">
+      <div className="daily-distribution-heading">
+        <h3>每日時間分佈</h3>
+      </div>
+      <div className="daily-distribution-scroll">
+        <table className="daily-distribution-table">
+          <thead>
+            <tr>
+              <th scope="col">日期</th>
+              <th scope="col">
+                <div className="daily-distribution-axis" aria-hidden="true">
+                  {[0, 6, 12, 18, 24].map(hour => (
+                    <span key={hour} style={{ left: `${(hour / 24) * 100}%` }}>
+                      {hour}h
+                    </span>
+                  ))}
+                </div>
+              </th>
+              <th scope="col">已排</th>
+              <th scope="col">空閒</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ date, allocated, segments }) => {
+              const overloaded = allocated > DEFAULT_DAILY_CAPACITY_HOURS;
+              const description = segments.length
+                ? segments
+                    .map(segment => `${segment.task.name} ${hoursLabel(segment.hours)}`)
+                    .join('、')
+                : '尚未安排工時';
+              return (
+                <tr key={date}>
+                  <th scope="row">{weekdayDateLabel(date)}</th>
+                  <td>
+                    <div
+                      className={`daily-distribution-track${overloaded ? ' overloaded' : ''}${segments.length ? '' : ' empty'}`}
+                      aria-label={`${weekdayDateLabel(date)}：${description}${overloaded ? '，超過每日容量' : ''}`}
+                    >
+                      {segments.map(segment => (
+                        <span
+                          className="daily-distribution-segment"
+                          key={segment.task.id}
+                          role="img"
+                          aria-label={`${segment.task.name} ${hoursLabel(segment.hours)}`}
+                          title={`${segment.task.name} · ${hoursLabel(segment.hours)}`}
+                          style={
+                            {
+                              left: `${(segment.startHour / DEFAULT_DAILY_CAPACITY_HOURS) * 100}%`,
+                              width: `${(segment.visibleHours / DEFAULT_DAILY_CAPACITY_HOURS) * 100}%`,
+                              '--task-color': segment.task.color,
+                            } as CSSProperties
+                          }
+                        />
+                      ))}
+                    </div>
+                  </td>
+                  <td className={overloaded ? 'daily-distribution-overloaded' : ''}>
+                    {hoursLabel(allocated)}
+                  </td>
+                  <td className={overloaded ? 'daily-distribution-overloaded' : ''}>
+                    {hoursLabel(DEFAULT_DAILY_CAPACITY_HOURS - allocated)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -656,6 +782,7 @@ export default function CapacityGantt({
   const layoutRef = useRef<{ key: string; periods: TimelinePeriod[]; scale: number } | null>(null);
   const skipScrollSyncRef = useRef(false);
   const [panning, setPanning] = useState(false);
+  const [showDailyDistribution, setShowDailyDistribution] = useState(false);
   const suppressClickRef = useRef(false);
   const view = timelineZoom.view;
   const scale = timelineScale(view, timelineZoom.pixelsPerDay);
@@ -693,6 +820,7 @@ export default function CapacityGantt({
     for (const [taskId, items] of taskAllocations) index.set(taskId, allocatedHoursByDate(items));
     return index;
   }, [taskAllocations]);
+  const dailyDistributionDates = useMemo(() => periods.flatMap(period => period.dates), [periods]);
 
   const latestRef = useRef({ timelineZoom, periods, scale, onZoomChange });
   const isTimelineGroupDrag =
@@ -906,6 +1034,15 @@ export default function CapacityGantt({
               : '滑鼠滾輪縮放、拖曳平移時間軸'}
           </small>
         </div>
+        <button
+          className="daily-distribution-toggle"
+          type="button"
+          aria-expanded={showDailyDistribution}
+          aria-controls="daily-distribution-table"
+          onClick={() => setShowDailyDistribution(value => !value)}
+        >
+          {showDailyDistribution ? '隱藏每日分佈' : '顯示每日分佈'}
+        </button>
       </div>
       <div className="gantt">
         <GanttSidebar
@@ -986,6 +1123,16 @@ export default function CapacityGantt({
           </div>
         </div>
       </div>
+      {showDailyDistribution && (
+        <div id="daily-distribution-table">
+          <DailyDistributionTable
+            dates={dailyDistributionDates}
+            tasks={tasks}
+            taskTree={taskTree}
+            hoursByTask={hoursByTask}
+          />
+        </div>
+      )}
     </section>
   );
 }
