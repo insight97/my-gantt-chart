@@ -45,6 +45,9 @@ const workItem = (id: string, name: string, overrides: Partial<Task> = {}): Task
     : {}),
 });
 
+const taskCardText = (name: string) =>
+  screen.getAllByText(name).find(element => element.closest('.task-card'))!;
+
 const workspace = (
   tasks: Task[],
   extraProjects: Project[] = [],
@@ -150,9 +153,6 @@ describe('Work Item hierarchy UI', () => {
   });
 
   it('shows daily distribution in a separate table', async () => {
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    const scrollIntoView = vi.fn();
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
     loadWorkspaceMock.mockResolvedValue(
       workspace(
         [
@@ -166,34 +166,38 @@ describe('Work Item hierarchy UI', () => {
         ],
       ),
     );
-    try {
-      render(<App />);
+    render(<App />);
 
-      await waitFor(() => expect(screen.getByText('分佈工作 A')).toBeInTheDocument());
-      expect(screen.queryByRole('region', { name: '每日時間分佈' })).not.toBeInTheDocument();
+    await waitFor(() => expect(taskCardText('分佈工作 A')).toBeInTheDocument());
 
-      fireEvent.click(screen.getByRole('button', { name: '顯示每日分佈' }));
+    const distribution = await screen.findByRole('region', { name: '每日時間分佈' });
+    expect(distribution).toHaveTextContent('每日時間分佈');
+    expect(distribution).toHaveTextContent('分佈工作 A');
+    expect(distribution).toHaveTextContent('分佈工作 B');
+    expect(distribution).toHaveTextContent('剩餘');
+    expect(distribution).not.toHaveTextContent('已排');
+    expect(distribution.querySelectorAll('.daily-distribution-segment')).toHaveLength(2);
+    expect(distribution.querySelector('.daily-distribution-today')).toBeInTheDocument();
+    expect(distribution.querySelector('.daily-distribution-today-label')).toHaveTextContent('今天');
+    const allocatedTrack = Array.from(
+      distribution.querySelectorAll('.daily-distribution-track'),
+    ).find(track => track.getAttribute('aria-label')?.includes('分佈工作 A 4h'));
+    expect(allocatedTrack).toHaveAttribute('aria-label', expect.stringContaining('分佈工作 B 2h'));
+    expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
+    expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '多→少' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '顯示第 3 層' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
 
-      const distribution = await screen.findByRole('region', { name: '每日時間分佈' });
-      expect(distribution).toHaveTextContent('每日時間分佈');
-      expect(distribution).toHaveTextContent('分佈工作 A');
-      expect(distribution).toHaveTextContent('分佈工作 B');
-      expect(distribution).toHaveTextContent('剩餘');
-      expect(distribution).not.toHaveTextContent('已排');
-      expect(distribution.querySelectorAll('.daily-distribution-segment')).toHaveLength(2);
-      const allocatedTrack = Array.from(
-        distribution.querySelectorAll('.daily-distribution-track'),
-      ).find(track => track.getAttribute('aria-label')?.includes('分佈工作 A 4h'));
-      expect(allocatedTrack).toHaveAttribute(
-        'aria-label',
-        expect.stringContaining('分佈工作 B 2h'),
-      );
-      expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
-      expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
+    fireEvent.click(screen.getByRole('button', { name: '少→多' }));
+    expect(screen.getByRole('button', { name: '少→多' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '顯示第 1 層' }));
+    expect(screen.getByRole('button', { name: '顯示第 1 層' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it('deletes a task immediately and restores it with undo', async () => {
@@ -300,9 +304,9 @@ describe('Work Item hierarchy UI', () => {
       ),
     );
     render(<App />);
-    await waitFor(() => expect(screen.getByText('可清除例會')).toBeInTheDocument());
+    await waitFor(() => expect(taskCardText('可清除例會')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText('可清除例會'));
+    fireEvent.click(taskCardText('可清除例會'));
     fireEvent.click(screen.getByRole('button', { name: '清除排程' }));
 
     await waitFor(() =>
@@ -698,13 +702,13 @@ describe('Work Item hierarchy UI', () => {
       ),
     );
     render(<App />);
-    await waitFor(() => expect(screen.getByText('父工作')).toBeInTheDocument());
+    await waitFor(() => expect(taskCardText('父工作')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: '新增 父工作 的子任務' }));
     fireEvent.change(screen.getByLabelText('Task 名稱'), { target: { value: '新子工作' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
 
-    await waitFor(() => expect(screen.getByText('未拆分工作')).toBeInTheDocument());
+    await waitFor(() => expect(taskCardText('未拆分工作')).toBeInTheDocument());
     expect(screen.getByText('新子工作')).toBeInTheDocument();
   });
 

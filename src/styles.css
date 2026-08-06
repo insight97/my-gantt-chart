@@ -507,6 +507,9 @@ h1 {
 .daily-distribution-heading {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   min-height: 24px;
   margin-bottom: 8px;
 }
@@ -514,6 +517,36 @@ h1 {
   margin: 0;
   color: #536a79;
   font-size: 13px;
+}
+.daily-distribution-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #71808e;
+  font-size: 10px;
+}
+.daily-distribution-control-group {
+  display: flex;
+}
+.daily-distribution-control-group button {
+  margin-left: -1px;
+  padding: 4px 6px;
+  border-radius: 0;
+  color: #536a79;
+  font-size: 10px;
+}
+.daily-distribution-control-group button:first-child {
+  margin-left: 0;
+  border-radius: 5px 0 0 5px;
+}
+.daily-distribution-control-group button:last-child {
+  border-radius: 0 5px 5px 0;
+}
+.daily-distribution-control-group button.active {
+  background: #e7f0f7;
+  border-color: #8eb5ce;
+  color: #174f7c;
+  font-weight: 700;
 }
 .daily-distribution-scroll {
   max-height: 460px;
@@ -559,6 +592,23 @@ h1 {
 .daily-distribution-table tbody th {
   color: #536a79;
   font-weight: 600;
+}
+.daily-distribution-table tbody tr.daily-distribution-today th,
+.daily-distribution-table tbody tr.daily-distribution-today td {
+  background: #f1f7fb;
+}
+.daily-distribution-table tbody tr.daily-distribution-today th {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.daily-distribution-today-label {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #e2f0fa;
+  color: #174f7c;
+  font-size: 9px;
+  font-weight: 700;
 }
 .daily-distribution-axis {
   position: relative;
@@ -641,11 +691,6 @@ h1 {
 .daily-distribution-overloaded {
   color: #a33d36;
   font-weight: 700;
-}
-.daily-distribution-toggle {
-  padding: 6px 9px;
-  color: #426074;
-  font-size: 11px;
 }
 .timeline-header-sticky {
   position: sticky;

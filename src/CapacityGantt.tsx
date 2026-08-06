@@ -188,12 +188,41 @@ type DailyDistributionSegment = {
   visibleHours: number;
 };
 
-function distributionTasks(tasks: Task[], taskTree: TaskTreeIndex) {
+type DailyDistributionAllocationOrder = 'ascending' | 'descending';
+
+function distributionSourceTasks(tasks: Task[], allTasks: Task[], taskTree: TaskTreeIndex) {
+  const completedVisible = tasks.some(task => task.status === 'completed');
+  const sourceIds = new Set<string>();
+  for (const task of allTasks) {
+    if (
+      taskTree.hasChildren(task.id) ||
+      task.status === 'backlog' ||
+      (task.status === 'completed' && !completedVisible)
+    )
+      continue;
+    let current: Task | undefined = task;
+    while (current) {
+      sourceIds.add(current.id);
+      const parentId = taskTree.parentId(current.id);
+      current = parentId ? taskTree.task(parentId) : undefined;
+    }
+  }
+  return allTasks.filter(task => sourceIds.has(task.id));
+}
+
+function distributionTasksAtDepth(tasks: Task[], taskTree: TaskTreeIndex, maxDepth: number) {
   const displayedIds = new Set(tasks.map(task => task.id));
-  return tasks.filter(task => {
-    if (!taskTree.hasChildren(task.id)) return true;
-    return ![...taskTree.descendants(task.id)].some(taskId => displayedIds.has(taskId));
-  });
+  const visit = (task: Task): Task[] => {
+    const children = taskTree.children(task.id).filter(child => displayedIds.has(child.id));
+    if (taskTree.depth(task.id) >= maxDepth || !children.length) return [task];
+    return children.flatMap(visit);
+  };
+  return tasks
+    .filter(task => {
+      const parentId = taskTree.parentId(task.id);
+      return !parentId || !displayedIds.has(parentId);
+    })
+    .flatMap(visit);
 }
 
 function DailyDistributionTable({
@@ -201,24 +230,47 @@ function DailyDistributionTable({
   tasks,
   taskTree,
   hoursByTask,
+  allocationOrder,
+  hierarchyDepth,
+  onAllocationOrderChange,
+  onHierarchyDepthChange,
 }: {
   dates: string[];
   tasks: Task[];
   taskTree: TaskTreeIndex;
   hoursByTask: Map<string, Map<string, number>>;
+  allocationOrder: DailyDistributionAllocationOrder;
+  hierarchyDepth: number;
+  onAllocationOrderChange: (order: DailyDistributionAllocationOrder) => void;
+  onHierarchyDepthChange: (depth: number) => void;
 }) {
-  const displayTasks = distributionTasks(tasks, taskTree);
+  const displayTasks = distributionTasksAtDepth(tasks, taskTree, hierarchyDepth);
   const todayDate = today();
   const todayRowRef = useRef<HTMLTableRowElement>(null);
+  const distributionScrollRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
+    const container = distributionScrollRef.current;
     const row = todayRowRef.current;
-    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'center' });
+    if (!container || !row) return;
+    const containerBounds = container.getBoundingClientRect();
+    const rowBounds = row.getBoundingClientRect();
+    const rowCenter = rowBounds.top + rowBounds.height / 2;
+    const containerCenter = containerBounds.top + container.clientHeight / 2;
+    if (rowCenter < containerBounds.top || rowCenter > containerBounds.bottom)
+      container.scrollTop += rowCenter - containerCenter;
   }, [dates]);
   const rows = dates.map(date => {
     let allocated = 0;
     const segments: DailyDistributionSegment[] = [];
-    for (const task of displayTasks) {
-      const hours = hoursByTask.get(task.id)?.get(date) || 0;
+    const taskHours = displayTasks
+      .map((task, index) => ({ task, index, hours: hoursByTask.get(task.id)?.get(date) || 0 }))
+      .filter(item => item.hours > 0)
+      .sort((left, right) => {
+        const difference =
+          allocationOrder === 'descending' ? right.hours - left.hours : left.hours - right.hours;
+        return difference || left.index - right.index;
+      });
+    for (const { task, hours } of taskHours) {
       if (hours <= 0) continue;
       const startHour = allocated;
       allocated += hours;
@@ -239,8 +291,48 @@ function DailyDistributionTable({
     <section className="daily-distribution" aria-label="每日時間分佈">
       <div className="daily-distribution-heading">
         <h3>每日時間分佈</h3>
+        <div className="daily-distribution-controls">
+          <span>Allocation</span>
+          <div
+            className="daily-distribution-control-group"
+            role="group"
+            aria-label="Allocation 排序"
+          >
+            <button
+              className={allocationOrder === 'descending' ? 'active' : ''}
+              type="button"
+              aria-pressed={allocationOrder === 'descending'}
+              onClick={() => onAllocationOrderChange('descending')}
+            >
+              多→少
+            </button>
+            <button
+              className={allocationOrder === 'ascending' ? 'active' : ''}
+              type="button"
+              aria-pressed={allocationOrder === 'ascending'}
+              onClick={() => onAllocationOrderChange('ascending')}
+            >
+              少→多
+            </button>
+          </div>
+          <span>層級</span>
+          <div className="daily-distribution-control-group" role="group" aria-label="顯示任務層級">
+            {[1, 2, 3].map(depth => (
+              <button
+                className={hierarchyDepth === depth ? 'active' : ''}
+                key={depth}
+                type="button"
+                aria-pressed={hierarchyDepth === depth}
+                aria-label={`顯示第 ${depth} 層`}
+                onClick={() => onHierarchyDepthChange(depth)}
+              >
+                第{depth}層
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-      <div className="daily-distribution-scroll">
+      <div className="daily-distribution-scroll" ref={distributionScrollRef}>
         <table className="daily-distribution-table">
           <colgroup>
             <col className="daily-distribution-date-column" />
@@ -271,8 +363,17 @@ function DailyDistributionTable({
                     .join('、')
                 : '尚未安排工時';
               return (
-                <tr key={date} ref={date === todayDate ? todayRowRef : undefined}>
-                  <th scope="row">{weekdayDateLabel(date)}</th>
+                <tr
+                  className={date === todayDate ? 'daily-distribution-today' : ''}
+                  key={date}
+                  ref={date === todayDate ? todayRowRef : undefined}
+                >
+                  <th scope="row">
+                    <span>{weekdayDateLabel(date)}</span>
+                    {date === todayDate ? (
+                      <span className="daily-distribution-today-label">今天</span>
+                    ) : null}
+                  </th>
                   <td>
                     <div
                       className={`daily-distribution-track${overloaded ? ' overloaded' : ''}${segments.length ? '' : ' empty'}`}
@@ -793,7 +894,9 @@ export default function CapacityGantt({
   const layoutRef = useRef<{ key: string; periods: TimelinePeriod[]; scale: number } | null>(null);
   const skipScrollSyncRef = useRef(false);
   const [panning, setPanning] = useState(false);
-  const [showDailyDistribution, setShowDailyDistribution] = useState(false);
+  const [dailyDistributionOrder, setDailyDistributionOrder] =
+    useState<DailyDistributionAllocationOrder>('descending');
+  const [dailyDistributionDepth, setDailyDistributionDepth] = useState(3);
   const suppressClickRef = useRef(false);
   const view = timelineZoom.view;
   const scale = timelineScale(view, timelineZoom.pixelsPerDay);
@@ -831,6 +934,20 @@ export default function CapacityGantt({
     for (const [taskId, items] of taskAllocations) index.set(taskId, allocatedHoursByDate(items));
     return index;
   }, [taskAllocations]);
+  const dailyDistributionTasks = useMemo(
+    () => distributionSourceTasks(tasks, allTasks, taskTree),
+    [tasks, allTasks, taskTree],
+  );
+  const dailyDistributionHoursByTask = useMemo(() => {
+    const index = new Map<string, Map<string, number>>();
+    for (const task of dailyDistributionTasks) {
+      index.set(
+        task.id,
+        allocatedHoursByDate(aggregateTaskAllocations(task.id, allTasks, allocations, taskTree)),
+      );
+    }
+    return index;
+  }, [dailyDistributionTasks, allTasks, allocations, taskTree]);
   const dailyDistributionDates = useMemo(() => periods.flatMap(period => period.dates), [periods]);
 
   const latestRef = useRef({ timelineZoom, periods, scale, onZoomChange });
@@ -1045,15 +1162,6 @@ export default function CapacityGantt({
               : '滑鼠滾輪縮放、拖曳平移時間軸'}
           </small>
         </div>
-        <button
-          className="daily-distribution-toggle"
-          type="button"
-          aria-expanded={showDailyDistribution}
-          aria-controls="daily-distribution-table"
-          onClick={() => setShowDailyDistribution(value => !value)}
-        >
-          {showDailyDistribution ? '隱藏每日分佈' : '顯示每日分佈'}
-        </button>
       </div>
       <div className="gantt">
         <GanttSidebar
@@ -1134,16 +1242,16 @@ export default function CapacityGantt({
           </div>
         </div>
       </div>
-      {showDailyDistribution && (
-        <div id="daily-distribution-table">
-          <DailyDistributionTable
-            dates={dailyDistributionDates}
-            tasks={tasks}
-            taskTree={taskTree}
-            hoursByTask={hoursByTask}
-          />
-        </div>
-      )}
+      <DailyDistributionTable
+        dates={dailyDistributionDates}
+        tasks={dailyDistributionTasks}
+        taskTree={taskTree}
+        hoursByTask={dailyDistributionHoursByTask}
+        allocationOrder={dailyDistributionOrder}
+        hierarchyDepth={dailyDistributionDepth}
+        onAllocationOrderChange={setDailyDistributionOrder}
+        onHierarchyDepthChange={setDailyDistributionDepth}
+      />
     </section>
   );
 }
