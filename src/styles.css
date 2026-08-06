@@ -531,11 +531,17 @@ h1 {
 }
 .daily-distribution-table th,
 .daily-distribution-table td {
-  height: 32px;
+  height: 48px;
   padding: 4px 8px;
   border-bottom: 1px solid #edf0f2;
   text-align: left;
   white-space: nowrap;
+}
+.daily-distribution-date-column {
+  width: 100px;
+}
+.daily-distribution-remaining-column {
+  width: 58px;
 }
 .daily-distribution-table thead th {
   position: sticky;
@@ -547,15 +553,7 @@ h1 {
   font-size: 10px;
   font-weight: 700;
 }
-.daily-distribution-table thead th:first-child,
-.daily-distribution-table tbody th {
-  width: 100px;
-}
-.daily-distribution-table thead th:nth-child(3),
-.daily-distribution-table thead th:nth-child(4),
-.daily-distribution-table tbody td:nth-child(3),
-.daily-distribution-table tbody td:nth-child(4) {
-  width: 58px;
+.daily-distribution-table tbody td:last-child {
   text-align: right;
 }
 .daily-distribution-table tbody th {
@@ -564,7 +562,7 @@ h1 {
 }
 .daily-distribution-axis {
   position: relative;
-  height: 28px;
+  height: 30px;
   min-width: 280px;
 }
 .daily-distribution-axis span {
@@ -583,8 +581,11 @@ h1 {
 }
 .daily-distribution-track {
   position: relative;
-  height: 22px;
+  display: block;
+  height: 38px;
+  width: 100%;
   min-width: 280px;
+  box-sizing: border-box;
   overflow: hidden;
   border: 1px solid #e1e8ec;
   background-color: #f8fafb;
@@ -616,12 +617,26 @@ h1 {
 }
 .daily-distribution-segment {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  display: flex;
+  align-items: center;
+  top: 4px;
+  bottom: 4px;
   min-width: 2px;
+  overflow: hidden;
   background: color-mix(in srgb, var(--task-color, #4f9aa3) 58%, #fff);
   border-right: 1px solid #fff;
   cursor: help;
+}
+.daily-distribution-segment-label {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 6px;
+  color: #24566a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .daily-distribution-overloaded {
   color: #a33d36;
