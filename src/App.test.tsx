@@ -150,6 +150,9 @@ describe('Work Item hierarchy UI', () => {
   });
 
   it('shows daily distribution in a separate table', async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
     loadWorkspaceMock.mockResolvedValue(
       workspace(
         [
@@ -163,22 +166,34 @@ describe('Work Item hierarchy UI', () => {
         ],
       ),
     );
-    render(<App />);
+    try {
+      render(<App />);
 
-    await waitFor(() => expect(screen.getByText('分佈工作 A')).toBeInTheDocument());
-    expect(screen.queryByRole('region', { name: '每日時間分佈' })).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText('分佈工作 A')).toBeInTheDocument());
+      expect(screen.queryByRole('region', { name: '每日時間分佈' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '顯示每日分佈' }));
+      fireEvent.click(screen.getByRole('button', { name: '顯示每日分佈' }));
 
-    const distribution = await screen.findByRole('region', { name: '每日時間分佈' });
-    expect(distribution).toHaveTextContent('每日時間分佈');
-    expect(distribution.querySelectorAll('.daily-distribution-segment')).toHaveLength(2);
-    const allocatedTrack = Array.from(
-      distribution.querySelectorAll('.daily-distribution-track'),
-    ).find(track => track.getAttribute('aria-label')?.includes('分佈工作 A 4h'));
-    expect(allocatedTrack).toHaveAttribute('aria-label', expect.stringContaining('分佈工作 B 2h'));
-    expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
-    expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
+      const distribution = await screen.findByRole('region', { name: '每日時間分佈' });
+      expect(distribution).toHaveTextContent('每日時間分佈');
+      expect(distribution).toHaveTextContent('分佈工作 A');
+      expect(distribution).toHaveTextContent('分佈工作 B');
+      expect(distribution).toHaveTextContent('剩餘');
+      expect(distribution).not.toHaveTextContent('已排');
+      expect(distribution.querySelectorAll('.daily-distribution-segment')).toHaveLength(2);
+      const allocatedTrack = Array.from(
+        distribution.querySelectorAll('.daily-distribution-track'),
+      ).find(track => track.getAttribute('aria-label')?.includes('分佈工作 A 4h'));
+      expect(allocatedTrack).toHaveAttribute(
+        'aria-label',
+        expect.stringContaining('分佈工作 B 2h'),
+      );
+      expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
+      expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it('deletes a task immediately and restores it with undo', async () => {

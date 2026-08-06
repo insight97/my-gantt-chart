@@ -208,6 +208,12 @@ function DailyDistributionTable({
   hoursByTask: Map<string, Map<string, number>>;
 }) {
   const displayTasks = distributionTasks(tasks, taskTree);
+  const todayDate = today();
+  const todayRowRef = useRef<HTMLTableRowElement>(null);
+  useLayoutEffect(() => {
+    const row = todayRowRef.current;
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'center' });
+  }, [dates]);
   const rows = dates.map(date => {
     let allocated = 0;
     const segments: DailyDistributionSegment[] = [];
@@ -236,6 +242,11 @@ function DailyDistributionTable({
       </div>
       <div className="daily-distribution-scroll">
         <table className="daily-distribution-table">
+          <colgroup>
+            <col className="daily-distribution-date-column" />
+            <col className="daily-distribution-timeline-column" />
+            <col className="daily-distribution-remaining-column" />
+          </colgroup>
           <thead>
             <tr>
               <th scope="col">日期</th>
@@ -248,8 +259,7 @@ function DailyDistributionTable({
                   ))}
                 </div>
               </th>
-              <th scope="col">已排</th>
-              <th scope="col">空閒</th>
+              <th scope="col">剩餘</th>
             </tr>
           </thead>
           <tbody>
@@ -261,7 +271,7 @@ function DailyDistributionTable({
                     .join('、')
                 : '尚未安排工時';
               return (
-                <tr key={date}>
+                <tr key={date} ref={date === todayDate ? todayRowRef : undefined}>
                   <th scope="row">{weekdayDateLabel(date)}</th>
                   <td>
                     <div
@@ -282,12 +292,13 @@ function DailyDistributionTable({
                               '--task-color': segment.task.color,
                             } as CSSProperties
                           }
-                        />
+                        >
+                          <span className="daily-distribution-segment-label">
+                            {segment.task.name}
+                          </span>
+                        </span>
                       ))}
                     </div>
-                  </td>
-                  <td className={overloaded ? 'daily-distribution-overloaded' : ''}>
-                    {hoursLabel(allocated)}
                   </td>
                   <td className={overloaded ? 'daily-distribution-overloaded' : ''}>
                     {hoursLabel(DEFAULT_DAILY_CAPACITY_HOURS - allocated)}
