@@ -149,6 +149,38 @@ describe('Work Item hierarchy UI', () => {
     await waitFor(() => expect(headerCanvas.style.transform).toBe('translateX(-120px)'));
   });
 
+  it('shows daily distribution in a separate table', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [
+          workItem('task-a', '分佈工作 A', { status: 'scheduled' }),
+          workItem('task-b', '分佈工作 B', { status: 'scheduled' }),
+        ],
+        [],
+        [
+          { id: 'allocation-a', taskId: 'task-a', date: '2026-08-03', allocatedHours: 4 },
+          { id: 'allocation-b', taskId: 'task-b', date: '2026-08-03', allocatedHours: 2 },
+        ],
+      ),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText('分佈工作 A')).toBeInTheDocument());
+    expect(screen.queryByRole('region', { name: '每日時間分佈' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '顯示每日分佈' }));
+
+    const distribution = await screen.findByRole('region', { name: '每日時間分佈' });
+    expect(distribution).toHaveTextContent('每日時間分佈');
+    expect(distribution.querySelectorAll('.daily-distribution-segment')).toHaveLength(2);
+    const allocatedTrack = Array.from(
+      distribution.querySelectorAll('.daily-distribution-track'),
+    ).find(track => track.getAttribute('aria-label')?.includes('分佈工作 A 4h'));
+    expect(allocatedTrack).toHaveAttribute('aria-label', expect.stringContaining('分佈工作 B 2h'));
+    expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
+    expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
+  });
+
   it('deletes a task immediately and restores it with undo', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '可復原工作')]));
     render(<App />);
