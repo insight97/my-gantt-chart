@@ -1,18 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import {
-  allocatedHoursByDate,
-  DEFAULT_DAILY_CAPACITY_HOURS,
-  isTaskOverdue,
-  today,
-} from './capacity';
+import { DEFAULT_DAILY_CAPACITY_HOURS, isTaskOverdue, today } from './capacity';
 import { hoursLabel, weekdayDateLabel } from './formatters';
-import { aggregateTaskAllocations, aggregateTaskEstimate } from './data';
+import { aggregateTaskEstimate } from './data';
 import TaskCard from './TaskCard';
 import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
 import type { Allocation, Task, ViewMode } from './types';
 import type { TaskTreeIndex } from './task-tree';
+import { buildDailyDistributionRows, buildTimelineReadModel } from './timeline-read-model';
+import type { DailyDistributionAllocationOrder } from './timeline-read-model';
 import { previewTimelinePlacement } from './workspace-operations';
 import {
   buildTimelineContext,
@@ -181,50 +178,6 @@ function TimelineHeader({
   );
 }
 
-type DailyDistributionSegment = {
-  task: Task;
-  hours: number;
-  startHour: number;
-  visibleHours: number;
-};
-
-type DailyDistributionAllocationOrder = 'ascending' | 'descending';
-
-function distributionSourceTasks(tasks: Task[], allTasks: Task[], taskTree: TaskTreeIndex) {
-  const completedVisible = tasks.some(task => task.status === 'completed');
-  const sourceIds = new Set<string>();
-  for (const task of allTasks) {
-    if (
-      taskTree.hasChildren(task.id) ||
-      task.status === 'backlog' ||
-      (task.status === 'completed' && !completedVisible)
-    )
-      continue;
-    let current: Task | undefined = task;
-    while (current) {
-      sourceIds.add(current.id);
-      const parentId = taskTree.parentId(current.id);
-      current = parentId ? taskTree.task(parentId) : undefined;
-    }
-  }
-  return allTasks.filter(task => sourceIds.has(task.id));
-}
-
-function distributionTasksAtDepth(tasks: Task[], taskTree: TaskTreeIndex, maxDepth: number) {
-  const displayedIds = new Set(tasks.map(task => task.id));
-  const visit = (task: Task): Task[] => {
-    const children = taskTree.children(task.id).filter(child => displayedIds.has(child.id));
-    if (taskTree.depth(task.id) >= maxDepth || !children.length) return [task];
-    return children.flatMap(visit);
-  };
-  return tasks
-    .filter(task => {
-      const parentId = taskTree.parentId(task.id);
-      return !parentId || !displayedIds.has(parentId);
-    })
-    .flatMap(visit);
-}
-
 function DailyDistributionTable({
   dates,
   tasks,
@@ -244,7 +197,6 @@ function DailyDistributionTable({
   onAllocationOrderChange: (order: DailyDistributionAllocationOrder) => void;
   onHierarchyDepthChange: (depth: number) => void;
 }) {
-  const displayTasks = distributionTasksAtDepth(tasks, taskTree, hierarchyDepth);
   const todayDate = today();
   const todayRowRef = useRef<HTMLTableRowElement>(null);
   const distributionScrollRef = useRef<HTMLDivElement>(null);
@@ -259,32 +211,13 @@ function DailyDistributionTable({
     if (rowCenter < containerBounds.top || rowCenter > containerBounds.bottom)
       container.scrollTop += rowCenter - containerCenter;
   }, [dates]);
-  const rows = dates.map(date => {
-    let allocated = 0;
-    const segments: DailyDistributionSegment[] = [];
-    const taskHours = displayTasks
-      .map((task, index) => ({ task, index, hours: hoursByTask.get(task.id)?.get(date) || 0 }))
-      .filter(item => item.hours > 0)
-      .sort((left, right) => {
-        const difference =
-          allocationOrder === 'descending' ? right.hours - left.hours : left.hours - right.hours;
-        return difference || left.index - right.index;
-      });
-    for (const { task, hours } of taskHours) {
-      if (hours <= 0) continue;
-      const startHour = allocated;
-      allocated += hours;
-      const visibleStart = Math.min(DEFAULT_DAILY_CAPACITY_HOURS, startHour);
-      const visibleEnd = Math.min(DEFAULT_DAILY_CAPACITY_HOURS, allocated);
-      if (visibleEnd > visibleStart)
-        segments.push({
-          task,
-          hours,
-          startHour,
-          visibleHours: visibleEnd - visibleStart,
-        });
-    }
-    return { date, allocated, segments };
+  const rows = buildDailyDistributionRows({
+    dates,
+    tasks,
+    taskTree,
+    hoursByTask,
+    allocationOrder,
+    hierarchyDepth,
   });
 
   return (
@@ -910,45 +843,26 @@ export default function CapacityGantt({
   const layoutKey = `${view}:${timelineZoom.pixelsPerDay}:${range.start}:${range.end}`;
 
   // Date/task keyed indexes, so the header and every row read O(1) instead of rescanning allocations per day.
-  const capacityAllocatedByDate = useMemo(
-    () => allocatedHoursByDate(allAllocations),
-    [allAllocations],
+  const {
+    capacityAllocatedByDate,
+    taskAllocations,
+    allocatedByTask,
+    hoursByTask,
+    dailyDistributionTasks,
+    dailyDistributionHoursByTask,
+    dailyDistributionDates,
+  } = useMemo(
+    () =>
+      buildTimelineReadModel({
+        tasks,
+        allTasks,
+        taskTree,
+        allocations,
+        allAllocations,
+        periods,
+      }),
+    [tasks, allTasks, taskTree, allocations, allAllocations, periods],
   );
-  const taskAllocations = useMemo(() => {
-    const index = new Map<string, Allocation[]>();
-    for (const task of tasks)
-      index.set(task.id, aggregateTaskAllocations(task.id, allTasks, allocations, taskTree));
-    return index;
-  }, [tasks, allTasks, allocations, taskTree]);
-  const allocatedByTask = useMemo(() => {
-    const index = new Map<string, number>();
-    for (const [taskId, items] of taskAllocations)
-      index.set(
-        taskId,
-        items.reduce((sum, item) => sum + item.allocatedHours, 0),
-      );
-    return index;
-  }, [taskAllocations]);
-  const hoursByTask = useMemo(() => {
-    const index = new Map<string, Map<string, number>>();
-    for (const [taskId, items] of taskAllocations) index.set(taskId, allocatedHoursByDate(items));
-    return index;
-  }, [taskAllocations]);
-  const dailyDistributionTasks = useMemo(
-    () => distributionSourceTasks(tasks, allTasks, taskTree),
-    [tasks, allTasks, taskTree],
-  );
-  const dailyDistributionHoursByTask = useMemo(() => {
-    const index = new Map<string, Map<string, number>>();
-    for (const task of dailyDistributionTasks) {
-      index.set(
-        task.id,
-        allocatedHoursByDate(aggregateTaskAllocations(task.id, allTasks, allocations, taskTree)),
-      );
-    }
-    return index;
-  }, [dailyDistributionTasks, allTasks, allocations, taskTree]);
-  const dailyDistributionDates = useMemo(() => periods.flatMap(period => period.dates), [periods]);
 
   const latestRef = useRef({ timelineZoom, periods, scale, onZoomChange });
   const isTimelineGroupDrag =
