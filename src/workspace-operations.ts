@@ -480,6 +480,27 @@ export function clearTaskSchedule(
   return updated(replaceTaskAndAllocations(nextWorkspace, nextProject.id, clearedTask, []));
 }
 
+/** Deletes a task subtree and all of its allocations as one workspace transition. */
+export function deleteTask(
+  workspace: WorkspaceData,
+  projectId: string,
+  taskId: string,
+): WorkspaceOperationResult {
+  const project = findProject(workspace, projectId);
+  if (!project || !findTask(project, taskId)) return unchanged();
+
+  const removedIds = buildTaskTree(project.tasks).descendants(taskId);
+  removedIds.add(taskId);
+  return updated(
+    replaceProjectTasksAndAllocations(
+      workspace,
+      projectId,
+      project.tasks.filter(task => !removedIds.has(task.id)),
+      workspace.allocations.filter(allocation => !removedIds.has(allocation.taskId)),
+    ),
+  );
+}
+
 function scheduleTaskTransition(
   workspace: WorkspaceData,
   project: Project,

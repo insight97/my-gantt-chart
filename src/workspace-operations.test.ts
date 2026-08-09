@@ -7,6 +7,7 @@ import {
   adjustAllocationDay,
   autoScheduleTask,
   clearTaskSchedule,
+  deleteTask,
   helpScheduleTask,
   moveTaskGroupToBacklog,
   moveTaskGroupToTimeline,
@@ -597,6 +598,65 @@ describe('workspace operations', () => {
       status: 'scheduled',
       estimatedHours: 6,
       recurrence: original.projects[0].tasks[0].recurrence,
+    });
+  });
+
+  it('deletes a leaf and reconciles its parent estimate while preserving sibling work', () => {
+    const original = workspace(task({ id: 'parent', name: 'Parent', estimatedHours: 99 }), [
+      { id: 'allocation-a', taskId: 'task-a', date: '2026-01-01', allocatedHours: 4 },
+      { id: 'allocation-b', taskId: 'task-b', date: '2026-01-01', allocatedHours: 6 },
+    ]);
+    original.projects[0].tasks.push(
+      task({ id: 'task-a', name: 'Task A', parentId: 'parent', estimatedHours: 4 }),
+      task({ id: 'task-b', name: 'Task B', parentId: 'parent', estimatedHours: 6 }),
+    );
+
+    const next = changed(deleteTask(original, 'project-a', 'task-a'));
+
+    expect(next.projects[0].tasks.map(item => item.id)).toEqual(['parent', 'task-b']);
+    expect(next.allocations).toEqual([
+      { id: 'allocation-b', taskId: 'task-b', date: '2026-01-01', allocatedHours: 6 },
+    ]);
+    expect(next.projects[0].tasks[0]).toMatchObject({ estimatedHours: 6 });
+  });
+
+  it('deletes a group subtree including completed descendants and their allocations', () => {
+    const original = workspace(task({ id: 'group', name: 'Group' }), [
+      { id: 'group-allocation', taskId: 'group-child', date: '2026-01-01', allocatedHours: 2 },
+      {
+        id: 'completed-allocation',
+        taskId: 'completed-child',
+        date: '2026-01-02',
+        allocatedHours: 3,
+      },
+      { id: 'outside-allocation', taskId: 'outside', date: '2026-01-03', allocatedHours: 1 },
+    ]);
+    original.projects[0].tasks.push(
+      task({ id: 'group-child', name: 'Group child', parentId: 'group', status: 'scheduled' }),
+      task({
+        id: 'completed-child',
+        name: 'Completed child',
+        parentId: 'group-child',
+        status: 'completed',
+      }),
+      task({ id: 'outside', name: 'Outside' }),
+    );
+
+    const next = changed(deleteTask(original, 'project-a', 'group'));
+
+    expect(next.projects[0].tasks.map(item => item.id)).toEqual(['outside']);
+    expect(next.allocations).toEqual([
+      { id: 'outside-allocation', taskId: 'outside', date: '2026-01-03', allocatedHours: 1 },
+    ]);
+  });
+
+  it('does not change the workspace when the delete target is missing', () => {
+    const original = workspace(task());
+
+    expect(deleteTask(original, 'project-a', 'missing')).toEqual({ ok: true, changed: false });
+    expect(deleteTask(original, 'missing-project', 'task-a')).toEqual({
+      ok: true,
+      changed: false,
     });
   });
 
