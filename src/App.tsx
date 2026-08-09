@@ -47,6 +47,7 @@ import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
   clearTaskSchedule as clearTaskScheduleOperation,
+  deleteTask as deleteTaskOperation,
   helpScheduleTask as helpScheduleTaskOperation,
   moveTaskToBacklog as moveTaskToBacklogOperation,
   moveTaskGroupToBacklog as moveTaskGroupToBacklogOperation,
@@ -55,7 +56,6 @@ import {
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
   moveTask as moveTaskOperation,
-  syncParentEstimatedHours,
 } from './workspace-operations';
 import { getRecurringEstimatedHours } from './recurring-allocation';
 import type { WorkspaceOperationResult } from './workspace-operations';
@@ -562,31 +562,8 @@ export default function App() {
 
   const deleteTask = (projectId: string, taskId: string) => {
     if (!workspace) return;
-    const project = workspace.projects.find(item => item.id === projectId);
-    if (!project) return;
-    const removedIds = buildTaskTree(project.tasks).descendants(taskId);
-    removedIds.add(taskId);
-    commit(
-      syncParentEstimatedHours(
-        {
-          ...workspace,
-          projects: workspace.projects.map(item => {
-            if (item.id !== project.id) return item;
-            const removedIds = buildTaskTree(item.tasks).descendants(taskId);
-            removedIds.add(taskId);
-            return {
-              ...item,
-              tasks: item.tasks.filter(task => !removedIds.has(task.id)),
-              updatedAt: now(),
-            };
-          }),
-          allocations: workspace.allocations.filter(
-            allocation => !removedIds.has(allocation.taskId),
-          ),
-        },
-        project.id,
-      ),
-    );
+    const error = commitOperation(deleteTaskOperation(workspace, projectId, taskId));
+    if (error) setNotice(error);
   };
 
   const exportJson = () => {
