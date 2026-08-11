@@ -6,7 +6,6 @@ import {
   emptyTask,
   taskDeadlineConstraint,
   now,
-  partitionProjectTasks,
   validateImport,
   validWorkspaceData,
 } from './data';
@@ -42,7 +41,6 @@ import type {
   WorkspaceData,
 } from './types';
 import type { TimelineInputMode, TimelineZoom } from './timeline';
-import type { TaskTreeIndex } from './task-tree';
 import {
   adjustAllocationDay as adjustAllocationDayOperation,
   autoScheduleTask as autoScheduleTaskOperation,
@@ -53,12 +51,19 @@ import {
   moveTaskGroupToBacklog as moveTaskGroupToBacklogOperation,
   moveTaskGroupToTimeline as moveTaskGroupToTimelineOperation,
   moveTaskToTimeline as moveTaskToTimelineOperation,
+  previewTimelinePlacement,
   saveTask as saveTaskOperation,
   scheduleTaskAtDate as scheduleTaskAtDateOperation,
   moveTask as moveTaskOperation,
 } from './workspace-operations';
 import { getRecurringEstimatedHours } from './recurring-allocation';
 import type { WorkspaceOperationResult } from './workspace-operations';
+import { buildViewProjection } from './view-projection';
+import type {
+  BacklogProjection,
+  DailyDistributionAllocationOrder,
+  HierarchyDepth,
+} from './view-projection';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const statusLabels: Record<TaskStatus, string> = {
@@ -202,22 +207,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(ALLOCATION_STEP_STORAGE_KEY, String(allocationStep));
   }, [allocationStep]);
-
-  // One pass over allocations instead of a per-project scan with a nested task lookup.
-  const allocationsByProject = useMemo(() => {
-    const index = new Map<string, Allocation[]>();
-    if (!workspace) return index;
-    const projectIdByTask = new Map<string, string>();
-    for (const project of workspace.projects) {
-      index.set(project.id, []);
-      for (const task of project.tasks) projectIdByTask.set(task.id, project.id);
-    }
-    for (const allocation of workspace.allocations) {
-      const projectId = projectIdByTask.get(allocation.taskId);
-      if (projectId) index.get(projectId)?.push(allocation);
-    }
-    return index;
-  }, [workspace]);
 
   const commit = useCallback(
     (next: WorkspaceData) => {
@@ -768,7 +757,6 @@ export default function App() {
                 <ProjectPanel
                   key={project.id}
                   project={project}
-                  allocations={allocationsByProject.get(project.id) || []}
                   allAllocations={workspace.allocations}
                   view={view}
                   timelineZoom={timelineZoom}
@@ -867,7 +855,6 @@ export default function App() {
 
 type ProjectPanelProps = {
   project: Project;
-  allocations: Allocation[];
   allAllocations: Allocation[];
   view: ViewMode;
   timelineZoom: TimelineZoom;
@@ -903,9 +890,8 @@ type ProjectPanelProps = {
   onTimelineScroll: (left: number) => void;
 };
 
-function ProjectPanel({
+function ExpandedProjectPanel({
   project,
-  allocations,
   allAllocations,
   view,
   timelineZoom,
@@ -917,7 +903,6 @@ function ProjectPanel({
   expandedTaskIds,
   expandedBacklogTaskIds,
   showCompletedTasks,
-  expanded,
   onAddTask,
   onAddTimelineTask,
   onAddChild,
@@ -932,108 +917,138 @@ function ProjectPanel({
   onZoomChange,
   onTimelineScroll,
 }: ProjectPanelProps) {
-  const taskTree = useMemo(() => buildTaskTree(project.tasks), [project.tasks]);
-  const { backlog: backlogTasks, scheduled: scheduledTasks } = partitionProjectTasks(
-    project,
-    expandedTaskIds,
-    taskTree,
-    expandedBacklogTaskIds,
-    showCompletedTasks,
+  const [dailyDistributionOrder, setDailyDistributionOrder] =
+    useState<DailyDistributionAllocationOrder>('descending');
+  const [dailyDistributionDepth, setDailyDistributionDepth] = useState<HierarchyDepth>(3);
+  const projection = useMemo(
+    () =>
+      buildViewProjection(project, allAllocations, {
+        referenceDate: today(),
+        timelineLevel: timelineZoom.view,
+        showCompleted: showCompletedTasks,
+        expanded: {
+          backlog: expandedBacklogTaskIds,
+          timeline: expandedTaskIds,
+        },
+        dailyDistribution: {
+          allocationOrder: dailyDistributionOrder,
+          hierarchyDepth: dailyDistributionDepth,
+        },
+      }),
+    [
+      project,
+      allAllocations,
+      timelineZoom.view,
+      showCompletedTasks,
+      expandedBacklogTaskIds,
+      expandedTaskIds,
+      dailyDistributionOrder,
+      dailyDistributionDepth,
+    ],
   );
+  const dropPreview = useMemo(() => {
+    const dropTarget = taskDrag?.target;
+    if (
+      !taskDrag?.active ||
+      taskDrag.isGroup ||
+      taskDrag.projectId !== project.id ||
+      dropTarget?.kind !== 'gantt-timeline' ||
+      !dropTarget.date ||
+      (!autoScheduleEnabled && taskDrag.origin === 'backlog')
+    )
+      return null;
+    return previewTimelinePlacement(
+      taskDrag.task,
+      allAllocations,
+      dropTarget.date,
+      taskDrag.origin === 'gantt' || autoScheduleEnabled,
+    );
+  }, [taskDrag, project.id, allAllocations, autoScheduleEnabled]);
   return (
-    <article className={`project-card workspace-card${expanded ? ' expanded' : ' collapsed'}`}>
-      {expanded && (
-        <div className="project-card-content">
-          <div className="workspace-title">
-            <div>
-              <h2>工作項目</h2>
-              <p>
-                {project.tasks.length} 個項目 · 預估{' '}
-                {hourValueLabel(getProjectEstimatedHours(project))} 小時
-              </p>
-            </div>
-            <div className="view-switch" aria-label="工作項目時間檢視">
-              {(['day', 'week', 'month'] as const).map(value => (
-                <button
-                  key={value}
-                  className={view === value ? 'active' : ''}
-                  onClick={() => onViewChange(value)}
-                >
-                  {value === 'day' ? '日' : value === 'week' ? '週' : '月'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="planning-layout" style={{ alignItems: 'stretch' }}>
-            <Backlog
-              projectId={project.id}
-              tasks={backlogTasks}
-              allTasks={project.tasks}
-              taskTree={taskTree}
-              expandedTaskIds={expandedBacklogTaskIds}
-              taskDrag={taskDrag}
-              draggingTaskId={
-                taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
-              }
-              onEdit={onEditTask}
-              onAddTask={onAddTask}
-              onDelete={onDeleteTask}
-              onAddChild={task => onAddChild(task, 'backlog')}
-              onTaskPointerDown={(task, event, isGroup) =>
-                onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
-              }
-              onTaskDropTarget={onTaskDropTarget}
-              onToggleTask={onToggleBacklogTask}
-            />
-            <CapacityGantt
-              projectId={project.id}
-              tasks={scheduledTasks}
-              allTasks={project.tasks}
-              taskTree={taskTree}
-              expandedTaskIds={expandedTaskIds}
-              backlogTasks={backlogTasks}
-              allocations={allocations}
-              allAllocations={allAllocations}
-              timelineZoom={timelineZoom}
-              timelineInputMode={timelineInputMode}
-              autoScheduleEnabled={autoScheduleEnabled}
-              allocationStep={allocationStep}
-              scrollLeft={timelineScrollLeft}
-              taskDrag={taskDrag}
-              onZoomChange={onZoomChange}
-              onEdit={onEditTask}
-              onAddTask={onAddTimelineTask}
-              onBeginTaskDrag={(task, event, allocatedHours, pendingHours, isGroup) =>
-                onBeginTaskDrag(
-                  project.id,
-                  task,
-                  'gantt',
-                  event,
-                  allocatedHours,
-                  pendingHours,
-                  isGroup,
-                )
-              }
-              onTaskDropTarget={onTaskDropTarget}
-              onAdjustAllocation={onAdjustAllocation}
-              onDelete={onDeleteTask}
-              onAddChild={task => onAddChild(task, 'timeline')}
-              onToggleTask={onToggleTask}
-              onTimelineScroll={onTimelineScroll}
-            />
-          </div>
+    <div className="project-card-content">
+      <div className="workspace-title">
+        <div>
+          <h2>工作項目</h2>
+          <p>
+            {project.tasks.length} 個項目 · 預估 {hourValueLabel(getProjectEstimatedHours(project))}{' '}
+            小時
+          </p>
         </div>
-      )}
+        <div className="view-switch" aria-label="工作項目時間檢視">
+          {(['day', 'week', 'month'] as const).map(value => (
+            <button
+              key={value}
+              className={view === value ? 'active' : ''}
+              onClick={() => onViewChange(value)}
+            >
+              {value === 'day' ? '日' : value === 'week' ? '週' : '月'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="planning-layout" style={{ alignItems: 'stretch' }}>
+        <Backlog
+          projectId={project.id}
+          projection={projection.backlog}
+          taskDrag={taskDrag}
+          draggingTaskId={
+            taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
+          }
+          onEdit={onEditTask}
+          onAddTask={onAddTask}
+          onDelete={onDeleteTask}
+          onAddChild={task => onAddChild(task, 'backlog')}
+          onTaskPointerDown={(task, event, isGroup) =>
+            onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
+          }
+          onTaskDropTarget={onTaskDropTarget}
+          onToggleTask={onToggleBacklogTask}
+        />
+        <CapacityGantt
+          projectId={project.id}
+          projection={projection.timeline}
+          dailyDistribution={projection.dailyDistribution}
+          dailyDistributionOrder={dailyDistributionOrder}
+          dailyDistributionDepth={dailyDistributionDepth}
+          dropPreview={dropPreview}
+          timelineZoom={timelineZoom}
+          timelineInputMode={timelineInputMode}
+          allocationStep={allocationStep}
+          scrollLeft={timelineScrollLeft}
+          taskDrag={taskDrag}
+          onZoomChange={onZoomChange}
+          onEdit={onEditTask}
+          onAddTask={onAddTimelineTask}
+          onBeginTaskDrag={(task, event, allocatedHours, pendingHours, isGroup) =>
+            onBeginTaskDrag(project.id, task, 'gantt', event, allocatedHours, pendingHours, isGroup)
+          }
+          onTaskDropTarget={onTaskDropTarget}
+          onAdjustAllocation={onAdjustAllocation}
+          onDelete={onDeleteTask}
+          onAddChild={task => onAddChild(task, 'timeline')}
+          onToggleTask={onToggleTask}
+          onTimelineScroll={onTimelineScroll}
+          onDailyDistributionOrderChange={setDailyDistributionOrder}
+          onDailyDistributionDepthChange={setDailyDistributionDepth}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProjectPanel(props: ProjectPanelProps) {
+  return (
+    <article
+      className={`project-card workspace-card${props.expanded ? ' expanded' : ' collapsed'}`}
+    >
+      {props.expanded ? <ExpandedProjectPanel {...props} /> : null}
     </article>
   );
 }
 
 function Backlog({
   projectId,
-  tasks,
-  allTasks,
-  taskTree,
-  expandedTaskIds,
+  projection,
   taskDrag,
   draggingTaskId,
   onEdit,
@@ -1045,10 +1060,7 @@ function Backlog({
   onToggleTask,
 }: {
   projectId: string;
-  tasks: Task[];
-  allTasks: Task[];
-  taskTree: TaskTreeIndex;
-  expandedTaskIds: Set<string>;
+  projection: BacklogProjection;
   taskDrag: TaskDragState | null;
   draggingTaskId: string | null;
   onEdit: (task: Task) => void;
@@ -1067,8 +1079,8 @@ function Backlog({
   const handleTaskPointerLeave = (event: ReactPointerEvent<HTMLElement>) => {
     if (pointerLeftElement(event)) onTaskDropTarget(null);
   };
-  const renderTask = (task: Task) => {
-    const isGroup = taskTree.hasChildren(task.id);
+  const renderTask = (row: BacklogProjection['rows'][number]) => {
+    const task = row.workItem;
     const dropRelation =
       taskDrag?.projectId === projectId &&
       taskDrag.target?.kind === 'backlog' &&
@@ -1100,13 +1112,13 @@ function Backlog({
           isDragging={draggingTaskId === task.id}
           onEdit={onEdit}
           onDelete={onDelete}
-          hasChildren={isGroup}
-          isGroup={isGroup}
-          depth={taskTree.depth(task.id)}
-          expanded={expandedTaskIds.has(task.id)}
-          onToggle={isGroup ? item => onToggleTask(item.id) : undefined}
+          hasChildren={row.hasChildren}
+          isGroup={row.hasChildren}
+          depth={row.depth}
+          expanded={row.expanded}
+          onToggle={row.hasChildren ? item => onToggleTask(item.id) : undefined}
           onAddChild={task => onAddChild(task)}
-          onPointerDown={event => onTaskPointerDown(task, event, isGroup)}
+          onPointerDown={event => onTaskPointerDown(task, event, row.hasChildren)}
         />
       </div>
     );
@@ -1120,20 +1132,14 @@ function Backlog({
       <div className="section-heading">
         <div>
           <h2>Backlog</h2>
-          <small>
-            {
-              allTasks.filter(task => !taskTree.hasChildren(task.id) && task.status === 'backlog')
-                .length
-            }{' '}
-            個待排程 Task
-          </small>
+          <small>{projection.leafCount} 個待排程 Task</small>
         </div>
       </div>
-      {tasks.length === 0 && (
+      {projection.rows.length === 0 && (
         <div className="empty">把 Timeline Task 拖回這裡，或從下方新增 Task。</div>
       )}
       <div className="backlog-list">
-        {tasks.map(renderTask)}
+        {projection.rows.map(renderTask)}
         <button
           className="add-task-row"
           type="button"

@@ -11,7 +11,6 @@ import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, today } from './capacity';
 import { buildTaskTree } from './task-tree';
 import { getRecurringEstimatedHours } from './recurring-allocation';
-import type { TaskTreeIndex } from './task-tree';
 import { isValidRecurrenceRule } from './recurrence';
 
 export { buildTaskTree } from './task-tree';
@@ -115,10 +114,37 @@ function validTask(value: unknown): value is Task {
     statuses.has(task.status) &&
     typeof task.createdAt === 'string' &&
     typeof task.updatedAt === 'string' &&
+    (task.parentId === null || typeof task.parentId === 'string') &&
+    typeof task.order === 'number' &&
+    Number.isFinite(task.order) &&
     (task.recurrence === undefined ||
       task.recurrence === null ||
       isValidRecurrenceRule(task.recurrence))
   );
+}
+
+function validTaskHierarchy(tasks: Task[]) {
+  const byId = new Map<string, Task>();
+  for (const task of tasks) {
+    if (byId.has(task.id)) return false;
+    byId.set(task.id, task);
+  }
+  for (const task of tasks) {
+    let current: Task | undefined = task;
+    const visited = new Set<string>();
+    let depth = 0;
+    while (current) {
+      if (visited.has(current.id)) return false;
+      visited.add(current.id);
+      depth += 1;
+      if (depth > 3) return false;
+      const parentId = current.parentId ?? null;
+      if (!parentId) break;
+      current = byId.get(parentId);
+      if (!current) return false;
+    }
+  }
+  return true;
 }
 
 function validProject(value: unknown): value is Project {
@@ -153,13 +179,31 @@ function validAllocation(value: unknown): value is Allocation {
 export function validWorkspaceData(value: unknown): value is WorkspaceData {
   if (!value || typeof value !== 'object') return false;
   const data = value as Partial<WorkspaceData>;
-  return (
+  if (!(
     data.version === CURRENT_WORKSPACE_VERSION &&
     Array.isArray(data.projects) &&
     data.projects.every(validProject) &&
     Array.isArray(data.allocations) &&
     data.allocations.every(validAllocation)
-  );
+  ))
+    return false;
+
+  const projectIds = new Set<string>();
+  const taskIds = new Set<string>();
+  for (const project of data.projects) {
+    if (projectIds.has(project.id) || !validTaskHierarchy(project.tasks)) return false;
+    projectIds.add(project.id);
+    for (const task of project.tasks) {
+      if (taskIds.has(task.id)) return false;
+      taskIds.add(task.id);
+    }
+  }
+  const allocationIds = new Set<string>();
+  for (const allocation of data.allocations) {
+    if (allocationIds.has(allocation.id) || !taskIds.has(allocation.taskId)) return false;
+    allocationIds.add(allocation.id);
+  }
+  return true;
 }
 
 /**
@@ -339,65 +383,4 @@ export function flattenTaskTree(
   tree = buildTaskTree(tasks),
 ) {
   return tree.flatten(expandedIds);
-}
-
-/**
- * Builds the context chain for leaf tasks selected by a view predicate.
- *
- * A parent is an aggregate, not a schedulable item. It is still projected beside each
- * matching leaf so a child is never shown without its hierarchy context. A parent may
- * therefore be present in both projections while remaining one persisted Task.
- */
-function projectedTaskIds(
-  tasks: Task[],
-  includesLeaf: (task: Task) => boolean,
-  tree: TaskTreeIndex,
-) {
-  const result = new Set<string>();
-  for (const task of tasks) {
-    if (tree.hasChildren(task.id) || !includesLeaf(task)) continue;
-    let current: Task | undefined = task;
-    const visited = new Set<string>();
-    while (current && !visited.has(current.id)) {
-      visited.add(current.id);
-      result.add(current.id);
-      const parentId = tree.parentId(current.id);
-      current = parentId ? tree.task(parentId) : undefined;
-    }
-  }
-  return result;
-}
-
-function flattenProjectedTaskTree(
-  includedIds: Set<string>,
-  expandedIds: Set<string>,
-  tree: TaskTreeIndex,
-) {
-  return tree.flattenIncluded(includedIds, expandedIds);
-}
-
-/**
- * Projects the one task tree into Backlog and Allocation Timeline views.
- *
- * Leaf status decides the destination. Every selected leaf brings its full ancestor
- * chain with it; both views respect their own expand/collapse state. Parents cannot
- * appear by themselves merely because they have children.
- */
-export function partitionProjectTasks(
-  project: Project,
-  timelineExpandedIds = new Set<string>(),
-  tree = buildTaskTree(project.tasks),
-  backlogExpandedIds?: Set<string>,
-  showCompletedTasks = false,
-) {
-  const backlogIds = projectedTaskIds(project.tasks, task => task.status === 'backlog', tree);
-  const scheduledIds = projectedTaskIds(
-    project.tasks,
-    task => task.status !== 'backlog' && (showCompletedTasks || task.status !== 'completed'),
-    tree,
-  );
-  return {
-    backlog: flattenProjectedTaskTree(backlogIds, backlogExpandedIds ?? backlogIds, tree),
-    scheduled: flattenProjectedTaskTree(scheduledIds, timelineExpandedIds, tree),
-  };
 }

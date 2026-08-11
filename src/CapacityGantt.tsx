@@ -1,27 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import { DEFAULT_DAILY_CAPACITY_HOURS, isTaskOverdue, today } from './capacity';
+import { DEFAULT_DAILY_CAPACITY_HOURS, today } from './capacity';
 import { hoursLabel, weekdayDateLabel } from './formatters';
-import { aggregateTaskEstimate } from './data';
 import TaskCard from './TaskCard';
 import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
-import type { Allocation, Task, ViewMode } from './types';
-import type { TaskTreeIndex } from './task-tree';
-import { buildDailyDistributionRows, buildTimelineReadModel } from './timeline-read-model';
-import type { DailyDistributionAllocationOrder } from './timeline-read-model';
-import { previewTimelinePlacement } from './workspace-operations';
+import type { Task, ViewMode } from './types';
 import {
-  buildTimelineContext,
-  buildTimelinePeriods,
-  capacityState,
-  periodAvailableHours,
   periodDensity,
   periodDisplayLabel,
-  periodHours,
   timelineDateAtPosition,
   timelinePositionForDate,
-  timelineRange,
   timelineScale,
   dropPreviewGeometry,
   TIMELINE_CAPACITY_ROW_HEIGHT,
@@ -39,21 +28,26 @@ import type {
   TimelinePeriod,
   TimelineZoom,
 } from './timeline';
+import type {
+  DailyDistributionAllocationOrder,
+  DailyDistributionProjection,
+  HierarchyDepth,
+  TimelineCapacityPeriod,
+  TimelineProjection,
+  TimelineWorkItemProjection,
+} from './view-projection';
 
 type PanState = { startX: number; startScrollLeft: number; candidate: boolean; active: boolean };
 
 export type CapacityGanttProps = {
   projectId: string;
-  tasks: Task[];
-  allTasks: Task[];
-  taskTree: TaskTreeIndex;
-  expandedTaskIds: Set<string>;
-  backlogTasks: Task[];
-  allocations: Allocation[];
-  allAllocations: Allocation[];
+  projection: TimelineProjection;
+  dailyDistribution: DailyDistributionProjection;
+  dailyDistributionOrder: DailyDistributionAllocationOrder;
+  dailyDistributionDepth: HierarchyDepth;
+  dropPreview: Task | null;
   timelineZoom: TimelineZoom;
   timelineInputMode: TimelineInputMode;
-  autoScheduleEnabled: boolean;
   allocationStep: number;
   scrollLeft: number;
   taskDrag: TaskDragState | null;
@@ -73,9 +67,11 @@ export type CapacityGanttProps = {
   onAddChild: (task: Task) => void;
   onToggleTask: (taskId: string) => void;
   onTimelineScroll: (left: number) => void;
+  onDailyDistributionOrderChange: (order: DailyDistributionAllocationOrder) => void;
+  onDailyDistributionDepthChange: (depth: HierarchyDepth) => void;
 };
 
-type TimelineContextProps = { cells: TimelineContextCell[]; scale: number };
+type TimelineContextProps = { cells: readonly TimelineContextCell[]; scale: number };
 
 function TimelineContext({ cells, scale }: TimelineContextProps) {
   return (
@@ -109,32 +105,27 @@ function TimelineContext({ cells, scale }: TimelineContextProps) {
 }
 
 type CapacityPeriodsProps = {
-  periods: TimelinePeriod[];
-  allocatedByDate: Map<string, number>;
+  capacity: readonly TimelineCapacityPeriod[];
   view: ViewMode;
   scale: number;
 };
 
-function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeriodsProps) {
+function CapacityPeriods({ capacity, view, scale }: CapacityPeriodsProps) {
   const density = periodDensity(scale);
   return (
     <>
-      {periods.map((period, index) => {
-        const allocated = periodHours(period, allocatedByDate);
-        const available = periodAvailableHours(period);
-        const remaining = Math.max(0, available - allocated);
+      {capacity.map(({ period, allocatedHours, remainingHours, state }, index) => {
+        const remaining = Math.max(0, remainingHours);
         const weekend = weekendClass(period.start, view);
-        const className = ['capacity-period', capacityState(allocated, available), density, weekend]
-          .filter(Boolean)
-          .join(' ');
+        const className = ['capacity-period', state, density, weekend].filter(Boolean).join(' ');
         const weekendLabel = weekend ? ' · 週末' : '';
-        const title = `${period.label}${weekendLabel} · 已分配 ${hoursLabel(allocated)} · 剩餘 ${hoursLabel(remaining)}`;
+        const title = `${period.label}${weekendLabel} · 已分配 ${hoursLabel(allocatedHours)} · 剩餘 ${hoursLabel(remaining)}`;
         return (
           <span
             className={className}
             key={period.start}
             title={title}
-            aria-label={`${period.label}${weekendLabel}，已分配 ${hoursLabel(allocated)}，剩餘 ${hoursLabel(remaining)}`}
+            aria-label={`${period.label}${weekendLabel}，已分配 ${hoursLabel(allocatedHours)}，剩餘 ${hoursLabel(remaining)}`}
             style={{ left: index * scale, width: scale, top: TIMELINE_CONTEXT_ROW_HEIGHT }}
           >
             <b>{periodDisplayLabel(period, view, scale)}</b>
@@ -149,13 +140,13 @@ function CapacityPeriods({ periods, allocatedByDate, view, scale }: CapacityPeri
 function TimelineHeader({
   periods,
   context,
-  allocatedByDate,
+  capacity,
   view,
   scale,
 }: {
-  periods: TimelinePeriod[];
-  context: TimelineContextCell[];
-  allocatedByDate: Map<string, number>;
+  periods: readonly TimelinePeriod[];
+  context: readonly TimelineContextCell[];
+  capacity: readonly TimelineCapacityPeriod[];
   view: ViewMode;
   scale: number;
 }) {
@@ -168,34 +159,23 @@ function TimelineHeader({
       }}
     >
       <TimelineContext cells={context} scale={scale} />
-      <CapacityPeriods
-        periods={periods}
-        allocatedByDate={allocatedByDate}
-        view={view}
-        scale={scale}
-      />
+      <CapacityPeriods capacity={capacity} view={view} scale={scale} />
     </div>
   );
 }
 
 function DailyDistributionTable({
-  dates,
-  tasks,
-  taskTree,
-  hoursByTask,
+  projection,
   allocationOrder,
   hierarchyDepth,
   onAllocationOrderChange,
   onHierarchyDepthChange,
 }: {
-  dates: string[];
-  tasks: Task[];
-  taskTree: TaskTreeIndex;
-  hoursByTask: Map<string, Map<string, number>>;
+  projection: DailyDistributionProjection;
   allocationOrder: DailyDistributionAllocationOrder;
-  hierarchyDepth: number;
+  hierarchyDepth: HierarchyDepth;
   onAllocationOrderChange: (order: DailyDistributionAllocationOrder) => void;
-  onHierarchyDepthChange: (depth: number) => void;
+  onHierarchyDepthChange: (depth: HierarchyDepth) => void;
 }) {
   const todayDate = today();
   const todayRowRef = useRef<HTMLTableRowElement>(null);
@@ -210,15 +190,7 @@ function DailyDistributionTable({
     const containerCenter = containerBounds.top + container.clientHeight / 2;
     if (rowCenter < containerBounds.top || rowCenter > containerBounds.bottom)
       container.scrollTop += rowCenter - containerCenter;
-  }, [dates]);
-  const rows = buildDailyDistributionRows({
-    dates,
-    tasks,
-    taskTree,
-    hoursByTask,
-    allocationOrder,
-    hierarchyDepth,
-  });
+  }, [projection.days]);
 
   return (
     <section className="daily-distribution" aria-label="每日時間分佈">
@@ -257,7 +229,7 @@ function DailyDistributionTable({
                 type="button"
                 aria-pressed={hierarchyDepth === depth}
                 aria-label={`顯示第 ${depth} 層`}
-                onClick={() => onHierarchyDepthChange(depth)}
+                onClick={() => onHierarchyDepthChange(depth as HierarchyDepth)}
               >
                 第{depth}層
               </button>
@@ -288,11 +260,10 @@ function DailyDistributionTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ date, allocated, segments }) => {
-              const overloaded = allocated > DEFAULT_DAILY_CAPACITY_HOURS;
+            {projection.days.map(({ date, remainingHours, overloaded, segments }) => {
               const description = segments.length
                 ? segments
-                    .map(segment => `${segment.task.name} ${hoursLabel(segment.hours)}`)
+                    .map(segment => `${segment.workItem.name} ${hoursLabel(segment.hours)}`)
                     .join('、')
                 : '尚未安排工時';
               return (
@@ -315,27 +286,27 @@ function DailyDistributionTable({
                       {segments.map(segment => (
                         <span
                           className="daily-distribution-segment"
-                          key={segment.task.id}
+                          key={segment.workItem.id}
                           role="img"
-                          aria-label={`${segment.task.name} ${hoursLabel(segment.hours)}`}
-                          title={`${segment.task.name} · ${hoursLabel(segment.hours)}`}
+                          aria-label={`${segment.workItem.name} ${hoursLabel(segment.hours)}`}
+                          title={`${segment.workItem.name} · ${hoursLabel(segment.hours)}`}
                           style={
                             {
                               left: `${(segment.startHour / DEFAULT_DAILY_CAPACITY_HOURS) * 100}%`,
                               width: `${(segment.visibleHours / DEFAULT_DAILY_CAPACITY_HOURS) * 100}%`,
-                              '--task-color': segment.task.color,
+                              '--task-color': segment.workItem.color,
                             } as CSSProperties
                           }
                         >
                           <span className="daily-distribution-segment-label">
-                            {segment.task.name}
+                            {segment.workItem.name}
                           </span>
                         </span>
                       ))}
                     </div>
                   </td>
                   <td className={overloaded ? 'daily-distribution-overloaded' : ''}>
-                    {hoursLabel(DEFAULT_DAILY_CAPACITY_HOURS - allocated)}
+                    {hoursLabel(remainingHours)}
                   </td>
                 </tr>
               );
@@ -347,7 +318,7 @@ function DailyDistributionTable({
   );
 }
 
-function TodayMarker({ periods, scale }: { periods: TimelinePeriod[]; scale: number }) {
+function TodayMarker({ periods, scale }: { periods: readonly TimelinePeriod[]; scale: number }) {
   const date = today();
   const left = Math.round(timelinePositionForDate(date, periods, scale));
   return (
@@ -364,18 +335,17 @@ function TodayMarker({ periods, scale }: { periods: TimelinePeriod[]; scale: num
 
 function DeadlineMarker({
   task,
-  allocations,
+  overdue,
   periods,
   scale,
 }: {
   task: Task;
-  allocations: Allocation[];
-  periods: TimelinePeriod[];
+  overdue: boolean;
+  periods: readonly TimelinePeriod[];
   scale: number;
 }) {
   if (!task.deadline) return null;
   const left = timelinePositionForDate(task.deadline, periods, scale);
-  const overdue = isTaskOverdue(task, allocations);
   return (
     <span
       className={`deadline-marker${overdue ? ' overdue' : ''}`}
@@ -387,53 +357,28 @@ function DeadlineMarker({
   );
 }
 
-type AllocationWindow = { start: string; end: string } | null;
-
-function allocationWindow(allocations: Allocation[]): AllocationWindow {
-  const dates = allocations
-    .filter(allocation => allocation.allocatedHours > 0)
-    .map(allocation => allocation.date)
-    .sort();
-  return dates.length ? { start: dates[0], end: dates[dates.length - 1] } : null;
-}
-
-function periodInAllocationWindow(period: TimelinePeriod, window: AllocationWindow) {
-  if (!window) return { active: false, start: false, end: false };
-  return {
-    active: period.start <= window.end && period.end >= window.start,
-    start: period.start <= window.start && period.end >= window.start,
-    end: period.start <= window.end && period.end >= window.end,
-  };
-}
-
 function AllocationSummaries({
-  task,
-  hoursByDate,
+  row,
   periods,
   scale,
   view,
   allocationStep,
-  allocationWindow,
-  recurringDates,
   onAdjustAllocation,
-  editable = true,
-  readOnlyReason,
 }: {
-  task: Task;
-  hoursByDate: Map<string, number>;
-  periods: TimelinePeriod[];
+  row: TimelineWorkItemProjection;
+  periods: readonly TimelinePeriod[];
   scale: number;
   view: ViewMode;
   allocationStep: number;
-  allocationWindow: AllocationWindow;
-  recurringDates: Set<string>;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
-  editable?: boolean;
-  readOnlyReason?: AllocationReadOnlyReason;
 }) {
+  const task = row.workItem;
+  const editable = row.allocationReadOnlyReason === null;
   const taskStyle = { '--task-color': task.color } as CSSProperties;
   const readOnlyLabel =
-    readOnlyReason === 'completed' ? '已完成，不可修改' : '父任務工時由子任務彙總，不可直接修改';
+    row.allocationReadOnlyReason === 'completed'
+      ? '已完成，不可修改'
+      : '父任務工時由子任務彙總，不可直接修改';
   const density = periodDensity(scale);
   return (
     <div
@@ -441,16 +386,16 @@ function AllocationSummaries({
       style={taskStyle}
     >
       {periods.map((period, index) => {
-        const hours = periodHours(period, hoursByDate);
-        const windowState = periodInAllocationWindow(period, allocationWindow);
-        const isRecurring = period.dates.some(date => recurringDates.has(date));
+        const cell = row.cells[index];
+        const hours = cell.allocatedHours;
+        const isRecurring = cell.recurring;
         const className = [
           'allocation-period',
           view === 'day' ? 'allocation-cell' : 'allocation-summary',
           !editable ? 'allocation-read-only' : '',
-          windowState.active ? 'in-allocation-window' : '',
-          windowState.start ? 'window-start' : '',
-          windowState.end ? 'window-end' : '',
+          cell.window !== 'none' ? 'in-allocation-window' : '',
+          cell.window === 'start' || cell.window === 'only' ? 'window-start' : '',
+          cell.window === 'end' || cell.window === 'only' ? 'window-end' : '',
           hours ? 'has-hours' : '',
           isRecurring ? 'recurring-allocation' : '',
         ]
@@ -493,25 +438,16 @@ function AllocationSummaries({
   );
 }
 
-const EMPTY_HOURS_BY_DATE = new Map<string, number>();
-type AllocationReadOnlyReason = 'completed' | 'parent';
-
 function TimelineTaskRows({
-  tasks,
-  taskTree,
-  hoursByTask,
-  allocationsByTask,
+  rows,
   periods,
   scale,
   view,
   allocationStep,
   onAdjustAllocation,
 }: {
-  tasks: Task[];
-  taskTree: TaskTreeIndex;
-  hoursByTask: Map<string, Map<string, number>>;
-  allocationsByTask: Map<string, Allocation[]>;
-  periods: TimelinePeriod[];
+  rows: readonly TimelineWorkItemProjection[];
+  periods: readonly TimelinePeriod[];
   scale: number;
   view: ViewMode;
   allocationStep: number;
@@ -519,39 +455,17 @@ function TimelineTaskRows({
 }) {
   return (
     <>
-      {tasks.map(task => {
-        const taskAllocations = allocationsByTask.get(task.id) || [];
-        const taskAllocationWindow = allocationWindow(taskAllocations);
-        const recurringDates = new Set(
-          taskAllocations
-            .filter(allocation => allocation.recurrenceId)
-            .map(allocation => allocation.date),
-        );
-        const hasChildren = taskTree.hasChildren(task.id);
+      {rows.map(row => {
+        const task = row.workItem;
         return (
-          <div
-            className={`timeline-row${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' deadline-overdue' : ''}`}
-            key={task.id}
-          >
-            <DeadlineMarker
-              task={task}
-              allocations={allocationsByTask.get(task.id) || []}
-              periods={periods}
-              scale={scale}
-            />
+          <div className={`timeline-row${row.overdue ? ' deadline-overdue' : ''}`} key={task.id}>
+            <DeadlineMarker task={task} overdue={row.overdue} periods={periods} scale={scale} />
             <AllocationSummaries
-              task={task}
-              hoursByDate={hoursByTask.get(task.id) || EMPTY_HOURS_BY_DATE}
+              row={row}
               periods={periods}
               scale={scale}
               view={view}
               allocationStep={allocationStep}
-              allocationWindow={taskAllocationWindow}
-              recurringDates={recurringDates}
-              editable={task.status !== 'completed' && !hasChildren}
-              readOnlyReason={
-                task.status === 'completed' ? 'completed' : hasChildren ? 'parent' : undefined
-              }
               onAdjustAllocation={onAdjustAllocation}
             />
           </div>
@@ -568,7 +482,7 @@ function DropPreview({
   rowIndex,
 }: {
   task: Task;
-  periods: TimelinePeriod[];
+  periods: readonly TimelinePeriod[];
   scale: number;
   rowIndex: number;
 }) {
@@ -594,37 +508,28 @@ function TimelineGrid({
   periods,
   view,
   scale,
-  tasks,
-  taskTree,
-  hoursByTask,
-  allocationsByTask,
+  rows,
   dropPreview,
   allocationStep,
   onAdjustAllocation,
 }: {
-  periods: TimelinePeriod[];
+  periods: readonly TimelinePeriod[];
   view: ViewMode;
   scale: number;
-  tasks: Task[];
-  taskTree: TaskTreeIndex;
-  hoursByTask: Map<string, Map<string, number>>;
-  allocationsByTask: Map<string, Allocation[]>;
+  rows: readonly TimelineWorkItemProjection[];
   dropPreview: Task | null;
   allocationStep: number;
   onAdjustAllocation: (taskId: string, date: string, delta: number) => void;
 }) {
   const style = {
     width: periods.length * scale,
-    minHeight: Math.max(TIMELINE_TASK_ROW_HEIGHT, tasks.length * TIMELINE_TASK_ROW_HEIGHT),
+    minHeight: Math.max(TIMELINE_TASK_ROW_HEIGHT, rows.length * TIMELINE_TASK_ROW_HEIGHT),
     '--scale': `${scale}px`,
   } as CSSProperties;
   return (
     <div className="timeline-grid" style={style}>
       <TimelineTaskRows
-        tasks={tasks}
-        taskTree={taskTree}
-        hoursByTask={hoursByTask}
-        allocationsByTask={allocationsByTask}
+        rows={rows}
         periods={periods}
         scale={scale}
         view={view}
@@ -636,7 +541,7 @@ function TimelineGrid({
           task={dropPreview}
           periods={periods}
           scale={scale}
-          rowIndex={Math.max(0, tasks.length - 1)}
+          rowIndex={Math.max(0, rows.length - 1)}
         />
       )}
       <div className="timeline-row-separators" aria-hidden="true" />
@@ -646,12 +551,7 @@ function TimelineGrid({
 
 function GanttSidebar({
   projectId,
-  tasks,
-  allTasks,
-  taskTree,
-  expandedTaskIds,
-  allocatedByTask,
-  allocationsByTask,
+  rows,
   headerHeight,
   taskDrag,
   onEdit,
@@ -663,12 +563,7 @@ function GanttSidebar({
   onTaskDropTarget,
 }: {
   projectId: string;
-  tasks: Task[];
-  allTasks: Task[];
-  taskTree: TaskTreeIndex;
-  expandedTaskIds: Set<string>;
-  allocatedByTask: Map<string, number>;
-  allocationsByTask: Map<string, Allocation[]>;
+  rows: readonly TimelineWorkItemProjection[];
   headerHeight: number;
   taskDrag: TaskDragState | null;
   onEdit: (task: Task) => void;
@@ -715,13 +610,8 @@ function GanttSidebar({
         <span>Timeline Task</span>
         <small>工時摘要／操作</small>
       </div>
-      {tasks.map(task => {
-        const allocated = allocatedByTask.get(task.id) || 0;
-        const hasChildren = taskTree.hasChildren(task.id);
-        const estimated = hasChildren
-          ? aggregateTaskEstimate(task.id, allTasks, taskTree)
-          : task.estimatedHours;
-        const pending = estimated - allocated;
+      {rows.map(row => {
+        const task = row.workItem;
         const dropRelation =
           taskDrag?.projectId === projectId && taskDrag.target?.taskId === task.id
             ? taskDrag.target.relation
@@ -736,7 +626,7 @@ function GanttSidebar({
               relation: taskRowDropRelation(
                 event.clientY - bounds.top,
                 bounds.height,
-                task.id === tasks.at(-1)?.id,
+                task.id === rows.at(-1)?.workItem.id,
               ),
             },
             event.currentTarget,
@@ -744,7 +634,7 @@ function GanttSidebar({
         };
         return (
           <div
-            className={`gantt-side-row${pending !== 0 ? ' has-pending' : ''}${isTaskOverdue(task, allocationsByTask.get(task.id) || []) ? ' has-deadline-warning' : ''}${dropRelation ? ` drop-target-${dropRelation}` : ''}`}
+            className={`gantt-side-row${row.pendingHours !== 0 ? ' has-pending' : ''}${row.overdue ? ' has-deadline-warning' : ''}${dropRelation ? ` drop-target-${dropRelation}` : ''}`}
             key={task.id}
             onPointerMove={handleRowPointerMove}
             onPointerLeave={handleLeave}
@@ -752,13 +642,13 @@ function GanttSidebar({
             <TaskCard
               task={task}
               variant="gantt"
-              allocatedHours={allocated}
-              pendingHours={pending}
-              hasChildren={hasChildren}
-              isGroup={hasChildren}
-              depth={taskTree.depth(task.id)}
-              expanded={expandedTaskIds.has(task.id)}
-              onToggle={hasChildren ? item => onToggleTask(item.id) : undefined}
+              allocatedHours={row.allocatedHours}
+              pendingHours={row.pendingHours}
+              hasChildren={row.hasChildren}
+              isGroup={row.hasChildren}
+              depth={row.depth}
+              expanded={row.expanded}
+              onToggle={row.hasChildren ? item => onToggleTask(item.id) : undefined}
               onAddChild={onAddChild}
               isDragging={
                 taskDrag?.projectId === projectId && taskDrag.active && taskDrag.task.id === task.id
@@ -767,7 +657,14 @@ function GanttSidebar({
               onDelete={task.status !== 'completed' ? onDelete : undefined}
               onPointerDown={
                 task.status !== 'completed'
-                  ? event => onBeginTaskDrag(task, event, allocated, pending, hasChildren)
+                  ? event =>
+                      onBeginTaskDrag(
+                        task,
+                        event,
+                        row.allocatedHours,
+                        row.pendingHours,
+                        row.hasChildren,
+                      )
                   : undefined
               }
             />
@@ -780,7 +677,7 @@ function GanttSidebar({
         aria-label="Allocation Timeline 新增 Task"
         onClick={onAddTask}
         onPointerMove={event => {
-          const lastTask = tasks.at(-1);
+          const lastTask = rows.at(-1)?.workItem;
           onTaskDropTarget(
             lastTask
               ? { kind: 'gantt-row', projectId, taskId: lastTask.id, relation: 'after' }
@@ -797,16 +694,13 @@ function GanttSidebar({
 
 export default function CapacityGantt({
   projectId,
-  tasks,
-  allTasks,
-  taskTree,
-  expandedTaskIds,
-  backlogTasks,
-  allocations,
-  allAllocations,
+  projection,
+  dailyDistribution,
+  dailyDistributionOrder,
+  dailyDistributionDepth,
+  dropPreview,
   timelineZoom,
   timelineInputMode,
-  autoScheduleEnabled,
   allocationStep,
   scrollLeft,
   taskDrag,
@@ -820,49 +714,25 @@ export default function CapacityGantt({
   onAddChild,
   onToggleTask,
   onTimelineScroll,
+  onDailyDistributionOrderChange,
+  onDailyDistributionDepthChange,
 }: CapacityGanttProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<PanState | null>(null);
   const zoomAnchorRef = useRef<{ date: string; pointerOffset: number } | null>(null);
-  const layoutRef = useRef<{ key: string; periods: TimelinePeriod[]; scale: number } | null>(null);
+  const layoutRef = useRef<{
+    key: string;
+    periods: readonly TimelinePeriod[];
+    scale: number;
+  } | null>(null);
   const skipScrollSyncRef = useRef(false);
   const [panning, setPanning] = useState(false);
-  const [dailyDistributionOrder, setDailyDistributionOrder] =
-    useState<DailyDistributionAllocationOrder>('descending');
-  const [dailyDistributionDepth, setDailyDistributionDepth] = useState(3);
   const suppressClickRef = useRef(false);
   const view = timelineZoom.view;
   const scale = timelineScale(view, timelineZoom.pixelsPerDay);
-  const range = useMemo(() => timelineRange(tasks, view, allocations), [tasks, view, allocations]);
-  const periods = useMemo(
-    () => buildTimelinePeriods(range.start, range.end, view),
-    [range.start, range.end, view],
-  );
-  const context = useMemo(() => buildTimelineContext(periods, view), [periods, view]);
+  const { range, periods, context, capacity, rows } = projection;
   const headerHeight = TIMELINE_CONTEXT_ROW_HEIGHT + TIMELINE_CAPACITY_ROW_HEIGHT;
   const layoutKey = `${view}:${timelineZoom.pixelsPerDay}:${range.start}:${range.end}`;
-
-  // Date/task keyed indexes, so the header and every row read O(1) instead of rescanning allocations per day.
-  const {
-    capacityAllocatedByDate,
-    taskAllocations,
-    allocatedByTask,
-    hoursByTask,
-    dailyDistributionTasks,
-    dailyDistributionHoursByTask,
-    dailyDistributionDates,
-  } = useMemo(
-    () =>
-      buildTimelineReadModel({
-        tasks,
-        allTasks,
-        taskTree,
-        allocations,
-        allAllocations,
-        periods,
-      }),
-    [tasks, allTasks, taskTree, allocations, allAllocations, periods],
-  );
 
   const latestRef = useRef({ timelineZoom, periods, scale, onZoomChange });
   const isTimelineGroupDrag =
@@ -870,35 +740,6 @@ export default function CapacityGantt({
     taskDrag.active &&
     taskDrag.isGroup &&
     taskDrag.origin === 'gantt';
-  const dropTargetDate =
-    !isTimelineGroupDrag &&
-    taskDrag?.projectId === projectId &&
-    taskDrag.target?.kind === 'gantt-timeline'
-      ? taskDrag.target.date
-      : undefined;
-  const dropTargetTaskId = dropTargetDate ? taskDrag?.task.id : undefined;
-  const dropPreview = useMemo(() => {
-    if (!dropTargetTaskId || !dropTargetDate) return null;
-    if (!autoScheduleEnabled && taskDrag?.origin === 'backlog') return null;
-    const task =
-      backlogTasks.find(item => item.id === dropTargetTaskId) ||
-      tasks.find(item => item.id === dropTargetTaskId);
-    if (!task) return null;
-    return previewTimelinePlacement(
-      task,
-      allAllocations,
-      dropTargetDate,
-      taskDrag?.origin === 'gantt' || autoScheduleEnabled,
-    );
-  }, [
-    dropTargetTaskId,
-    dropTargetDate,
-    backlogTasks,
-    allAllocations,
-    tasks,
-    autoScheduleEnabled,
-    taskDrag?.origin,
-  ]);
 
   useEffect(() => {
     latestRef.current = { timelineZoom, periods, scale, onZoomChange };
@@ -1061,7 +902,7 @@ export default function CapacityGantt({
     handleTaskDropMove(event);
     movePan(event);
   };
-  const canvasHeight = Math.max(TIMELINE_TASK_ROW_HEIGHT, tasks.length * TIMELINE_TASK_ROW_HEIGHT);
+  const canvasHeight = Math.max(TIMELINE_TASK_ROW_HEIGHT, rows.length * TIMELINE_TASK_ROW_HEIGHT);
   const timelineWidth = periods.length * scale;
   return (
     <section className="gantt-section">
@@ -1080,12 +921,7 @@ export default function CapacityGantt({
       <div className="gantt">
         <GanttSidebar
           projectId={projectId}
-          tasks={tasks}
-          allTasks={allTasks}
-          taskTree={taskTree}
-          expandedTaskIds={expandedTaskIds}
-          allocatedByTask={allocatedByTask}
-          allocationsByTask={taskAllocations}
+          rows={rows}
           headerHeight={headerHeight}
           taskDrag={taskDrag}
           onEdit={onEdit}
@@ -1109,7 +945,7 @@ export default function CapacityGantt({
                 <TimelineHeader
                   periods={periods}
                   context={context}
-                  allocatedByDate={capacityAllocatedByDate}
+                  capacity={capacity}
                   view={view}
                   scale={scale}
                 />
@@ -1143,10 +979,7 @@ export default function CapacityGantt({
                 periods={periods}
                 view={view}
                 scale={scale}
-                tasks={tasks}
-                taskTree={taskTree}
-                hoursByTask={hoursByTask}
-                allocationsByTask={taskAllocations}
+                rows={rows}
                 dropPreview={dropPreview}
                 allocationStep={allocationStep}
                 onAdjustAllocation={onAdjustAllocation}
@@ -1157,14 +990,11 @@ export default function CapacityGantt({
         </div>
       </div>
       <DailyDistributionTable
-        dates={dailyDistributionDates}
-        tasks={dailyDistributionTasks}
-        taskTree={taskTree}
-        hoursByTask={dailyDistributionHoursByTask}
+        projection={dailyDistribution}
         allocationOrder={dailyDistributionOrder}
         hierarchyDepth={dailyDistributionDepth}
-        onAllocationOrderChange={setDailyDistributionOrder}
-        onHierarchyDepthChange={setDailyDistributionDepth}
+        onAllocationOrderChange={onDailyDistributionOrderChange}
+        onHierarchyDepthChange={onDailyDistributionDepthChange}
       />
     </section>
   );

@@ -1,4 +1,4 @@
-import { normalizeWorkspaceData, now, sampleWorkspace, uid } from './data';
+import { normalizeWorkspaceData, now, sampleWorkspace, uid, validWorkspaceData } from './data';
 import type { Project, Task, WorkspaceData } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { normalizeRecurrenceRule } from './recurrence';
@@ -163,10 +163,18 @@ export function migrateWorkspace(raw: unknown): WorkspaceData {
 export async function loadWorkspace() {
   const db = await open();
   const stored = await readOne<WorkspaceRecord>(db, WORKSPACE_STORE, WORKSPACE_ID);
-  if (stored) return migrateWorkspace(stored);
+  if (stored) {
+    const migrated = migrateWorkspace(stored);
+    if (!validWorkspaceData(migrated)) throw new Error('工作區資料結構不正確。');
+    return migrated;
+  }
   if (db.objectStoreNames.contains(LEGACY_STORE)) {
     const legacy = await readAll<unknown>(db, LEGACY_STORE);
-    if (legacy.length) return migrateWorkspace(legacy);
+    if (legacy.length) {
+      const migrated = migrateWorkspace(legacy);
+      if (!validWorkspaceData(migrated)) throw new Error('工作區資料結構不正確。');
+      return migrated;
+    }
   }
   return null;
 }
