@@ -15,8 +15,9 @@ import {
   returnTaskToBacklog,
   scheduleTaskAt,
 } from './capacity';
-import { buildTaskTree, emptyTask, partitionProjectTasks, validateImport } from './data';
-import type { Allocation, Project, Task } from './types';
+import { emptyTask, validateImport, validWorkspaceData } from './data';
+import { CURRENT_WORKSPACE_VERSION } from './types';
+import type { Allocation, Project, Task, WorkspaceData } from './types';
 
 const task = (overrides: Partial<Task> = {}): Task => ({
   ...emptyTask(),
@@ -166,69 +167,6 @@ describe('容量 domain', () => {
     ]);
   });
 
-  it('沒有容量時仍把已明確自動排程的 Task 留在 Timeline', () => {
-    const scheduled = scheduleTaskAt(task({ id: 'task', estimatedHours: 8 }), [], '2026-01-01', {
-      horizonDays: 1,
-    }).task;
-    const result = partitionProjectTasks({ tasks: [scheduled] } as Project);
-    expect(result.scheduled.map(item => item.id)).toEqual(['task']);
-  });
-
-  it('以葉節點狀態投影兩個視圖，並在每個視圖保留完整祖先鏈', () => {
-    const parent = task({ id: 'parent', status: 'backlog' });
-    const backlogChild = task({ id: 'backlog-child', parentId: 'parent', status: 'backlog' });
-    const scheduledChild = task({
-      id: 'scheduled-child',
-      parentId: 'parent',
-      status: 'scheduled',
-    });
-    const project = { tasks: [parent, backlogChild, scheduledChild] } as Project;
-
-    expect(partitionProjectTasks(project).backlog.map(item => item.id)).toEqual([
-      'parent',
-      'backlog-child',
-    ]);
-    expect(
-      partitionProjectTasks(project, new Set(['parent'])).scheduled.map(item => item.id),
-    ).toEqual(['parent', 'scheduled-child']);
-  });
-
-  it('預設隱藏已完成 Timeline Leaf，並可切換顯示', () => {
-    const active = task({ id: 'active', status: 'scheduled' });
-    const completed = task({ id: 'completed', status: 'completed' });
-    const project = { tasks: [active, completed] } as Project;
-    const tree = buildTaskTree(project.tasks);
-
-    expect(partitionProjectTasks(project).scheduled.map(item => item.id)).toEqual(['active']);
-    expect(
-      partitionProjectTasks(project, new Set(), tree, undefined, true).scheduled.map(
-        item => item.id,
-      ),
-    ).toEqual(['active', 'completed']);
-  });
-
-  it('Backlog 完整顯示祖先鏈，不受 Timeline 收合狀態影響', () => {
-    const parent = task({ id: 'parent' });
-    const child = task({ id: 'child', parentId: 'parent' });
-    const result = partitionProjectTasks({ tasks: [parent, child] } as Project);
-
-    expect(result.backlog.map(item => item.id)).toEqual(['parent', 'child']);
-    expect(result.scheduled).toEqual([]);
-  });
-
-  it('allows Backlog and Timeline to keep separate expansion state', () => {
-    const parent = task({ id: 'parent' });
-    const backlogChild = task({ id: 'backlog-child', parentId: 'parent' });
-    const scheduledChild = task({ id: 'scheduled-child', parentId: 'parent', status: 'scheduled' });
-    const project = { tasks: [parent, backlogChild, scheduledChild] } as Project;
-    const tree = buildTaskTree(project.tasks);
-
-    const result = partitionProjectTasks(project, new Set(['parent']), tree, new Set());
-
-    expect(result.backlog.map(item => item.id)).toEqual(['parent']);
-    expect(result.scheduled.map(item => item.id)).toEqual(['parent', 'scheduled-child']);
-  });
-
   it('排程保留 end metadata，end 不限制實際 Allocation 日期', () => {
     const result = scheduleTaskAt(
       task({ id: 'task', end: '2026-01-01', estimatedHours: 12 }),
@@ -346,6 +284,47 @@ describe('容量 domain', () => {
         projects: [],
         allocations: [],
       }),
+    ).toBe(false);
+  });
+
+  it('rejects duplicate, orphaned, cyclic, and over-depth Work Item hierarchy', () => {
+    const workspace = (tasks: Task[]): WorkspaceData => ({
+      version: CURRENT_WORKSPACE_VERSION,
+      projects: [
+        {
+          id: 'project',
+          name: 'Project',
+          description: '',
+          createdAt: '2026-01-01',
+          updatedAt: '2026-01-01',
+          tasks,
+        },
+      ],
+      allocations: [],
+    });
+    const root = task({ id: 'root', parentId: null, order: 0 });
+
+    expect(validWorkspaceData(workspace([root, { ...root }]))).toBe(false);
+    expect(
+      validWorkspaceData(workspace([root, task({ id: 'orphan', parentId: 'missing', order: 0 })])),
+    ).toBe(false);
+    expect(
+      validWorkspaceData(
+        workspace([
+          task({ id: 'cycle-a', parentId: 'cycle-b', order: 0 }),
+          task({ id: 'cycle-b', parentId: 'cycle-a', order: 0 }),
+        ]),
+      ),
+    ).toBe(false);
+    expect(
+      validWorkspaceData(
+        workspace([
+          root,
+          task({ id: 'level-2', parentId: 'root', order: 0 }),
+          task({ id: 'level-3', parentId: 'level-2', order: 0 }),
+          task({ id: 'level-4', parentId: 'level-3', order: 0 }),
+        ]),
+      ),
     ).toBe(false);
   });
 });

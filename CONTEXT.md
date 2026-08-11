@@ -14,6 +14,8 @@
 
 **View Projection**：Backlog 與 Allocation Timeline 都是同一份 Work Item 樹的投影。Leaf Task 的狀態決定它出現在哪個視圖，而每個可見 Leaf Task 都必須帶著完整祖先鏈；因此子項目不會單獨出現，父項目可同時作為兩個視圖的群組內容出現，但仍是同一筆資料。
 
+**Completed Visibility**：「顯示已完成」決定 completed Leaf 是否納入 Allocation Timeline 與 Daily Distribution。Timeline Hierarchy 的展開／收合只影響 Timeline 列，不改變 Daily Distribution。
+
 **Group Transfer**：使用者將群組拖曳到另一個視圖時的立即批次操作。拖入 Timeline 會依穩定樹序排程其中的 Backlog Leaf；拖回 Backlog 會移回未完成的 Timeline Leaf 並清除其 Allocation。已完成 Leaf 不變，因此群組可能仍同時出現在兩個視圖；整批操作可作為單次歷史紀錄復原。
 
 **Importance**：Work Item 的影響程度，分為低、中、高。低表示可以延後且影響小；高表示延後會明顯影響成果。Importance 與 Deadline 分開，前者描述影響程度，後者描述時間限制。

@@ -68,7 +68,10 @@ export function buildTaskTree(tasks: Task[], parentOverride: ParentOverride = ne
   const hasChildren = (taskId: string) => (childrenByParent.get(taskId)?.length || 0) > 0;
   const leafDescendants = (taskId: string) => {
     const result: Task[] = [];
+    const visited = new Set<string>();
     const visit = (currentId: string) => {
+      if (visited.has(currentId)) return;
+      visited.add(currentId);
       const currentChildren = children(currentId);
       if (!currentChildren.length) {
         const current = byId.get(currentId);
@@ -82,8 +85,11 @@ export function buildTaskTree(tasks: Task[], parentOverride: ParentOverride = ne
   };
   const flatten = (expandedIds: Set<string>) => {
     const result: Array<{ task: Task; depth: number }> = [];
+    const visited = new Set<string>();
     const visit = (parent: string | null, currentDepth: number) => {
       for (const task of children(parent)) {
+        if (visited.has(task.id)) continue;
+        visited.add(task.id);
         result.push({ task, depth: currentDepth });
         if (expandedIds.has(task.id)) visit(task.id, currentDepth + 1);
       }
@@ -93,9 +99,11 @@ export function buildTaskTree(tasks: Task[], parentOverride: ParentOverride = ne
   };
   const flattenIncluded = (includedIds: Set<string>, expandedIds: Set<string>) => {
     const result: Task[] = [];
+    const visited = new Set<string>();
     const visit = (parent: string | null) => {
       for (const task of children(parent)) {
-        if (!includedIds.has(task.id)) continue;
+        if (!includedIds.has(task.id) || visited.has(task.id)) continue;
+        visited.add(task.id);
         result.push(task);
         if (expandedIds.has(task.id)) visit(task.id);
       }

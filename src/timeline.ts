@@ -173,24 +173,29 @@ export function buildTimelinePeriods(start: string, end: string, view: ViewMode)
   return periods;
 }
 
-export function timelineRange(tasks: Task[], view: ViewMode, allocations: Allocation[] = []) {
+export function timelineRange(
+  tasks: Task[],
+  view: ViewMode,
+  allocations: Allocation[] = [],
+  referenceDate = today(),
+) {
   const dated = tasks
     .flatMap(task => [task.deadline].filter((date): date is string => Boolean(date)))
     .concat(allocations.map(allocation => allocation.date))
     .sort();
-  const min = dated[0] || today();
-  const max = dated.at(-1) || today();
+  const min = dated[0] || referenceDate;
+  const max = dated.at(-1) || referenceDate;
   const taskStart = addDays(min, -2);
-  const historyStart = addDays(today(), -MIN_TIMELINE_PAST_DAYS);
+  const historyStart = addDays(referenceDate, -MIN_TIMELINE_PAST_DAYS);
   const baseStart = taskStart < historyStart ? taskStart : historyStart;
-  const requestedEnd = addDays(max > today() ? max : today(), 5);
+  const requestedEnd = addDays(max > referenceDate ? max : referenceDate, 5);
   const minimumEnd = addDays(baseStart, MIN_TIMELINE_DAYS);
   const end = requestedEnd > minimumEnd ? requestedEnd : minimumEnd;
   return { start: periodStart(baseStart, view), end: periodEnd(end, view) };
 }
 
 export function buildTimelineContext(
-  periods: TimelinePeriod[],
+  periods: readonly TimelinePeriod[],
   view: ViewMode,
 ): TimelineContextCell[] {
   return periods.map((period, index) => {
@@ -234,12 +239,16 @@ export function weekendClass(date: string, view: ViewMode) {
   return '';
 }
 
-export function findPeriodIndex(periods: TimelinePeriod[], date: string) {
+export function findPeriodIndex(periods: readonly TimelinePeriod[], date: string) {
   const index = periods.findIndex(period => date >= period.start && date <= period.end);
   return index < 0 ? (date < periods[0].start ? 0 : periods.length - 1) : index;
 }
 
-export function timelinePositionForDate(date: string, periods: TimelinePeriod[], scale: number) {
+export function timelinePositionForDate(
+  date: string,
+  periods: readonly TimelinePeriod[],
+  scale: number,
+) {
   if (!periods.length) return 0;
   if (date <= periods[0].start) return 0;
   if (date > periods.at(-1)!.end) return periods.length * scale;
@@ -248,7 +257,11 @@ export function timelinePositionForDate(date: string, periods: TimelinePeriod[],
   return index * scale + (daysBetween(period.start, date) / period.dates.length) * scale;
 }
 
-export function timelineDateAtPosition(position: number, periods: TimelinePeriod[], scale: number) {
+export function timelineDateAtPosition(
+  position: number,
+  periods: readonly TimelinePeriod[],
+  scale: number,
+) {
   if (!periods.length || !Number.isFinite(scale) || scale <= 0) return '';
   const safePosition = Number.isFinite(position) ? position : 0;
   const bounded = Math.max(0, Math.min(periods.length * scale - 0.001, safePosition));
@@ -259,7 +272,7 @@ export function timelineDateAtPosition(position: number, periods: TimelinePeriod
   return period.dates[offset];
 }
 
-export function dropPreviewGeometry(task: Task, periods: TimelinePeriod[], scale: number) {
+export function dropPreviewGeometry(task: Task, periods: readonly TimelinePeriod[], scale: number) {
   if (!task.start || !task.end) return null;
   const left = timelinePositionForDate(task.start, periods, scale);
   const end = timelinePositionForDate(addDays(task.end, 1), periods, scale);
