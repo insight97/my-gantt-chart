@@ -5,11 +5,12 @@ import { hoursLabel, weekdayDateLabel } from './formatters';
 import TaskCard from './TaskCard';
 import { pointerLeftElement, taskRowDropRelation } from './task-drag';
 import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
+import { createTimelineNavigation } from './timeline-navigation';
+import type { TimelineNavigation, TimelinePanTarget } from './timeline-navigation';
 import type { Task, ViewMode } from './types';
 import {
   periodDensity,
   periodDisplayLabel,
-  timelineDateAtPosition,
   timelinePositionForDate,
   timelineScale,
   dropPreviewGeometry,
@@ -17,10 +18,7 @@ import {
   TIMELINE_CONTEXT_ROW_HEIGHT,
   DROP_PREVIEW_TOP,
   TIMELINE_TASK_ROW_HEIGHT,
-  TIMELINE_MOUSE_WHEEL_ZOOM_SENSITIVITY,
-  TIMELINE_TRACKPAD_ZOOM_SENSITIVITY,
   weekendClass,
-  zoomTimelineByWheelDelta,
 } from './timeline';
 import type {
   TimelineContextCell,
@@ -36,8 +34,6 @@ import type {
   TimelineProjection,
   TimelineWorkItemProjection,
 } from './view-projection';
-
-type PanState = { startX: number; startScrollLeft: number; candidate: boolean; active: boolean };
 
 export type CapacityGanttProps = {
   projectId: string;
@@ -718,23 +714,17 @@ export default function CapacityGantt({
   onDailyDistributionDepthChange,
 }: CapacityGanttProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef<PanState | null>(null);
-  const zoomAnchorRef = useRef<{ date: string; pointerOffset: number } | null>(null);
-  const layoutRef = useRef<{
-    key: string;
-    periods: readonly TimelinePeriod[];
-    scale: number;
-  } | null>(null);
-  const skipScrollSyncRef = useRef(false);
-  const [panning, setPanning] = useState(false);
-  const suppressClickRef = useRef(false);
   const view = timelineZoom.view;
   const scale = timelineScale(view, timelineZoom.pixelsPerDay);
   const { range, periods, context, capacity, rows } = projection;
   const headerHeight = TIMELINE_CONTEXT_ROW_HEIGHT + TIMELINE_CAPACITY_ROW_HEIGHT;
   const layoutKey = `${view}:${timelineZoom.pixelsPerDay}:${range.start}:${range.end}`;
+  const [navigation] = useState<TimelineNavigation>(() =>
+    createTimelineNavigation({ timelineZoom, periods, scale }),
+  );
+  const [panning, setPanning] = useState(false);
+  const suppressClickRef = useRef(false);
 
-  const latestRef = useRef({ timelineZoom, periods, scale, onZoomChange });
   const isTimelineGroupDrag =
     taskDrag?.projectId === projectId &&
     taskDrag.active &&
@@ -742,139 +732,95 @@ export default function CapacityGantt({
     taskDrag.origin === 'gantt';
 
   useEffect(() => {
-    latestRef.current = { timelineZoom, periods, scale, onZoomChange };
-  }, [timelineZoom, periods, scale, onZoomChange]);
+    navigation.update({ timelineZoom, periods, scale });
+  }, [navigation, periods, scale, timelineZoom]);
   useEffect(() => {
-    if (skipScrollSyncRef.current) {
-      skipScrollSyncRef.current = false;
-      return;
-    }
-    if (timelineRef.current && Math.abs(timelineRef.current.scrollLeft - scrollLeft) > 1)
-      timelineRef.current.scrollLeft = scrollLeft;
-  }, [scrollLeft]);
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+    const effect = navigation.syncExternalScroll({
+      requestedScrollLeft: scrollLeft,
+      actualScrollLeft: timeline.scrollLeft,
+    });
+    if (effect.scrollLeft !== undefined) timeline.scrollLeft = effect.scrollLeft;
+  }, [navigation, scrollLeft]);
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
     if (!timeline) return;
-    const previous = layoutRef.current;
-    if (!previous) {
-      const initialLeft = Math.max(
-        0,
-        timelinePositionForDate(today(), periods, scale) - timeline.clientWidth / 2,
-      );
-      timeline.scrollLeft = initialLeft;
-      skipScrollSyncRef.current = true;
-      onTimelineScroll(initialLeft);
-    } else if (previous.key !== layoutKey) {
-      const anchor = zoomAnchorRef.current;
-      if (anchor) {
-        timeline.scrollLeft = Math.max(
-          0,
-          timelinePositionForDate(anchor.date, periods, scale) - anchor.pointerOffset,
-        );
-        zoomAnchorRef.current = null;
-      } else {
-        const focusX = timeline.scrollLeft + timeline.clientWidth / 2;
-        const focusDate = timelineDateAtPosition(focusX, previous.periods, previous.scale);
-        timeline.scrollLeft = Math.max(
-          0,
-          timelinePositionForDate(focusDate, periods, scale) - timeline.clientWidth / 2,
-        );
-      }
-      onTimelineScroll(timeline.scrollLeft);
+    const effect = navigation.applyLayout({
+      key: layoutKey,
+      periods,
+      scale,
+      viewportWidth: timeline.clientWidth,
+      scrollLeft: timeline.scrollLeft,
+      referenceDate: today(),
+    });
+    if (effect.scrollLeft !== undefined) {
+      timeline.scrollLeft = effect.scrollLeft;
+      onTimelineScroll(effect.scrollLeft);
     }
-    layoutRef.current = { key: layoutKey, periods, scale };
-  }, [layoutKey, periods, scale, onTimelineScroll]);
+  }, [layoutKey, navigation, onTimelineScroll, periods, scale]);
   useEffect(() => {
     const timeline = timelineRef.current;
     if (!timeline) return;
     const handleWheel = (event: globalThis.WheelEvent) => {
-      const isZoomGesture = timelineInputMode === 'mouse' || event.ctrlKey;
-      if (!isZoomGesture || !event.deltaY) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const latest = latestRef.current;
-      const deltaMultiplier = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
-      const sensitivity =
-        timelineInputMode === 'trackpad'
-          ? TIMELINE_TRACKPAD_ZOOM_SENSITIVITY
-          : TIMELINE_MOUSE_WHEEL_ZOOM_SENSITIVITY;
-      const nextZoom = zoomTimelineByWheelDelta(
-        latest.timelineZoom,
-        event.deltaY * deltaMultiplier,
-        sensitivity,
-      );
-      if (nextZoom.pixelsPerDay === latest.timelineZoom.pixelsPerDay) return;
-      const pointerOffset = event.clientX - timeline.getBoundingClientRect().left;
-      zoomAnchorRef.current = {
-        date: timelineDateAtPosition(
-          timeline.scrollLeft + pointerOffset,
-          latest.periods,
-          latest.scale,
-        ),
-        pointerOffset,
-      };
-      latest.timelineZoom = nextZoom;
-      latest.onZoomChange(nextZoom);
+      const effect = navigation.handleWheel({
+        inputMode: timelineInputMode,
+        ctrlKey: event.ctrlKey,
+        deltaY: event.deltaY,
+        deltaMode: event.deltaMode,
+        clientX: event.clientX,
+        boundsLeft: timeline.getBoundingClientRect().left,
+        scrollLeft: timeline.scrollLeft,
+      });
+      if (effect.preventDefault) event.preventDefault();
+      if (effect.stopPropagation) event.stopPropagation();
+      if (effect.nextZoom) onZoomChange(effect.nextZoom);
     };
     timeline.addEventListener('wheel', handleWheel, { passive: false });
     return () => timeline.removeEventListener('wheel', handleWheel);
-  }, [timelineInputMode]);
+  }, [navigation, onZoomChange, timelineInputMode]);
   const beginPan = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
     const target = event.target;
     const targetElement = target instanceof Element ? target : null;
-    const canPanFromAllocationSurface = Boolean(targetElement?.closest('.allocation-cell'));
-    if (
-      targetElement?.closest('button,[role="button"],.allocation-cell') &&
-      !canPanFromAllocationSurface
-    )
-      return;
-    const timeline = event.currentTarget;
-    const active = !canPanFromAllocationSurface;
-    panRef.current = {
-      startX: event.clientX,
-      startScrollLeft: timeline.scrollLeft,
-      candidate: !active,
-      active,
-    };
-    if (active) {
-      event.preventDefault();
-      if (typeof timeline.setPointerCapture === 'function')
-        timeline.setPointerCapture(event.pointerId);
-      setPanning(true);
-    }
+    const targetKind: TimelinePanTarget = targetElement?.closest('.allocation-cell')
+      ? 'allocation'
+      : targetElement?.closest('button,[role="button"]')
+        ? 'interactive'
+        : 'canvas';
+    const effect = navigation.beginPan({
+      button: event.button,
+      target: targetKind,
+      clientX: event.clientX,
+      scrollLeft: event.currentTarget.scrollLeft,
+    });
+    if (effect.preventDefault) event.preventDefault();
+    if (effect.capturePointer && typeof event.currentTarget.setPointerCapture === 'function')
+      event.currentTarget.setPointerCapture(event.pointerId);
+    if (effect.panning !== undefined) setPanning(effect.panning);
   };
   const movePan = (event: PointerEvent<HTMLDivElement>) => {
-    const current = panRef.current;
-    if (!current) return;
-    if (current.candidate && !current.active) {
-      if (Math.abs(event.clientX - current.startX) < 4) return;
-      current.active = true;
-      event.preventDefault();
-      if (typeof event.currentTarget.setPointerCapture === 'function')
-        event.currentTarget.setPointerCapture(event.pointerId);
-      setPanning(true);
-    }
-    if (!current.active) return;
-    event.preventDefault();
-    event.currentTarget.scrollLeft = current.startScrollLeft - (event.clientX - current.startX);
+    const effect = navigation.movePan({ clientX: event.clientX });
+    if (effect.preventDefault) event.preventDefault();
+    if (effect.capturePointer && typeof event.currentTarget.setPointerCapture === 'function')
+      event.currentTarget.setPointerCapture(event.pointerId);
+    if (effect.scrollLeft !== undefined) event.currentTarget.scrollLeft = effect.scrollLeft;
+    if (effect.panning !== undefined) setPanning(effect.panning);
   };
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
-    const current = panRef.current;
-    if (!current) return;
-    if (current.active && current.candidate) {
+    const effect = navigation.endPan();
+    if (effect.suppressClick) {
       suppressClickRef.current = true;
       setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
     }
     if (
+      effect.releasePointer &&
       typeof event.currentTarget.hasPointerCapture === 'function' &&
       event.currentTarget.hasPointerCapture(event.pointerId)
     )
       event.currentTarget.releasePointerCapture(event.pointerId);
-    panRef.current = null;
-    if (current.active) setPanning(false);
+    if (effect.panning !== undefined) setPanning(effect.panning);
   };
   const handleTaskDropMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!taskDrag?.active) return;
@@ -885,11 +831,11 @@ export default function CapacityGantt({
     const timeline = timelineRef.current;
     if (!timeline) return;
     const bounds = timeline.getBoundingClientRect();
-    const date = timelineDateAtPosition(
-      event.clientX - bounds.left + timeline.scrollLeft,
-      periods,
-      scale,
-    );
+    const date = navigation.dateAtPointer({
+      clientX: event.clientX,
+      boundsLeft: bounds.left,
+      scrollLeft: timeline.scrollLeft,
+    });
     onTaskDropTarget(
       date ? { kind: 'gantt-timeline', projectId, date } : null,
       date ? timeline : undefined,

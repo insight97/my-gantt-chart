@@ -41,3 +41,6 @@ more realistic, but requires reviewing existing tests and runtime cost.
 - Task bar date manipulation and General Mode were removed; Task-card movement and
   direct daily Allocation adjustment remain.
 - Former Task bar geometry names now describe the temporary `DropPreview` only.
+- Timeline navigation lifecycle is centralized in `src/timeline-navigation.ts`;
+  `CapacityGantt.tsx` remains the DOM adapter while the module owns zoom anchors,
+  layout continuity, pan activation, external scroll synchronization, and pointer-date mapping.
