@@ -44,3 +44,6 @@ more realistic, but requires reviewing existing tests and runtime cost.
 - Timeline navigation lifecycle is centralized in `src/timeline-navigation.ts`;
   `CapacityGantt.tsx` remains the DOM adapter while the module owns zoom anchors,
   layout continuity, pan activation, external scroll synchronization, and pointer-date mapping.
+- Workspace estimate invariants are centralized in `src/workspace-invariants.ts`;
+  migration and live transitions share automatic-leaf, recurring, and parent rollup reconciliation,
+  while timestamp policy remains explicit at the caller seam.

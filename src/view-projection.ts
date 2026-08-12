@@ -1,5 +1,5 @@
 import { allocatedHoursByDate, DEFAULT_DAILY_CAPACITY_HOURS, isTaskOverdue } from './capacity';
-import { aggregateTaskEstimate } from './data';
+import { aggregateTaskEstimate } from './workspace-estimates';
 import {
   buildTimelineContext,
   buildTimelinePeriods,
