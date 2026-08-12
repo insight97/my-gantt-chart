@@ -8,6 +8,7 @@ import type { TaskDragState, TaskDropTargetHandler } from './task-drag';
 import { createTimelineNavigation } from './timeline-navigation';
 import type { TimelineNavigation, TimelinePanTarget } from './timeline-navigation';
 import type { Task, ViewMode } from './types';
+import { DEFAULT_TASK_COLOR } from './task-colors';
 import {
   periodDensity,
   periodDisplayLabel,
@@ -290,7 +291,7 @@ function DailyDistributionTable({
                             {
                               left: `${(segment.startHour / DEFAULT_DAILY_CAPACITY_HOURS) * 100}%`,
                               width: `${(segment.visibleHours / DEFAULT_DAILY_CAPACITY_HOURS) * 100}%`,
-                              '--task-color': segment.workItem.color,
+                              '--task-color': segment.displayColor,
                             } as CSSProperties
                           }
                         >
@@ -370,7 +371,7 @@ function AllocationSummaries({
 }) {
   const task = row.workItem;
   const editable = row.allocationReadOnlyReason === null;
-  const taskStyle = { '--task-color': task.color } as CSSProperties;
+  const taskStyle = { '--task-color': row.displayColor } as CSSProperties;
   const readOnlyLabel =
     row.allocationReadOnlyReason === 'completed'
       ? '已完成，不可修改'
@@ -491,7 +492,7 @@ function DropPreview({
         left: geometry.left,
         width: geometry.width,
         top: rowIndex * TIMELINE_TASK_ROW_HEIGHT + DROP_PREVIEW_TOP,
-        backgroundColor: task.color,
+        backgroundColor: task.color ?? DEFAULT_TASK_COLOR,
       }}
       title={`${task.name} · 預覽排程`}
     >
@@ -637,6 +638,7 @@ function GanttSidebar({
           >
             <TaskCard
               task={task}
+              displayColor={row.displayColor}
               variant="gantt"
               allocatedHours={row.allocatedHours}
               pendingHours={row.pendingHours}
@@ -714,6 +716,8 @@ export default function CapacityGantt({
   onDailyDistributionDepthChange,
 }: CapacityGanttProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
+  const headerCanvasRef = useRef<HTMLDivElement>(null);
+  const panningRef = useRef(false);
   const view = timelineZoom.view;
   const scale = timelineScale(view, timelineZoom.pixelsPerDay);
   const { range, periods, context, capacity, rows } = projection;
@@ -742,6 +746,8 @@ export default function CapacityGantt({
       actualScrollLeft: timeline.scrollLeft,
     });
     if (effect.scrollLeft !== undefined) timeline.scrollLeft = effect.scrollLeft;
+    if (headerCanvasRef.current)
+      headerCanvasRef.current.style.transform = `translateX(-${timeline.scrollLeft}px)`;
   }, [navigation, scrollLeft]);
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
@@ -756,6 +762,8 @@ export default function CapacityGantt({
     });
     if (effect.scrollLeft !== undefined) {
       timeline.scrollLeft = effect.scrollLeft;
+      if (headerCanvasRef.current)
+        headerCanvasRef.current.style.transform = `translateX(-${timeline.scrollLeft}px)`;
       onTimelineScroll(effect.scrollLeft);
     }
   }, [layoutKey, navigation, onTimelineScroll, periods, scale]);
@@ -796,17 +804,28 @@ export default function CapacityGantt({
     if (effect.preventDefault) event.preventDefault();
     if (effect.capturePointer && typeof event.currentTarget.setPointerCapture === 'function')
       event.currentTarget.setPointerCapture(event.pointerId);
-    if (effect.panning !== undefined) setPanning(effect.panning);
+    if (effect.panning !== undefined) {
+      panningRef.current = effect.panning;
+      setPanning(effect.panning);
+    }
   };
   const movePan = (event: PointerEvent<HTMLDivElement>) => {
     const effect = navigation.movePan({ clientX: event.clientX });
     if (effect.preventDefault) event.preventDefault();
     if (effect.capturePointer && typeof event.currentTarget.setPointerCapture === 'function')
       event.currentTarget.setPointerCapture(event.pointerId);
-    if (effect.scrollLeft !== undefined) event.currentTarget.scrollLeft = effect.scrollLeft;
-    if (effect.panning !== undefined) setPanning(effect.panning);
+    if (effect.scrollLeft !== undefined) {
+      event.currentTarget.scrollLeft = effect.scrollLeft;
+      if (headerCanvasRef.current)
+        headerCanvasRef.current.style.transform = `translateX(-${event.currentTarget.scrollLeft}px)`;
+    }
+    if (effect.panning !== undefined) {
+      panningRef.current = effect.panning;
+      setPanning(effect.panning);
+    }
   };
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
+    const wasPanning = panningRef.current;
     const effect = navigation.endPan();
     if (effect.suppressClick) {
       suppressClickRef.current = true;
@@ -820,7 +839,11 @@ export default function CapacityGantt({
       event.currentTarget.hasPointerCapture(event.pointerId)
     )
       event.currentTarget.releasePointerCapture(event.pointerId);
-    if (effect.panning !== undefined) setPanning(effect.panning);
+    if (effect.panning !== undefined) {
+      panningRef.current = effect.panning;
+      setPanning(effect.panning);
+    }
+    if (wasPanning) onTimelineScroll(event.currentTarget.scrollLeft);
   };
   const handleTaskDropMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!taskDrag?.active) return;
@@ -883,6 +906,7 @@ export default function CapacityGantt({
             <div className="timeline-header-viewport">
               <div
                 className="timeline-header-canvas"
+                ref={headerCanvasRef}
                 style={{
                   width: timelineWidth,
                   transform: `translateX(-${scrollLeft}px)`,
@@ -903,7 +927,12 @@ export default function CapacityGantt({
             data-view={view}
             data-pixels-per-day={timelineZoom.pixelsPerDay}
             ref={timelineRef}
-            onScroll={event => onTimelineScroll(event.currentTarget.scrollLeft)}
+            onScroll={event => {
+              const left = event.currentTarget.scrollLeft;
+              if (headerCanvasRef.current)
+                headerCanvasRef.current.style.transform = `translateX(-${left}px)`;
+              if (!panningRef.current) onTimelineScroll(left);
+            }}
             onClickCapture={event => {
               if (suppressClickRef.current) {
                 event.preventDefault();

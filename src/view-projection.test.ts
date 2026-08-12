@@ -64,6 +64,27 @@ describe('View Projection', () => {
     expect(projection.timeline.rows[1]).toMatchObject({ depth: 2, hasChildren: false });
   });
 
+  it('projects inherited and overridden display colors without changing canonical Tasks', () => {
+    const parent = task('parent', { color: '#5d9b63' });
+    const inherited = task('inherited', { parentId: 'parent', color: null });
+    const overridden = task('overridden', { parentId: 'parent', color: '#c85f5f' });
+    const project = { tasks: [parent, inherited, overridden] } as Project;
+
+    const projection = buildViewProjection(
+      project,
+      [],
+      choices({ expanded: { backlog: new Set(['parent']), timeline: new Set() } }),
+    );
+
+    expect(
+      projection.backlog.rows.map(row => [row.workItem.id, row.workItem.color, row.displayColor]),
+    ).toEqual([
+      ['parent', '#5d9b63', '#5d9b63'],
+      ['inherited', null, '#5d9b63'],
+      ['overridden', '#c85f5f', '#c85f5f'],
+    ]);
+  });
+
   it('keeps completed Daily Distribution independent from Timeline expansion', () => {
     const parent = task('parent');
     const completed = task('completed', {

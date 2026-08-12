@@ -10,6 +10,7 @@ import {
 } from './timeline';
 import type { CapacityState, TimelineContextCell, TimelinePeriod } from './timeline';
 import { buildTaskTree } from './task-tree';
+import { DEFAULT_TASK_COLOR, resolveTaskColors } from './task-colors';
 import type { Allocation, Project, Task, ViewMode } from './types';
 
 export type DailyDistributionAllocationOrder = 'ascending' | 'descending';
@@ -31,6 +32,7 @@ export type ViewProjectionChoices = Readonly<{
 
 export type ProjectedWorkItem = Readonly<{
   workItem: Task;
+  displayColor: string;
   depth: number;
   hasChildren: boolean;
   expanded: boolean;
@@ -79,6 +81,7 @@ export type TimelineProjection = Readonly<{
 
 export type DailyDistributionSegment = Readonly<{
   workItem: Task;
+  displayColor: string;
   hours: number;
   startHour: number;
   visibleHours: number;
@@ -128,10 +131,12 @@ function projectedRows(
   includedIds: Set<string>,
   expandedIds: ReadonlySet<string>,
   tree: ReturnType<typeof buildTaskTree>,
+  displayColors: ReadonlyMap<string, string>,
 ): ProjectedWorkItem[] {
   const expanded = new Set(expandedIds);
   return tree.flattenIncluded(includedIds, expanded).map(workItem => ({
     workItem,
+    displayColor: displayColors.get(workItem.id) ?? DEFAULT_TASK_COLOR,
     depth: tree.depth(workItem.id),
     hasChildren: tree.hasChildren(workItem.id),
     expanded: expanded.has(workItem.id),
@@ -215,6 +220,7 @@ function buildDailyDistribution(
   tasks: readonly Task[],
   hoursByTask: ReadonlyMap<string, ReadonlyMap<string, number>>,
   allocationOrder: DailyDistributionAllocationOrder,
+  displayColors: ReadonlyMap<string, string>,
 ): DailyDistributionProjection {
   return {
     days: dates.map(date => {
@@ -240,6 +246,7 @@ function buildDailyDistribution(
         if (visibleEnd > visibleStart) {
           segments.push({
             workItem,
+            displayColor: displayColors.get(workItem.id) ?? DEFAULT_TASK_COLOR,
             hours,
             startHour,
             visibleHours: visibleEnd - visibleStart,
@@ -263,6 +270,7 @@ export function buildViewProjection(
   choices: ViewProjectionChoices,
 ): ViewProjection {
   const tree = buildTaskTree(project.tasks);
+  const displayColors = resolveTaskColors(project.tasks);
   const projectTaskIds = new Set(project.tasks.map(task => task.id));
   const projectAllocations = workspaceAllocations.filter(allocation =>
     projectTaskIds.has(allocation.taskId),
@@ -275,8 +283,13 @@ export function buildViewProjection(
     task => task.status !== 'backlog' && (choices.showCompleted || task.status !== 'completed'),
     tree,
   );
-  const backlogRows = projectedRows(backlogIds, choices.expanded.backlog, tree);
-  const timelineBaseRows = projectedRows(timelineIds, choices.expanded.timeline, tree);
+  const backlogRows = projectedRows(backlogIds, choices.expanded.backlog, tree, displayColors);
+  const timelineBaseRows = projectedRows(
+    timelineIds,
+    choices.expanded.timeline,
+    tree,
+    displayColors,
+  );
 
   const range = timelineRange(
     timelineBaseRows.map(row => row.workItem),
@@ -354,6 +367,7 @@ export function buildViewProjection(
       distributionTasks,
       distributionHoursByTask,
       choices.dailyDistribution.allocationOrder,
+      displayColors,
     ),
   };
 }

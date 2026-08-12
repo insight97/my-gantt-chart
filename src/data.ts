@@ -11,6 +11,7 @@ import { addDays, today } from './capacity';
 import { buildTaskTree } from './task-tree';
 import { isValidRecurrenceRule } from './recurrence';
 import { reconcileWorkspaceInvariants } from './workspace-invariants';
+import { normalizeTaskColor } from './task-colors';
 
 export { buildTaskTree } from './task-tree';
 export type { TaskTreeIndex } from './task-tree';
@@ -33,7 +34,7 @@ export const emptyTask = (): Task => ({
   status: 'backlog',
   notes: '',
   owner: '',
-  color: '#2f75bb',
+  color: null,
   createdAt: now(),
   updatedAt: now(),
   parentId: null,
@@ -112,6 +113,9 @@ function validTask(value: unknown): value is Task {
     isPriority(task.priority) &&
     typeof task.status === 'string' &&
     statuses.has(task.status) &&
+    typeof task.notes === 'string' &&
+    typeof task.owner === 'string' &&
+    (task.color === null || normalizeTaskColor(task.color) !== null) &&
     typeof task.createdAt === 'string' &&
     typeof task.updatedAt === 'string' &&
     (task.parentId === null || typeof task.parentId === 'string') &&
@@ -257,6 +261,7 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
         order: Number.isFinite(task.order) ? task.order : index,
         recurrence: task.recurrence ?? null,
         estimatedHoursMode: task.estimatedHoursMode === 'auto' ? 'auto' : 'manual',
+        color: normalizeTaskColor(task.color),
       };
       return normalized;
     });
