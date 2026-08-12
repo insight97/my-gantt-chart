@@ -5,18 +5,11 @@ import {
   scheduleTaskAt,
   today,
 } from './capacity';
-import {
-  aggregateTaskEstimate,
-  buildTaskTree,
-  now,
-  taskDeadlineConstraint,
-  uid,
-  validateDeadlineHierarchy,
-} from './data';
+import { buildTaskTree, now, taskDeadlineConstraint, uid, validateDeadlineHierarchy } from './data';
 import { recurrenceRuleError } from './recurrence';
-import { getRecurringEstimatedHours, planRecurringAllocations } from './recurring-allocation';
-import { usesAutomaticEstimate } from './types';
+import { planRecurringAllocations } from './recurring-allocation';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
+import { reconcileWorkspaceInvariants } from './workspace-invariants';
 
 export type WorkspaceOperationResult =
   | { ok: true; changed: true; workspace: WorkspaceData }
@@ -65,7 +58,7 @@ function replaceTaskAndAllocations(
         ]
       : workspace.allocations,
   };
-  return syncParentEstimatedHours(nextWorkspace, projectId);
+  return reconcileWorkspaceInvariants(nextWorkspace, { projectId, updatedAt: now() });
 }
 
 function appendTaskToSiblingEnd(tasks: Task[], task: Task): Task[] {
@@ -105,7 +98,7 @@ function replaceProjectTasksAndAllocations(
   tasks: Task[],
   allocations: Allocation[],
 ) {
-  return syncParentEstimatedHours(
+  return reconcileWorkspaceInvariants(
     {
       ...workspace,
       projects: workspace.projects.map(project =>
@@ -113,58 +106,8 @@ function replaceProjectTasksAndAllocations(
       ),
       allocations,
     },
-    projectId,
+    { projectId, updatedAt: now() },
   );
-}
-
-function syncAutomaticEstimatedHours(workspace: WorkspaceData, projectId: string) {
-  const project = findProject(workspace, projectId);
-  if (!project) return workspace;
-  const tree = buildTaskTree(project.tasks);
-  const allocatedByTask = new Map<string, number>();
-  for (const allocation of workspace.allocations)
-    allocatedByTask.set(
-      allocation.taskId,
-      (allocatedByTask.get(allocation.taskId) || 0) + allocation.allocatedHours,
-    );
-  let changed = false;
-  const tasks = project.tasks.map(task => {
-    if (!usesAutomaticEstimate(task) || tree.hasChildren(task.id)) return task;
-    const estimatedHours = allocatedByTask.get(task.id) || 0;
-    if (task.estimatedHours === estimatedHours) return task;
-    changed = true;
-    return { ...task, estimatedHours, updatedAt: now() };
-  });
-  if (!changed) return workspace;
-  return {
-    ...workspace,
-    projects: workspace.projects.map(item =>
-      item.id === projectId ? { ...item, tasks, updatedAt: now() } : item,
-    ),
-  };
-}
-
-/** Keep every persisted parent estimate equal to the sum of its leaf estimates. */
-export function syncParentEstimatedHours(workspace: WorkspaceData, projectId: string) {
-  const normalizedWorkspace = syncAutomaticEstimatedHours(workspace, projectId);
-  const project = findProject(normalizedWorkspace, projectId);
-  if (!project) return normalizedWorkspace;
-  const tree = buildTaskTree(project.tasks);
-  let changed = false;
-  const tasks = project.tasks.map(task => {
-    if (!tree.hasChildren(task.id)) return task;
-    const estimatedHours = aggregateTaskEstimate(task.id, project.tasks, tree);
-    if (task.estimatedHours === estimatedHours) return task;
-    changed = true;
-    return { ...task, estimatedHours, updatedAt: now() };
-  });
-  if (!changed) return normalizedWorkspace;
-  return {
-    ...normalizedWorkspace,
-    projects: normalizedWorkspace.projects.map(item =>
-      item.id === projectId ? { ...item, tasks, updatedAt: now() } : item,
-    ),
-  };
 }
 
 function parentHasDirectWork(workspace: WorkspaceData, parent: Task) {
@@ -277,15 +220,6 @@ function prepareTaskForPersistence(
   if (initialTree.hasChildren(draft.id)) {
     if (draft.status === 'completed') return { error: '有子任務的工作項目不可標記為已完成。' };
     if (draft.recurrence) return { error: '父任務不可設定重複排程。' };
-    draft = {
-      ...draft,
-      estimatedHours: initialProject.tasks
-        .filter(
-          task =>
-            initialTree.descendants(draft.id).has(task.id) && !initialTree.hasChildren(task.id),
-        )
-        .reduce((sum, task) => sum + task.estimatedHours, 0),
-    };
   }
 
   let nextWorkspace = workspace;
@@ -339,19 +273,6 @@ export function saveTask(
     const result = returnTaskToBacklog(nextTask);
     nextTask = result.task;
     taskAllocations = result.allocations;
-  }
-
-  if (nextTask.recurrence) {
-    const effectiveAllocations = taskAllocations
-      ? [
-          ...nextWorkspace.allocations.filter(item => item.taskId !== nextTask.id),
-          ...taskAllocations,
-        ]
-      : nextWorkspace.allocations;
-    nextTask = {
-      ...nextTask,
-      estimatedHours: getRecurringEstimatedHours(nextTask, effectiveAllocations),
-    };
   }
 
   const savedWorkspace = replaceTaskAndAllocations(
@@ -470,13 +391,7 @@ export function clearTaskSchedule(
   const prepared = prepareTaskForPersistence(workspace, projectId, sourceTask);
   if ('error' in prepared) return invalid(prepared.error);
   const { workspace: nextWorkspace, project: nextProject, task } = prepared;
-  const clearedTask = task.recurrence
-    ? {
-        ...task,
-        estimatedHours: getRecurringEstimatedHours(task, []),
-        updatedAt: now(),
-      }
-    : { ...task, updatedAt: now() };
+  const clearedTask = { ...task, updatedAt: now() };
   return updated(replaceTaskAndAllocations(nextWorkspace, nextProject.id, clearedTask, []));
 }
 
@@ -790,14 +705,14 @@ export function moveTask(
   const deadlineError = validateDeadlineHierarchy(normalized, buildTaskTree(normalized));
   if (deadlineError) return invalid(deadlineError);
   return updated(
-    syncParentEstimatedHours(
+    reconcileWorkspaceInvariants(
       {
         ...nextWorkspace,
         projects: nextWorkspace.projects.map(item =>
           item.id === projectId ? { ...item, tasks: normalized, updatedAt: now() } : item,
         ),
       },
-      projectId,
+      { projectId, updatedAt: now() },
     ),
   );
 }

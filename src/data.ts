@@ -5,16 +5,16 @@ import {
   type Task,
   type TaskPriority,
   type WorkspaceData,
-  usesAutomaticEstimate,
 } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { addDays, today } from './capacity';
 import { buildTaskTree } from './task-tree';
-import { getRecurringEstimatedHours } from './recurring-allocation';
 import { isValidRecurrenceRule } from './recurrence';
+import { reconcileWorkspaceInvariants } from './workspace-invariants';
 
 export { buildTaskTree } from './task-tree';
 export type { TaskTreeIndex } from './task-tree';
+export { aggregateTaskEstimate } from './workspace-estimates';
 
 export const uid = () => crypto.randomUUID();
 export const now = () => new Date().toISOString();
@@ -232,6 +232,7 @@ export function validateImport(value: unknown): value is ExportFile {
   );
 }
 
+/** Normalizes persisted field shape, then applies the canonical estimate invariants. */
 export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
   const allocations = value.allocations.map(allocation => {
     const normalized: Allocation = {
@@ -245,7 +246,6 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
     return normalized;
   });
   const projects = value.projects.map(project => {
-    const tree = buildTaskTree(project.tasks);
     const normalizedTasks = project.tasks.map((task, index) => {
       const currentTask = { ...(task as Task & { allocationStrategy?: unknown }) };
       delete currentTask.allocationStrategy;
@@ -258,34 +258,14 @@ export function normalizeWorkspaceData(value: WorkspaceData): WorkspaceData {
         recurrence: task.recurrence ?? null,
         estimatedHoursMode: task.estimatedHoursMode === 'auto' ? 'auto' : 'manual',
       };
-      if (normalized.recurrence)
-        return {
-          ...normalized,
-          estimatedHours: getRecurringEstimatedHours(normalized, allocations),
-        };
-      if (usesAutomaticEstimate(normalized) && !tree.hasChildren(task.id))
-        return {
-          ...normalized,
-          estimatedHours: allocations
-            .filter(allocation => allocation.taskId === task.id)
-            .reduce((sum, allocation) => sum + allocation.allocatedHours, 0),
-        };
       return normalized;
     });
-    const normalizedTree = buildTaskTree(normalizedTasks);
     return {
       ...project,
-      tasks: normalizedTasks.map(task =>
-        normalizedTree.hasChildren(task.id)
-          ? {
-              ...task,
-              estimatedHours: aggregateTaskEstimate(task.id, normalizedTasks, normalizedTree),
-            }
-          : task,
-      ),
+      tasks: normalizedTasks,
     };
   });
-  return { ...value, projects, allocations };
+  return reconcileWorkspaceInvariants({ ...value, projects, allocations });
 }
 
 export const taskChildren = (tasks: Task[], parentId: string | null, tree = buildTaskTree(tasks)) =>
@@ -366,14 +346,6 @@ export function aggregateTaskHours(
   return allocations
     .filter(allocation => ids.has(allocation.taskId))
     .reduce((sum, allocation) => sum + allocation.allocatedHours, 0);
-}
-
-export function aggregateTaskEstimate(taskId: string, tasks: Task[], tree = buildTaskTree(tasks)) {
-  const ids = tree.descendants(taskId);
-  ids.add(taskId);
-  return tasks
-    .filter(task => ids.has(task.id) && !tree.hasChildren(task.id))
-    .reduce((sum, task) => sum + Math.max(0, task.estimatedHours), 0);
 }
 
 /** Pre-order tree used by both Backlog and Timeline. */

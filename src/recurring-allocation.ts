@@ -6,7 +6,7 @@ export type RecurringAllocationMode = 'fill' | 'replace';
 export type RecurringAllocationPlan =
   { task: Task; allocations: Allocation[] } | { error: string } | null;
 
-function allocationHours(allocations: Allocation[]) {
+function allocationHours(allocations: readonly Allocation[]) {
   return allocations.reduce((sum, allocation) => sum + allocation.allocatedHours, 0);
 }
 
@@ -40,7 +40,7 @@ function currentRuleDates(task: Task): { dates: string[] } | { error: string } {
  * contribute their rule hours until the user fills them. Manual allocations
  * outside the rule are counted as additional planned work.
  */
-export function getRecurringEstimatedHours(task: Task, allocations: Allocation[]) {
+export function getRecurringEstimatedHours(task: Task, allocations: readonly Allocation[]) {
   if (!task.recurrence || recurrenceRuleError(task.recurrence)) return task.estimatedHours;
   const dates = recurrenceDates(task.recurrence);
   const taskAllocations = allocations.filter(allocation => allocation.taskId === task.id);
