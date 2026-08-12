@@ -1,11 +1,13 @@
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import { hoursLabel, priorityLabels } from './formatters';
 import type { Task } from './types';
+import { DEFAULT_TASK_COLOR } from './task-colors';
 
 export type TaskCardVariant = 'backlog' | 'gantt';
 
 type TaskCardProps = {
   task: Task;
+  displayColor?: string;
   variant: TaskCardVariant;
   allocatedHours?: number;
   pendingHours?: number;
@@ -24,6 +26,7 @@ type TaskCardProps = {
 
 export default function TaskCard({
   task,
+  displayColor = task.color ?? DEFAULT_TASK_COLOR,
   variant,
   allocatedHours = 0,
   pendingHours = 0,
@@ -69,7 +72,7 @@ export default function TaskCard({
   return (
     <article
       className={className}
-      style={{ '--task-depth': depth } as CSSProperties}
+      style={{ '--task-depth': depth, '--task-color': displayColor } as CSSProperties}
       draggable={false}
       tabIndex={isGhost ? undefined : 0}
       aria-hidden={isGhost || undefined}

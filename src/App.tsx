@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent } from 'react';
+import type {
+  ChangeEvent,
+  CSSProperties,
+  FormEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   buildTaskTree,
@@ -64,6 +69,7 @@ import type {
   DailyDistributionAllocationOrder,
   HierarchyDepth,
 } from './view-projection';
+import { DEFAULT_TASK_COLOR, TASK_COLOR_OPTIONS, resolveTaskColor } from './task-colors';
 
 const clone = <T,>(value: T): T => structuredClone(value);
 const statusLabels: Record<TaskStatus, string> = {
@@ -320,6 +326,7 @@ export default function App() {
     const project = workspace.projects.find(item => item.id === projectId)!;
     const task = emptyTask();
     task.parentId = parentId;
+    if (parentId) task.color = null;
     task.order = project.tasks.filter(item => (item.parentId ?? null) === parentId).length;
     if (parentId) task.deadline = taskDeadlineConstraint(project.tasks, parentId);
     if (entryPoint === 'timeline') task.status = 'scheduled';
@@ -813,6 +820,10 @@ export default function App() {
         >
           <TaskCard
             task={taskDrag.task}
+            displayColor={resolveTaskColor(
+              taskDrag.task.id,
+              workspace.projects.find(project => project.id === taskDrag.projectId)?.tasks ?? [],
+            )}
             variant={taskDrag.origin}
             allocatedHours={taskDrag.allocatedHours}
             pendingHours={taskDrag.pendingHours}
@@ -957,13 +968,14 @@ function ExpandedProjectPanel({
       (!autoScheduleEnabled && taskDrag.origin === 'backlog')
     )
       return null;
-    return previewTimelinePlacement(
+    const preview = previewTimelinePlacement(
       taskDrag.task,
       allAllocations,
       dropTarget.date,
       taskDrag.origin === 'gantt' || autoScheduleEnabled,
     );
-  }, [taskDrag, project.id, allAllocations, autoScheduleEnabled]);
+    return preview ? { ...preview, color: resolveTaskColor(preview.id, project.tasks) } : null;
+  }, [taskDrag, project.id, project.tasks, allAllocations, autoScheduleEnabled]);
   return (
     <div className="project-card-content">
       <div className="workspace-title">
@@ -1108,6 +1120,7 @@ function Backlog({
       >
         <TaskCard
           task={task}
+          displayColor={row.displayColor}
           variant="backlog"
           isDragging={draggingTaskId === task.id}
           onEdit={onEdit}
@@ -1190,6 +1203,10 @@ function TaskDialog({
       !descendantIds.has(candidate.id) &&
       taskTree.depth(candidate.id) < 3,
   );
+  const inheritedColor = draft.parentId
+    ? resolveTaskColor(draft.parentId, tasks)
+    : DEFAULT_TASK_COLOR;
+  const displayColor = draft.color ?? inheritedColor;
   const recurrence = recurrenceEnabled ? (recurrenceSettings ?? defaultRecurrence(draft)) : null;
   const recurringDraft = { ...draft, recurrence };
   const recurrenceError = recurrence ? recurrenceRuleError(recurrence) : null;
@@ -1324,6 +1341,43 @@ function TaskDialog({
             </select>
           </label>
         </div>
+        <fieldset className="task-color-settings">
+          <legend>任務顏色</legend>
+          <div className="task-color-options">
+            <button
+              className={`task-color-source${draft.color === null ? ' selected' : ''}`}
+              type="button"
+              aria-pressed={draft.color === null}
+              onClick={() => setDraft(current => ({ ...current, color: null }))}
+            >
+              <span style={{ backgroundColor: inheritedColor }} aria-hidden="true" />
+              {draft.parentId ? '沿用父任務' : '使用預設'}
+            </button>
+            {TASK_COLOR_OPTIONS.map(option => (
+              <button
+                className={`task-color-swatch${draft.color === option.value ? ' selected' : ''}`}
+                type="button"
+                key={option.value}
+                aria-label={`使用${option.name}`}
+                aria-pressed={draft.color === option.value}
+                title={option.name}
+                style={{ '--swatch-color': option.value } as CSSProperties}
+                onClick={() => setDraft(current => ({ ...current, color: option.value }))}
+              />
+            ))}
+            <label className="task-color-custom">
+              <input
+                type="color"
+                aria-label="自訂任務顏色"
+                value={displayColor}
+                onChange={event =>
+                  setDraft(current => ({ ...current, color: event.target.value.toLowerCase() }))
+                }
+              />
+              自訂
+            </label>
+          </div>
+        </fieldset>
         {!hasChildren && (
           <fieldset className="recurrence-settings">
             <legend>重複排程</legend>

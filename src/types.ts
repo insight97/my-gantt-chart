@@ -1,7 +1,7 @@
 // Schema version of WorkspaceData/ExportFile. The one place a future field addition
 // that isn't safely defaultable bumps — db.ts's migrateWorkspace and data.ts's
 // validation import it instead of each holding their own copy of the number.
-export const CURRENT_WORKSPACE_VERSION = 6;
+export const CURRENT_WORKSPACE_VERSION = 7;
 
 export type ViewMode = 'day' | 'week' | 'month';
 export type TaskStatus = 'backlog' | 'scheduled' | 'in_progress' | 'completed';
@@ -36,7 +36,8 @@ export interface Task {
   status: TaskStatus;
   notes: string;
   owner: string;
-  color: string;
+  /** Null inherits the nearest explicit ancestor color, or the app default at the root. */
+  color: string | null;
   createdAt: string;
   updatedAt: string;
   /** Null means this is a root work item. */

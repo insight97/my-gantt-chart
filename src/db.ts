@@ -2,6 +2,7 @@ import { normalizeWorkspaceData, now, sampleWorkspace, uid, validWorkspaceData }
 import type { Project, Task, WorkspaceData } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { normalizeRecurrenceRule } from './recurrence';
+import { DEFAULT_TASK_COLOR, normalizeTaskColor } from './task-colors';
 
 const DB = 'gantt-local-db';
 // IndexedDB's own store-schema version — bumps only when object stores are added or
@@ -52,8 +53,13 @@ function readOne<T>(db: IDBDatabase, storeName: string, key: string) {
   });
 }
 
-function migrateTask(value: Partial<Task> & Record<string, unknown>, order = 0): Task {
+function migrateTask(
+  value: Partial<Task> & Record<string, unknown>,
+  order = 0,
+  legacyDefaultColorIsUnset = false,
+): Task {
   const timestamp = now();
+  const color = normalizeTaskColor(value.color);
   return {
     id: typeof value.id === 'string' ? value.id : uid(),
     name: typeof value.name === 'string' ? value.name : '未命名工作',
@@ -75,7 +81,7 @@ function migrateTask(value: Partial<Task> & Record<string, unknown>, order = 0):
         : 'backlog',
     notes: typeof value.notes === 'string' ? value.notes : '',
     owner: typeof value.owner === 'string' ? value.owner : '',
-    color: typeof value.color === 'string' ? value.color : '#2f75bb',
+    color: legacyDefaultColorIsUnset && color === DEFAULT_TASK_COLOR ? null : color,
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : timestamp,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : timestamp,
     parentId: typeof value.parentId === 'string' ? value.parentId : null,
@@ -84,11 +90,18 @@ function migrateTask(value: Partial<Task> & Record<string, unknown>, order = 0):
   };
 }
 
-function migrateProject(value: Record<string, unknown>): Project {
+function migrateProject(
+  value: Record<string, unknown>,
+  legacyDefaultColorIsUnset = false,
+): Project {
   const timestamp = now();
   const tasks = Array.isArray(value.tasks)
     ? value.tasks.map((task, index) =>
-        migrateTask((task || {}) as Partial<Task> & Record<string, unknown>, index),
+        migrateTask(
+          (task || {}) as Partial<Task> & Record<string, unknown>,
+          index,
+          legacyDefaultColorIsUnset,
+        ),
       )
     : [];
   return {
@@ -105,7 +118,7 @@ function migrateLegacyProjects(value: unknown): WorkspaceData {
   const sourceProjects = Array.isArray(value)
     ? value
         .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-        .map(migrateProject)
+        .map(project => migrateProject(project, true))
     : [];
   const projects = mergeProjects(sourceProjects);
   return {
@@ -150,8 +163,11 @@ function mergeProjects(projects: Project[]): Project[] {
 export function migrateWorkspace(raw: unknown): WorkspaceData {
   if (Array.isArray(raw)) return migrateLegacyProjects(raw);
   const value = (raw && typeof raw === 'object' ? raw : {}) as Partial<WorkspaceData>;
+  const sourceVersion = typeof value.version === 'number' ? value.version : 1;
   const projects = Array.isArray(value.projects)
-    ? value.projects.map(project => migrateProject(project as unknown as Record<string, unknown>))
+    ? value.projects.map(project =>
+        migrateProject(project as unknown as Record<string, unknown>, sourceVersion < 7),
+      )
     : [];
   return normalizeWorkspaceData({
     version: CURRENT_WORKSPACE_VERSION,

@@ -152,6 +152,28 @@ describe('Work Item hierarchy UI', () => {
     await waitFor(() => expect(headerCanvas.style.transform).toBe('translateX(-120px)'));
   });
 
+  it('keeps the timeline header aligned during each pointer-pan move', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [workItem('timeline-task', '時間軸工作', { status: 'scheduled' })],
+        [],
+        [{ id: 'allocation-a', taskId: 'timeline-task', date: '2026-08-03', allocatedHours: 2 }],
+      ),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(document.querySelector('.timeline')).toBeInTheDocument());
+    const timeline = document.querySelector('.timeline') as HTMLElement;
+    const headerCanvas = document.querySelector('.timeline-header-canvas') as HTMLElement;
+    timeline.scrollLeft = 300;
+
+    fireEvent.pointerDown(timeline, { button: 0, clientX: 50, pointerId: 1 });
+    fireEvent.pointerMove(timeline, { clientX: 80, pointerId: 1 });
+
+    expect(timeline.scrollLeft).toBe(270);
+    expect(headerCanvas.style.transform).toBe('translateX(-270px)');
+  });
+
   it('shows daily distribution in a separate table', async () => {
     loadWorkspaceMock.mockResolvedValue(
       workspace(
@@ -225,6 +247,34 @@ describe('Work Item hierarchy UI', () => {
 
     await waitFor(() => expect(screen.getByText('子工作')).toBeInTheDocument());
     expect(document.querySelector('.backlog .task-card-group')).toHaveTextContent('根工作');
+  });
+
+  it('inherits the parent color until the child selects its own color', async () => {
+    const parent = workItem('parent', '綠色父工作', { color: '#5d9b63' });
+    const child = workItem('child', '繼承子工作', { parentId: 'parent', color: null });
+    loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
+    render(<App />);
+
+    const toggle = await screen.findByRole('button', { name: '展開 綠色父工作' });
+    fireEvent.click(toggle);
+    const childCard = taskCardText('繼承子工作').closest('.task-card') as HTMLElement;
+    expect(childCard.style.getPropertyValue('--task-color')).toBe('#5d9b63');
+
+    fireEvent.click(taskCardText('繼承子工作'));
+    expect(screen.getByRole('button', { name: '沿用父任務' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '使用紅色' }));
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() =>
+      expect(
+        (taskCardText('繼承子工作').closest('.task-card') as HTMLElement).style.getPropertyValue(
+          '--task-color',
+        ),
+      ).toBe('#c85f5f'),
+    );
   });
 
   it('adds a child created from Timeline directly to Timeline', async () => {

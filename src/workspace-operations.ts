@@ -10,6 +10,7 @@ import { recurrenceRuleError } from './recurrence';
 import { planRecurringAllocations } from './recurring-allocation';
 import type { Allocation, Project, Task, WorkspaceData } from './types';
 import { reconcileWorkspaceInvariants } from './workspace-invariants';
+import { normalizeTaskColor } from './task-colors';
 
 export type WorkspaceOperationResult =
   | { ok: true; changed: true; workspace: WorkspaceData }
@@ -138,6 +139,7 @@ function preserveParentWorkAsUnsplit(
     id: uid(),
     name: '未拆分工作',
     parentId: parent.id,
+    color: null,
     order: 0,
     updatedAt: now(),
   };
@@ -235,6 +237,7 @@ function prepareTaskForPersistence(
     ...draft,
     name: draft.name.trim(),
     recurrence: draft.recurrence ?? null,
+    color: normalizeTaskColor(draft.color),
     estimatedHoursMode:
       !draft.recurrence &&
       ((existingTask && draft.estimatedHours !== existingTask.estimatedHours) ||

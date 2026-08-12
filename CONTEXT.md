@@ -20,6 +20,8 @@
 
 **Importance**：Work Item 的影響程度，分為低、中、高。低表示可以延後且影響小；高表示延後會明顯影響成果。Importance 與 Deadline 分開，前者描述影響程度，後者描述時間限制。
 
+**Work Item Color**：Work Item 可設定顯示顏色。未自訂顏色的根項目使用系統預設色；未自訂顏色的子項目沿用最近一層有自訂顏色的祖先，因此祖先改色時會同步反映。子項目一旦選擇自己的顏色便停止繼承，直到使用者明確切回「沿用父任務」。顏色只用於視覺辨識，不代表 Importance、Status、Deadline 或排程規則。
+
 **Backlog Task**：尚未被使用者放入 Allocation Timeline 的 Leaf Task。它通常沒有 Allocation 與排程日期，但仍可保留建立日期、截止日期、重要性與估計工時。
 
 **Scheduled Task**：已被使用者放入 Allocation Timeline 的 Leaf Task。它可以是完整分配、部分分配，或因使用者清除所有 Allocation 而暫時沒有分配；只要沒有被明確移回 Backlog，就仍屬於 Allocation Timeline。

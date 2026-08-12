@@ -189,6 +189,7 @@ export function createTimelineNavigation(
   }
 
   function syncExternalScroll(input: TimelineScrollSyncInput): TimelineNavigationEffect {
+    if (pan?.active) return {};
     if (skipNextExternalScrollSync) {
       skipNextExternalScrollSync = false;
       return {};

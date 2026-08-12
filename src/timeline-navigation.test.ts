@@ -159,6 +159,28 @@ describe('Timeline Navigation module', () => {
     expect(navigation.endPan()).toEqual({ releasePointer: true, panning: false });
   });
 
+  it('does not let a stale external scroll echo reverse an active pan', () => {
+    const navigation = createNavigation();
+    navigation.beginPan({ button: 0, target: 'canvas', clientX: 50, scrollLeft: 300 });
+
+    const moved = navigation.movePan({ clientX: 80 });
+    expect(moved.scrollLeft).toBe(270);
+    expect(
+      navigation.syncExternalScroll({
+        requestedScrollLeft: 300,
+        actualScrollLeft: moved.scrollLeft!,
+      }),
+    ).toEqual({});
+
+    navigation.endPan();
+    expect(
+      navigation.syncExternalScroll({
+        requestedScrollLeft: 310,
+        actualScrollLeft: moved.scrollLeft!,
+      }),
+    ).toEqual({ scrollLeft: 310 });
+  });
+
   it('activates an allocation pan only after movement and suppresses its click', () => {
     const navigation = createNavigation();
     expect(

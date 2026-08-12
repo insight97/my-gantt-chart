@@ -70,4 +70,30 @@ describe('workspace persistence', () => {
       ]),
     );
   });
+
+  it('migrates the old default color to inheritance while preserving custom colors', () => {
+    const migrated = migrateWorkspace({
+      version: 6,
+      projects: [
+        {
+          id: 'project-a',
+          name: 'Project A',
+          tasks: [
+            { id: 'root', name: 'Root', color: '#2f75bb' },
+            { id: 'child', name: 'Child', parentId: 'root', color: '#2f75bb' },
+            { id: 'custom', name: 'Custom', parentId: 'root', color: '#C85F5F' },
+          ],
+        },
+      ],
+      allocations: [],
+    });
+
+    expect(migrated.projects[0].tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'root', color: null }),
+        expect.objectContaining({ id: 'child', color: null }),
+        expect.objectContaining({ id: 'custom', color: '#c85f5f' }),
+      ]),
+    );
+  });
 });
