@@ -35,7 +35,10 @@ const choices = (overrides: Partial<Parameters<typeof buildViewProjection>[2]> =
   timelineLevel: 'day' as const,
   showCompleted: false,
   expanded: { backlog: new Set<string>(), timeline: new Set<string>() },
-  dailyDistribution: { allocationOrder: 'descending' as const, hierarchyDepth: 3 as const },
+  dailyDistribution: {
+    order: { by: 'hours' as const, direction: 'desc' as const },
+    hierarchyDepth: 3 as const,
+  },
   ...overrides,
 });
 
@@ -145,14 +148,27 @@ describe('View Projection', () => {
       allocation('b', 'second', '2026-08-10', 10),
     ];
 
-    const projection = buildViewProjection(
+    const descending = buildViewProjection(
       project,
       allocations,
       choices({
-        dailyDistribution: { allocationOrder: 'descending', hierarchyDepth: 2 },
+        dailyDistribution: {
+          order: { by: 'hours', direction: 'desc' },
+          hierarchyDepth: 2,
+        },
       }),
     );
-    const day = projection.dailyDistribution.days.find(item => item.date === '2026-08-10')!;
+    const ascending = buildViewProjection(
+      project,
+      allocations,
+      choices({
+        dailyDistribution: {
+          order: { by: 'hours', direction: 'asc' },
+          hierarchyDepth: 2,
+        },
+      }),
+    );
+    const day = descending.dailyDistribution.days.find(item => item.date === '2026-08-10')!;
 
     expect(day).toMatchObject({ allocatedHours: 30, remainingHours: -6, overloaded: true });
     expect(
@@ -161,6 +177,11 @@ describe('View Projection', () => {
       ['first', 0, 20],
       ['second', 20, 4],
     ]);
+    expect(
+      ascending.dailyDistribution.days
+        .find(item => item.date === '2026-08-10')
+        ?.segments.map(segment => segment.workItem.id),
+    ).toEqual(['second', 'first']);
   });
 
   it('groups Daily Distribution segments by parent and sibling task order', () => {
@@ -196,18 +217,36 @@ describe('View Projection', () => {
       allocation('d', 'second-earlier', '2026-08-10', 3),
     ];
 
-    const projection = buildViewProjection(
+    const ascending = buildViewProjection(
       project,
       allocations,
       choices({
-        dailyDistribution: { allocationOrder: 'task', hierarchyDepth: 2 },
+        dailyDistribution: {
+          order: { by: 'task', direction: 'asc' },
+          hierarchyDepth: 2,
+        },
+      }),
+    );
+    const descending = buildViewProjection(
+      project,
+      allocations,
+      choices({
+        dailyDistribution: {
+          order: { by: 'task', direction: 'desc' },
+          hierarchyDepth: 2,
+        },
       }),
     );
 
     expect(
-      projection.dailyDistribution.days
+      ascending.dailyDistribution.days
         .find(item => item.date === '2026-08-10')
         ?.segments.map(segment => segment.workItem.id),
     ).toEqual(['first-earlier', 'first-later', 'second-earlier', 'second-later']);
+    expect(
+      descending.dailyDistribution.days
+        .find(item => item.date === '2026-08-10')
+        ?.segments.map(segment => segment.workItem.id),
+    ).toEqual(['second-later', 'second-earlier', 'first-later', 'first-earlier']);
   });
 });

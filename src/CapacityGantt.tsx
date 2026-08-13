@@ -28,7 +28,7 @@ import type {
   TimelineZoom,
 } from './timeline';
 import type {
-  DailyDistributionAllocationOrder,
+  DailyDistributionOrder,
   DailyDistributionProjection,
   HierarchyDepth,
   TimelineCapacityPeriod,
@@ -40,7 +40,7 @@ export type CapacityGanttProps = {
   projectId: string;
   projection: TimelineProjection;
   dailyDistribution: DailyDistributionProjection;
-  dailyDistributionOrder: DailyDistributionAllocationOrder;
+  dailyDistributionOrder: DailyDistributionOrder;
   dailyDistributionDepth: HierarchyDepth;
   dropPreview: Task | null;
   timelineZoom: TimelineZoom;
@@ -64,7 +64,7 @@ export type CapacityGanttProps = {
   onAddChild: (task: Task) => void;
   onToggleTask: (taskId: string) => void;
   onTimelineScroll: (left: number) => void;
-  onDailyDistributionOrderChange: (order: DailyDistributionAllocationOrder) => void;
+  onDailyDistributionOrderChange: (order: DailyDistributionOrder) => void;
   onDailyDistributionDepthChange: (depth: HierarchyDepth) => void;
 };
 
@@ -163,17 +163,28 @@ function TimelineHeader({
 
 function DailyDistributionTable({
   projection,
-  allocationOrder,
+  order,
   hierarchyDepth,
-  onAllocationOrderChange,
+  onOrderChange,
   onHierarchyDepthChange,
 }: {
   projection: DailyDistributionProjection;
-  allocationOrder: DailyDistributionAllocationOrder;
+  order: DailyDistributionOrder;
   hierarchyDepth: HierarchyDepth;
-  onAllocationOrderChange: (order: DailyDistributionAllocationOrder) => void;
+  onOrderChange: (order: DailyDistributionOrder) => void;
   onHierarchyDepthChange: (depth: HierarchyDepth) => void;
 }) {
+  const changeOrder = (by: DailyDistributionOrder['by']) => {
+    const direction =
+      order.by === by
+        ? order.direction === 'desc'
+          ? 'asc'
+          : 'desc'
+        : by === 'hours'
+          ? 'desc'
+          : 'asc';
+    onOrderChange({ by, direction });
+  };
   const todayDate = today();
   const todayRowRef = useRef<HTMLTableRowElement>(null);
   const distributionScrollRef = useRef<HTMLDivElement>(null);
@@ -201,29 +212,21 @@ function DailyDistributionTable({
             aria-label="每日時間分佈排序"
           >
             <button
-              className={allocationOrder === 'descending' ? 'active' : ''}
+              className={order.by === 'hours' ? 'active' : ''}
               type="button"
-              aria-pressed={allocationOrder === 'descending'}
-              onClick={() => onAllocationOrderChange('descending')}
+              aria-pressed={order.by === 'hours'}
+              onClick={() => changeOrder('hours')}
             >
-              多→少
+              時數{order.by === 'hours' ? ` ${order.direction.toUpperCase()}` : ''}
             </button>
             <button
-              className={allocationOrder === 'ascending' ? 'active' : ''}
+              className={order.by === 'task' ? 'active' : ''}
               type="button"
-              aria-pressed={allocationOrder === 'ascending'}
-              onClick={() => onAllocationOrderChange('ascending')}
-            >
-              少→多
-            </button>
-            <button
-              className={allocationOrder === 'task' ? 'active' : ''}
-              type="button"
-              aria-pressed={allocationOrder === 'task'}
+              aria-pressed={order.by === 'task'}
               title="依父任務群組，並沿用任務順序"
-              onClick={() => onAllocationOrderChange('task')}
+              onClick={() => changeOrder('task')}
             >
-              父任務
+              任務{order.by === 'task' ? ` ${order.direction.toUpperCase()}` : ''}
             </button>
           </div>
           <span>層級</span>
@@ -975,9 +978,9 @@ export default function CapacityGantt({
       </div>
       <DailyDistributionTable
         projection={dailyDistribution}
-        allocationOrder={dailyDistributionOrder}
+        order={dailyDistributionOrder}
         hierarchyDepth={dailyDistributionDepth}
-        onAllocationOrderChange={onDailyDistributionOrderChange}
+        onOrderChange={onDailyDistributionOrderChange}
         onHierarchyDepthChange={onDailyDistributionDepthChange}
       />
     </section>

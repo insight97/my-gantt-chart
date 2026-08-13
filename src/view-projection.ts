@@ -13,7 +13,10 @@ import { buildTaskTree } from './task-tree';
 import { DEFAULT_TASK_COLOR, resolveTaskColors } from './task-colors';
 import type { Allocation, Project, Task, ViewMode } from './types';
 
-export type DailyDistributionAllocationOrder = 'ascending' | 'descending' | 'task';
+export type DailyDistributionOrder = Readonly<{
+  by: 'hours' | 'task';
+  direction: 'asc' | 'desc';
+}>;
 export type HierarchyDepth = 1 | 2 | 3;
 
 export type ViewProjectionChoices = Readonly<{
@@ -25,7 +28,7 @@ export type ViewProjectionChoices = Readonly<{
     timeline: ReadonlySet<string>;
   }>;
   dailyDistribution: Readonly<{
-    allocationOrder: DailyDistributionAllocationOrder;
+    order: DailyDistributionOrder;
     hierarchyDepth: HierarchyDepth;
   }>;
 }>;
@@ -224,7 +227,7 @@ function buildDailyDistribution(
   dates: readonly string[],
   tasks: readonly Task[],
   hoursByTask: ReadonlyMap<string, ReadonlyMap<string, number>>,
-  allocationOrder: DailyDistributionAllocationOrder,
+  order: DailyDistributionOrder,
   displayColors: ReadonlyMap<string, string>,
 ): DailyDistributionProjection {
   return {
@@ -239,10 +242,14 @@ function buildDailyDistribution(
         }))
         .filter(item => item.hours > 0)
         .sort((left, right) => {
-          if (allocationOrder === 'task') return left.index - right.index;
-          const difference =
-            allocationOrder === 'descending' ? right.hours - left.hours : left.hours - right.hours;
-          return difference || left.index - right.index;
+          if (order.by === 'task') {
+            const difference = left.index - right.index;
+            return order.direction === 'desc' ? -difference : difference;
+          }
+          const difference = left.hours - right.hours;
+          return (
+            (order.direction === 'desc' ? -difference : difference) || left.index - right.index
+          );
         });
       for (const { workItem, hours } of taskHours) {
         const startHour = allocatedHours;
@@ -372,7 +379,7 @@ export function buildViewProjection(
       periods.flatMap(period => period.dates),
       distributionTasks,
       distributionHoursByTask,
-      choices.dailyDistribution.allocationOrder,
+      choices.dailyDistribution.order,
       displayColors,
     ),
   };
