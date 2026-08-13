@@ -270,6 +270,14 @@ function DailyDistributionTable({
           </thead>
           <tbody>
             {projection.days.map(({ date, remainingHours, overloaded, segments }) => {
+              const capacityClass = overloaded
+                ? 'daily-distribution-over-capacity'
+                : remainingHours <= 1
+                  ? 'daily-distribution-near-capacity'
+                  : '';
+              const rowClass = [date === todayDate ? 'daily-distribution-today' : '', capacityClass]
+                .filter(Boolean)
+                .join(' ');
               const description = segments.length
                 ? segments
                     .map(segment => `${segment.workItem.name} ${hoursLabel(segment.hours)}`)
@@ -277,7 +285,7 @@ function DailyDistributionTable({
                 : '尚未安排工時';
               return (
                 <tr
-                  className={date === todayDate ? 'daily-distribution-today' : ''}
+                  className={rowClass}
                   key={date}
                   ref={date === todayDate ? todayRowRef : undefined}
                 >
@@ -289,7 +297,7 @@ function DailyDistributionTable({
                   </th>
                   <td>
                     <div
-                      className={`daily-distribution-track${overloaded ? ' overloaded' : ''}${segments.length ? '' : ' empty'}`}
+                      className={`daily-distribution-track${segments.length ? '' : ' empty'}`}
                       aria-label={`${weekdayDateLabel(date)}：${description}${overloaded ? '，超過每日容量' : ''}`}
                     >
                       {segments.map(segment => (
@@ -314,9 +322,7 @@ function DailyDistributionTable({
                       ))}
                     </div>
                   </td>
-                  <td className={overloaded ? 'daily-distribution-overloaded' : ''}>
-                    {hoursLabel(remainingHours)}
-                  </td>
+                  <td>{hoursLabel(remainingHours)}</td>
                 </tr>
               );
             })}

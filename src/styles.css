@@ -600,6 +600,18 @@ h1 {
 .daily-distribution-table tbody tr.daily-distribution-today th {
   box-shadow: inset 3px 0 0 var(--blue);
 }
+.daily-distribution-table tbody tr.daily-distribution-near-capacity th,
+.daily-distribution-table tbody tr.daily-distribution-near-capacity td {
+  background: #fff8df;
+}
+.daily-distribution-table tbody tr.daily-distribution-over-capacity th,
+.daily-distribution-table tbody tr.daily-distribution-over-capacity td {
+  background: #fdf0ee;
+}
+.daily-distribution-table tbody tr.daily-distribution-over-capacity td:last-child {
+  color: #a33d36;
+  font-weight: 700;
+}
 .daily-distribution-today-label {
   display: inline-block;
   margin-left: 5px;
@@ -656,13 +668,6 @@ h1 {
 .daily-distribution-track.empty {
   opacity: 0.7;
 }
-.daily-distribution-track.overloaded::after {
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: 3px;
-  background: #c56532;
-  content: '';
-}
 .daily-distribution-segment {
   position: absolute;
   display: flex;
@@ -695,10 +700,6 @@ h1 {
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.daily-distribution-overloaded {
-  color: #a33d36;
-  font-weight: 700;
 }
 .timeline-header-sticky {
   position: sticky;
