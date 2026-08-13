@@ -207,16 +207,30 @@ describe('Work Item hierarchy UI', () => {
     expect(allocatedTrack).toHaveAttribute('aria-label', expect.stringContaining('分佈工作 B 2h'));
     expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
     expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '多→少' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '時數 DESC' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     expect(screen.getByRole('button', { name: '顯示第 3 層' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '少→多' }));
-    expect(screen.getByRole('button', { name: '少→多' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: '父任務' }));
-    expect(screen.getByRole('button', { name: '父任務' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '時數 DESC' }));
+    expect(screen.getByRole('button', { name: '時數 ASC' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '任務' }));
+    expect(screen.getByRole('button', { name: '任務 ASC' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '任務 ASC' }));
+    expect(screen.getByRole('button', { name: '任務 DESC' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     fireEvent.click(screen.getByRole('button', { name: '顯示第 1 層' }));
     expect(screen.getByRole('button', { name: '顯示第 1 層' })).toHaveAttribute(
       'aria-pressed',

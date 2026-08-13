@@ -64,11 +64,7 @@ import {
 import { getRecurringEstimatedHours } from './recurring-allocation';
 import type { WorkspaceOperationResult } from './workspace-operations';
 import { buildViewProjection } from './view-projection';
-import type {
-  BacklogProjection,
-  DailyDistributionAllocationOrder,
-  HierarchyDepth,
-} from './view-projection';
+import type { BacklogProjection, DailyDistributionOrder, HierarchyDepth } from './view-projection';
 import { DEFAULT_TASK_COLOR, TASK_COLOR_OPTIONS, resolveTaskColor } from './task-colors';
 
 const clone = <T,>(value: T): T => structuredClone(value);
@@ -928,8 +924,10 @@ function ExpandedProjectPanel({
   onZoomChange,
   onTimelineScroll,
 }: ProjectPanelProps) {
-  const [dailyDistributionOrder, setDailyDistributionOrder] =
-    useState<DailyDistributionAllocationOrder>('descending');
+  const [dailyDistributionOrder, setDailyDistributionOrder] = useState<DailyDistributionOrder>({
+    by: 'hours',
+    direction: 'desc',
+  });
   const [dailyDistributionDepth, setDailyDistributionDepth] = useState<HierarchyDepth>(3);
   const projection = useMemo(
     () =>
@@ -942,7 +940,7 @@ function ExpandedProjectPanel({
           timeline: expandedTaskIds,
         },
         dailyDistribution: {
-          allocationOrder: dailyDistributionOrder,
+          order: dailyDistributionOrder,
           hierarchyDepth: dailyDistributionDepth,
         },
       }),
