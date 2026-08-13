@@ -194,11 +194,11 @@ function DailyDistributionTable({
       <div className="daily-distribution-heading">
         <h3>每日時間分佈</h3>
         <div className="daily-distribution-controls">
-          <span>Allocation</span>
+          <span>排序</span>
           <div
             className="daily-distribution-control-group"
             role="group"
-            aria-label="Allocation 排序"
+            aria-label="每日時間分佈排序"
           >
             <button
               className={allocationOrder === 'descending' ? 'active' : ''}
@@ -215,6 +215,15 @@ function DailyDistributionTable({
               onClick={() => onAllocationOrderChange('ascending')}
             >
               少→多
+            </button>
+            <button
+              className={allocationOrder === 'task' ? 'active' : ''}
+              type="button"
+              aria-pressed={allocationOrder === 'task'}
+              title="依父任務群組，並沿用任務順序"
+              onClick={() => onAllocationOrderChange('task')}
+            >
+              父任務
             </button>
           </div>
           <span>層級</span>
