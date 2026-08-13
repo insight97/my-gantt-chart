@@ -238,6 +238,33 @@ describe('Work Item hierarchy UI', () => {
     );
   });
 
+  it('highlights nearly full and overloaded Daily Distribution days', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [workItem('task-a', '容量警示工作', { status: 'scheduled' })],
+        [],
+        [
+          { id: 'near', taskId: 'task-a', date: '2026-08-03', allocatedHours: 23 },
+          { id: 'over', taskId: 'task-a', date: '2026-08-04', allocatedHours: 25 },
+          { id: 'available', taskId: 'task-a', date: '2026-08-05', allocatedHours: 22.5 },
+        ],
+      ),
+    );
+    render(<App />);
+
+    const distribution = await screen.findByRole('region', { name: '每日時間分佈' });
+    const rows = Array.from(distribution.querySelectorAll('tbody tr'));
+    const rowFor = (dateLabel: string) => rows.find(row => row.textContent?.includes(dateLabel));
+
+    expect(rowFor('8/3')).toHaveClass('daily-distribution-near-capacity');
+    expect(rowFor('8/4')).toHaveClass('daily-distribution-over-capacity');
+    expect(rowFor('8/5')).not.toHaveClass('daily-distribution-near-capacity');
+    expect(rowFor('8/5')).not.toHaveClass('daily-distribution-over-capacity');
+    expect(
+      distribution.querySelector('.daily-distribution-track.overloaded'),
+    ).not.toBeInTheDocument();
+  });
+
   it('deletes a task immediately and restores it with undo', async () => {
     loadWorkspaceMock.mockResolvedValue(workspace([workItem('task-a', '可復原工作')]));
     render(<App />);
