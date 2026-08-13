@@ -215,6 +215,8 @@ describe('Work Item hierarchy UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '少→多' }));
     expect(screen.getByRole('button', { name: '少→多' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '父任務' }));
+    expect(screen.getByRole('button', { name: '父任務' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '顯示第 1 層' }));
     expect(screen.getByRole('button', { name: '顯示第 1 層' })).toHaveAttribute(
       'aria-pressed',

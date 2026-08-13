@@ -162,4 +162,52 @@ describe('View Projection', () => {
       ['second', 20, 4],
     ]);
   });
+
+  it('groups Daily Distribution segments by parent and sibling task order', () => {
+    const firstParent = task('first-parent', { order: 0 });
+    const secondParent = task('second-parent', { order: 1 });
+    const firstLater = task('first-later', {
+      parentId: 'first-parent',
+      status: 'scheduled',
+      order: 1,
+    });
+    const firstEarlier = task('first-earlier', {
+      parentId: 'first-parent',
+      status: 'scheduled',
+      order: 0,
+    });
+    const secondLater = task('second-later', {
+      parentId: 'second-parent',
+      status: 'scheduled',
+      order: 1,
+    });
+    const secondEarlier = task('second-earlier', {
+      parentId: 'second-parent',
+      status: 'scheduled',
+      order: 0,
+    });
+    const project = {
+      tasks: [secondParent, secondLater, firstParent, firstLater, secondEarlier, firstEarlier],
+    } as Project;
+    const allocations = [
+      allocation('a', 'first-later', '2026-08-10', 1),
+      allocation('b', 'first-earlier', '2026-08-10', 4),
+      allocation('c', 'second-later', '2026-08-10', 2),
+      allocation('d', 'second-earlier', '2026-08-10', 3),
+    ];
+
+    const projection = buildViewProjection(
+      project,
+      allocations,
+      choices({
+        dailyDistribution: { allocationOrder: 'task', hierarchyDepth: 2 },
+      }),
+    );
+
+    expect(
+      projection.dailyDistribution.days
+        .find(item => item.date === '2026-08-10')
+        ?.segments.map(segment => segment.workItem.id),
+    ).toEqual(['first-earlier', 'first-later', 'second-earlier', 'second-later']);
+  });
 });

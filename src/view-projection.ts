@@ -13,7 +13,7 @@ import { buildTaskTree } from './task-tree';
 import { DEFAULT_TASK_COLOR, resolveTaskColors } from './task-colors';
 import type { Allocation, Project, Task, ViewMode } from './types';
 
-export type DailyDistributionAllocationOrder = 'ascending' | 'descending';
+export type DailyDistributionAllocationOrder = 'ascending' | 'descending' | 'task';
 export type HierarchyDepth = 1 | 2 | 3;
 
 export type ViewProjectionChoices = Readonly<{
@@ -202,6 +202,10 @@ function distributionTasksAtDepth(
   maxDepth: HierarchyDepth,
 ) {
   const displayedIds = new Set(tasks.map(task => task.id));
+  const sourceOrder = new Map(tasks.map((task, index) => [task.id, index]));
+  const compareTaskOrder = (left: Task, right: Task) =>
+    (left.order ?? 0) - (right.order ?? 0) ||
+    (sourceOrder.get(left.id) ?? 0) - (sourceOrder.get(right.id) ?? 0);
   const visit = (task: Task): Task[] => {
     const children = tree.children(task.id).filter(child => displayedIds.has(child.id));
     if (tree.depth(task.id) >= maxDepth || !children.length) return [task];
@@ -212,6 +216,7 @@ function distributionTasksAtDepth(
       const parentId = tree.parentId(task.id);
       return !parentId || !displayedIds.has(parentId);
     })
+    .sort(compareTaskOrder)
     .flatMap(visit);
 }
 
@@ -234,6 +239,7 @@ function buildDailyDistribution(
         }))
         .filter(item => item.hours > 0)
         .sort((left, right) => {
+          if (allocationOrder === 'task') return left.index - right.index;
           const difference =
             allocationOrder === 'descending' ? right.hours - left.hours : left.hours - right.hours;
           return difference || left.index - right.index;
