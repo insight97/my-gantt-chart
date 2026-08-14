@@ -563,7 +563,7 @@ h1 {
 .daily-distribution-scroll {
   max-height: 460px;
   overflow: auto;
-  border: 1px solid #efdde3;
+  border: 1px solid #dfe8ed;
   background: #fff;
 }
 .daily-distribution-table {
@@ -578,7 +578,7 @@ h1 {
 .daily-distribution-table td {
   height: 48px;
   padding: 4px 8px;
-  border-bottom: 1px solid #f7e9ed;
+  border-bottom: 1px solid #edf2f4;
   text-align: left;
   white-space: nowrap;
 }
@@ -597,18 +597,18 @@ h1 {
   top: 0;
   z-index: 2;
   height: 38px;
-  background: #fff4f6;
-  color: #765867;
+  background: #f8fbfc;
+  color: #5f7480;
   font-size: 10px;
   font-weight: 700;
 }
 .daily-distribution-table tbody th {
-  color: #6e5360;
+  color: #4c6672;
   font-weight: 600;
 }
 .daily-distribution-remaining-hours {
   margin-left: auto;
-  color: #906d79;
+  color: #71838d;
   font-weight: 700;
 }
 .daily-distribution-table tbody td.daily-distribution-timeline-cell {
@@ -655,7 +655,7 @@ h1 {
 .daily-distribution-axis span {
   position: absolute;
   bottom: 0;
-  color: #a47a87;
+  color: #81949e;
   font-size: 9px;
   font-weight: 500;
   transform: translateX(-50%);
@@ -677,16 +677,16 @@ h1 {
   background-image: linear-gradient(
     to right,
     transparent 24.8%,
-    #f7e8ec 24.8%,
-    #f7e8ec 25.2%,
+    #e7eef1 24.8%,
+    #e7eef1 25.2%,
     transparent 25.2%,
     transparent 49.8%,
-    #f7e8ec 49.8%,
-    #f7e8ec 50.2%,
+    #e7eef1 49.8%,
+    #e7eef1 50.2%,
     transparent 50.2%,
     transparent 74.8%,
-    #f7e8ec 74.8%,
-    #f7e8ec 75.2%,
+    #e7eef1 74.8%,
+    #e7eef1 75.2%,
     transparent 75.2%
   );
 }
@@ -701,7 +701,7 @@ h1 {
   bottom: 0;
   min-width: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 28%, #f8e0e7);
+  background: color-mix(in srgb, var(--task-color, #4f9aa3) 35%, #fff);
   border-right: 1px solid #fff;
   cursor: help;
 }
@@ -712,7 +712,7 @@ h1 {
   min-width: 0;
   overflow: hidden;
   padding: 0 6px;
-  color: #694a56;
+  color: #2b5263;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.2;
