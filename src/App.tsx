@@ -929,6 +929,7 @@ function ExpandedProjectPanel({
     direction: 'desc',
   });
   const [dailyDistributionDepth, setDailyDistributionDepth] = useState<HierarchyDepth>(3);
+  const [showBacklog, setShowBacklog] = useState(true);
   const projection = useMemo(
     () =>
       buildViewProjection(project, allAllocations, {
@@ -984,36 +985,51 @@ function ExpandedProjectPanel({
             小時
           </p>
         </div>
-        <div className="view-switch" aria-label="工作項目時間檢視">
-          {(['day', 'week', 'month'] as const).map(value => (
-            <button
-              key={value}
-              className={view === value ? 'active' : ''}
-              onClick={() => onViewChange(value)}
-            >
-              {value === 'day' ? '日' : value === 'week' ? '週' : '月'}
-            </button>
-          ))}
+        <div className="workspace-title-controls">
+          <div className="view-switch" aria-label="工作項目時間檢視">
+            {(['day', 'week', 'month'] as const).map(value => (
+              <button
+                key={value}
+                className={view === value ? 'active' : ''}
+                onClick={() => onViewChange(value)}
+              >
+                {value === 'day' ? '日' : value === 'week' ? '週' : '月'}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="backlog-visibility-toggle"
+            aria-pressed={showBacklog}
+            onClick={() => setShowBacklog(value => !value)}
+          >
+            {showBacklog ? '隱藏 Backlog' : '顯示 Backlog'}
+          </button>
         </div>
       </div>
-      <div className="planning-layout" style={{ alignItems: 'stretch' }}>
-        <Backlog
-          projectId={project.id}
-          projection={projection.backlog}
-          taskDrag={taskDrag}
-          draggingTaskId={
-            taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
-          }
-          onEdit={onEditTask}
-          onAddTask={onAddTask}
-          onDelete={onDeleteTask}
-          onAddChild={task => onAddChild(task, 'backlog')}
-          onTaskPointerDown={(task, event, isGroup) =>
-            onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
-          }
-          onTaskDropTarget={onTaskDropTarget}
-          onToggleTask={onToggleBacklogTask}
-        />
+      <div
+        className={`planning-layout${showBacklog ? '' : ' backlog-hidden'}`}
+        style={{ alignItems: 'stretch' }}
+      >
+        {showBacklog ? (
+          <Backlog
+            projectId={project.id}
+            projection={projection.backlog}
+            taskDrag={taskDrag}
+            draggingTaskId={
+              taskDrag?.projectId === project.id && taskDrag.active ? taskDrag.task.id : null
+            }
+            onEdit={onEditTask}
+            onAddTask={onAddTask}
+            onDelete={onDeleteTask}
+            onAddChild={task => onAddChild(task, 'backlog')}
+            onTaskPointerDown={(task, event, isGroup) =>
+              onBeginTaskDrag(project.id, task, 'backlog', event, 0, 0, isGroup)
+            }
+            onTaskDropTarget={onTaskDropTarget}
+            onToggleTask={onToggleBacklogTask}
+          />
+        ) : null}
         <CapacityGantt
           projectId={project.id}
           projection={projection.timeline}
@@ -1137,6 +1153,7 @@ function Backlog({
   return (
     <aside
       className="backlog"
+      aria-label="Backlog"
       onPointerMove={handleTaskPointerMove}
       onPointerLeave={handleTaskPointerLeave}
     >
