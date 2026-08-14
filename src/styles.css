@@ -689,8 +689,8 @@ h1 {
   bottom: 0;
   min-width: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 58%, #fff);
-  border-right: 1px solid #fff;
+  background: color-mix(in srgb, var(--task-color, #4f9aa3) 24%, rgb(229 225 228 / 0.64));
+  border-right: 1px solid rgb(255 255 255 / 0.72);
   cursor: help;
 }
 .daily-distribution-segment:last-child {
