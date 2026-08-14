@@ -571,10 +571,14 @@ h1 {
   white-space: nowrap;
 }
 .daily-distribution-date-column {
-  width: 100px;
+  width: 158px;
 }
-.daily-distribution-remaining-column {
-  width: 58px;
+.daily-distribution-date-heading,
+.daily-distribution-date-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .daily-distribution-table thead th {
   position: sticky;
@@ -586,12 +590,18 @@ h1 {
   font-size: 10px;
   font-weight: 700;
 }
-.daily-distribution-table tbody td:last-child {
-  text-align: right;
-}
 .daily-distribution-table tbody th {
   color: #536a79;
   font-weight: 600;
+}
+.daily-distribution-remaining-hours {
+  margin-left: auto;
+  color: #71808e;
+  font-weight: 700;
+}
+.daily-distribution-table tbody td.daily-distribution-timeline-cell {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 .daily-distribution-table tbody tr.daily-distribution-today th,
 .daily-distribution-table tbody tr.daily-distribution-today td {
@@ -608,7 +618,10 @@ h1 {
 .daily-distribution-table tbody tr.daily-distribution-over-capacity td {
   background: #fdf0ee;
 }
-.daily-distribution-table tbody tr.daily-distribution-over-capacity td:last-child {
+.daily-distribution-table
+  tbody
+  tr.daily-distribution-over-capacity
+  .daily-distribution-remaining-hours {
   color: #a33d36;
   font-weight: 700;
 }
@@ -644,7 +657,7 @@ h1 {
 .daily-distribution-track {
   position: relative;
   display: block;
-  height: 32px;
+  height: 48px;
   width: 100%;
   min-width: 280px;
   box-sizing: border-box;
@@ -672,23 +685,16 @@ h1 {
   position: absolute;
   display: flex;
   align-items: center;
-  top: 3px;
-  bottom: 3px;
+  top: 0;
+  bottom: 0;
   min-width: 2px;
   overflow: hidden;
   background: color-mix(in srgb, var(--task-color, #4f9aa3) 58%, #fff);
   border-right: 1px solid #fff;
   cursor: help;
 }
-.daily-distribution-segment:first-child {
-  border-radius: 4px 0 0 4px;
-}
 .daily-distribution-segment:last-child {
-  border-radius: 0 4px 4px 0;
   border-right: 0;
-}
-.daily-distribution-segment:only-child {
-  border-radius: 4px;
 }
 .daily-distribution-segment-label {
   min-width: 0;

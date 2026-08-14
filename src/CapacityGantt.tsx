@@ -251,11 +251,15 @@ function DailyDistributionTable({
           <colgroup>
             <col className="daily-distribution-date-column" />
             <col className="daily-distribution-timeline-column" />
-            <col className="daily-distribution-remaining-column" />
           </colgroup>
           <thead>
             <tr>
-              <th scope="col">日期</th>
+              <th scope="col">
+                <div className="daily-distribution-date-heading">
+                  <span>日期</span>
+                  <span>剩餘</span>
+                </div>
+              </th>
               <th scope="col">
                 <div className="daily-distribution-axis" aria-hidden="true">
                   {[0, 6, 12, 18, 24].map(hour => (
@@ -265,7 +269,6 @@ function DailyDistributionTable({
                   ))}
                 </div>
               </th>
-              <th scope="col">剩餘</th>
             </tr>
           </thead>
           <tbody>
@@ -290,12 +293,19 @@ function DailyDistributionTable({
                   ref={date === todayDate ? todayRowRef : undefined}
                 >
                   <th scope="row">
-                    <span>{weekdayDateLabel(date)}</span>
-                    {date === todayDate ? (
-                      <span className="daily-distribution-today-label">今天</span>
-                    ) : null}
+                    <div className="daily-distribution-date-cell">
+                      <span>
+                        {weekdayDateLabel(date)}
+                        {date === todayDate ? (
+                          <span className="daily-distribution-today-label">今天</span>
+                        ) : null}
+                      </span>
+                      <span className="daily-distribution-remaining-hours">
+                        {hoursLabel(remainingHours)}
+                      </span>
+                    </div>
                   </th>
-                  <td>
+                  <td className="daily-distribution-timeline-cell">
                     <div
                       className={`daily-distribution-track${segments.length ? '' : ' empty'}`}
                       aria-label={`${weekdayDateLabel(date)}：${description}${overloaded ? '，超過每日容量' : ''}`}
@@ -322,7 +332,6 @@ function DailyDistributionTable({
                       ))}
                     </div>
                   </td>
-                  <td>{hoursLabel(remainingHours)}</td>
                 </tr>
               );
             })}
