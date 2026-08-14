@@ -281,6 +281,15 @@ h1 {
   color: #174f7c;
   font-weight: 700;
 }
+.workspace-title-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.backlog-visibility-toggle {
+  white-space: nowrap;
+}
 .section-heading {
   display: flex;
   align-items: center;
@@ -336,6 +345,9 @@ h1 {
   display: grid;
   grid-template-columns: 330px minmax(700px, 1fr);
   align-items: stretch;
+}
+.planning-layout.backlog-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 .backlog {
   border-right: 1px solid var(--line);
@@ -407,7 +419,7 @@ h1 {
 }
 .gantt {
   display: grid;
-  grid-template-columns: 350px minmax(540px, 1fr);
+  grid-template-columns: 400px minmax(540px, 1fr);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: clip;
@@ -551,7 +563,7 @@ h1 {
 .daily-distribution-scroll {
   max-height: 460px;
   overflow: auto;
-  border: 1px solid #dfe6eb;
+  border: 1px solid #efdde3;
   background: #fff;
 }
 .daily-distribution-table {
@@ -566,7 +578,7 @@ h1 {
 .daily-distribution-table td {
   height: 48px;
   padding: 4px 8px;
-  border-bottom: 1px solid #f0f3f5;
+  border-bottom: 1px solid #f7e9ed;
   text-align: left;
   white-space: nowrap;
 }
@@ -585,18 +597,18 @@ h1 {
   top: 0;
   z-index: 2;
   height: 38px;
-  background: #f7f9fa;
-  color: #657986;
+  background: #fff4f6;
+  color: #765867;
   font-size: 10px;
   font-weight: 700;
 }
 .daily-distribution-table tbody th {
-  color: #536a79;
+  color: #6e5360;
   font-weight: 600;
 }
 .daily-distribution-remaining-hours {
   margin-left: auto;
-  color: #71808e;
+  color: #906d79;
   font-weight: 700;
 }
 .daily-distribution-table tbody td.daily-distribution-timeline-cell {
@@ -643,7 +655,7 @@ h1 {
 .daily-distribution-axis span {
   position: absolute;
   bottom: 0;
-  color: #8998a3;
+  color: #a47a87;
   font-size: 9px;
   font-weight: 500;
   transform: translateX(-50%);
@@ -665,16 +677,16 @@ h1 {
   background-image: linear-gradient(
     to right,
     transparent 24.8%,
-    #edf1f3 24.8%,
-    #edf1f3 25.2%,
+    #f7e8ec 24.8%,
+    #f7e8ec 25.2%,
     transparent 25.2%,
     transparent 49.8%,
-    #edf1f3 49.8%,
-    #edf1f3 50.2%,
+    #f7e8ec 49.8%,
+    #f7e8ec 50.2%,
     transparent 50.2%,
     transparent 74.8%,
-    #edf1f3 74.8%,
-    #edf1f3 75.2%,
+    #f7e8ec 74.8%,
+    #f7e8ec 75.2%,
     transparent 75.2%
   );
 }
@@ -689,7 +701,7 @@ h1 {
   bottom: 0;
   min-width: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 24%, #f3dce3);
+  background: color-mix(in srgb, var(--task-color, #4f9aa3) 28%, #f8e0e7);
   border-right: 1px solid #fff;
   cursor: help;
 }
@@ -700,7 +712,7 @@ h1 {
   min-width: 0;
   overflow: hidden;
   padding: 0 6px;
-  color: #24566a;
+  color: #694a56;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.2;
@@ -969,7 +981,7 @@ h1 {
     grid-template-columns: 290px minmax(650px, 1fr);
   }
   .gantt {
-    grid-template-columns: 300px minmax(540px, 1fr);
+    grid-template-columns: 350px minmax(540px, 1fr);
   }
   .gantt-head,
   .gantt-side-row {
@@ -1014,7 +1026,10 @@ h1 {
   .workspace-title .primary {
     margin-left: 0;
   }
-  .view-switch {
+  .workspace-title-controls {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
     order: 2;
   }
   .capacity-summary {
@@ -1046,6 +1061,7 @@ h1 {
   .projectbar,
   .header-actions,
   .workspace-title .primary,
+  .workspace-title-controls,
   .capacity-summary,
   .backlog,
   .row-actions,

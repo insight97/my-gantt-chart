@@ -152,6 +152,39 @@ describe('Work Item hierarchy UI', () => {
     await waitFor(() => expect(headerCanvas.style.transform).toBe('translateX(-120px)'));
   });
 
+  it('can hide and restore Backlog to expand the planning area', async () => {
+    loadWorkspaceMock.mockResolvedValue(
+      workspace(
+        [workItem('timeline-task', '時間軸工作', { status: 'scheduled' })],
+        [],
+        [{ id: 'allocation-a', taskId: 'timeline-task', date: '2026-08-03', allocatedHours: 2 }],
+      ),
+    );
+    render(<App />);
+
+    const planningLayout = await waitFor(() => {
+      const element = document.querySelector('.planning-layout');
+      expect(element).toBeInTheDocument();
+      return element as HTMLElement;
+    });
+    expect(screen.getByRole('heading', { name: 'Backlog', level: 2 })).toBeInTheDocument();
+    expect(planningLayout).not.toHaveClass('backlog-hidden');
+
+    fireEvent.click(screen.getByRole('button', { name: '隱藏 Backlog' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '顯示 Backlog' })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('heading', { name: 'Backlog', level: 2 })).not.toBeInTheDocument();
+    expect(planningLayout).toHaveClass('backlog-hidden');
+    expect(document.querySelector('.gantt')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '顯示 Backlog' }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Backlog', level: 2 })).toBeInTheDocument(),
+    );
+    expect(planningLayout).not.toHaveClass('backlog-hidden');
+  });
+
   it('keeps the timeline header aligned during each pointer-pan move', async () => {
     loadWorkspaceMock.mockResolvedValue(
       workspace(
