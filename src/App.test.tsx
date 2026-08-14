@@ -205,6 +205,17 @@ describe('Work Item hierarchy UI', () => {
       distribution.querySelectorAll('.daily-distribution-track'),
     ).find(track => track.getAttribute('aria-label')?.includes('分佈工作 A 4h'));
     expect(allocatedTrack).toHaveAttribute('aria-label', expect.stringContaining('分佈工作 B 2h'));
+    const allocatedRow = allocatedTrack?.closest('tr');
+    expect(allocatedRow?.children).toHaveLength(2);
+    expect(allocatedRow?.querySelector('.daily-distribution-remaining-hours')).toHaveTextContent(
+      '18h',
+    );
+    expect(allocatedRow?.querySelector('.daily-distribution-timeline-cell')).toContainElement(
+      allocatedTrack as HTMLElement,
+    );
+    expect(
+      distribution.querySelector('.daily-distribution-remaining-column'),
+    ).not.toBeInTheDocument();
     expect(screen.getByTitle('分佈工作 A · 4h')).toBeInTheDocument();
     expect(screen.getByTitle('分佈工作 B · 2h')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '時數 DESC' })).toHaveAttribute(
