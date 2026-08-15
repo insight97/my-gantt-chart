@@ -2,7 +2,7 @@ import { normalizeWorkspaceData, now, sampleWorkspace, uid, validWorkspaceData }
 import type { Project, Task, WorkspaceData } from './types';
 import { CURRENT_WORKSPACE_VERSION } from './types';
 import { normalizeRecurrenceRule } from './recurrence';
-import { DEFAULT_TASK_COLOR, normalizeTaskColor } from './task-colors';
+import { isLegacyDefaultTaskColor, migrateTaskColor } from './task-colors';
 
 const DB = 'gantt-local-db';
 // IndexedDB's own store-schema version — bumps only when object stores are added or
@@ -59,7 +59,7 @@ function migrateTask(
   legacyDefaultColorIsUnset = false,
 ): Task {
   const timestamp = now();
-  const color = normalizeTaskColor(value.color);
+  const color = migrateTaskColor(value.color);
   return {
     id: typeof value.id === 'string' ? value.id : uid(),
     name: typeof value.name === 'string' ? value.name : '未命名工作',
@@ -81,7 +81,7 @@ function migrateTask(
         : 'backlog',
     notes: typeof value.notes === 'string' ? value.notes : '',
     owner: typeof value.owner === 'string' ? value.owner : '',
-    color: legacyDefaultColorIsUnset && color === DEFAULT_TASK_COLOR ? null : color,
+    color: legacyDefaultColorIsUnset && isLegacyDefaultTaskColor(value.color) ? null : color,
     createdAt: typeof value.createdAt === 'string' ? value.createdAt : timestamp,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : timestamp,
     parentId: typeof value.parentId === 'string' ? value.parentId : null,

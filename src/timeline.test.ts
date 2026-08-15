@@ -26,7 +26,7 @@ const task: Task = {
   status: 'scheduled',
   notes: '',
   owner: '',
-  color: '#2f75bb',
+  color: '#5eb1ef',
   createdAt: '2026-01-01',
   updatedAt: '2026-01-01',
 };

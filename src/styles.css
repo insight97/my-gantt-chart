@@ -701,7 +701,7 @@ h1 {
   bottom: 0;
   min-width: 2px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 35%, #fff);
+  background: color-mix(in srgb, var(--task-color, #53b9ab) 35%, #fff);
   border-right: 1px solid #fff;
   cursor: help;
 }
@@ -1214,7 +1214,7 @@ h1 {
 }
 .allocation-period.in-allocation-window {
   background: #eef6f7;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 11%, #fff);
+  background: color-mix(in srgb, var(--task-color, #53b9ab) 11%, #fff);
   box-shadow:
     inset 0 1px 0 #d5e9eb,
     inset 0 -1px 0 #d5e9eb;
@@ -1248,7 +1248,7 @@ h1 {
 }
 .allocation-period.has-hours {
   background: #b8dfe1;
-  background: color-mix(in srgb, var(--task-color, #4f9aa3) 29%, #fff);
+  background: color-mix(in srgb, var(--task-color, #53b9ab) 29%, #fff);
   font-weight: 700;
   color: #24566a;
 }
@@ -1493,7 +1493,7 @@ h1 {
   margin-right: 6px;
   border: 1px solid #0002;
   border-radius: 50%;
-  background: var(--task-color, #2f75bb);
+  background: var(--task-color, #5eb1ef);
   vertical-align: 1px;
 }
 .task-card-recurring {
