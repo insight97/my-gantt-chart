@@ -81,7 +81,8 @@ describe('workspace persistence', () => {
           tasks: [
             { id: 'root', name: 'Root', color: '#2f75bb' },
             { id: 'child', name: 'Child', parentId: 'root', color: '#2f75bb' },
-            { id: 'custom', name: 'Custom', parentId: 'root', color: '#C85F5F' },
+            { id: 'custom', name: 'Custom', parentId: 'root', color: '#123456' },
+            { id: 'green', name: 'Green', color: '#5d9b63' },
           ],
         },
       ],
@@ -92,7 +93,32 @@ describe('workspace persistence', () => {
       expect.arrayContaining([
         expect.objectContaining({ id: 'root', color: null }),
         expect.objectContaining({ id: 'child', color: null }),
-        expect.objectContaining({ id: 'custom', color: '#c85f5f' }),
+        expect.objectContaining({ id: 'custom', color: '#123456' }),
+        expect.objectContaining({ id: 'green', color: '#5bb98b' }),
+      ]),
+    );
+  });
+
+  it('updates built-in colors in current workspaces while preserving custom colors', () => {
+    const migrated = migrateWorkspace({
+      version: CURRENT_WORKSPACE_VERSION,
+      projects: [
+        {
+          id: 'project-a',
+          name: 'Project A',
+          tasks: [
+            { id: 'blue', name: 'Blue', color: '#2F75BB' },
+            { id: 'custom', name: 'Custom', color: '#123456' },
+          ],
+        },
+      ],
+      allocations: [],
+    });
+
+    expect(migrated.projects[0].tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'blue', color: '#5eb1ef' }),
+        expect.objectContaining({ id: 'custom', color: '#123456' }),
       ]),
     );
   });

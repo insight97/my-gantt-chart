@@ -337,7 +337,7 @@ describe('Work Item hierarchy UI', () => {
   });
 
   it('inherits the parent color until the child selects its own color', async () => {
-    const parent = workItem('parent', '綠色父工作', { color: '#5d9b63' });
+    const parent = workItem('parent', '綠色父工作', { color: '#5bb98b' });
     const child = workItem('child', '繼承子工作', { parentId: 'parent', color: null });
     loadWorkspaceMock.mockResolvedValue(workspace([parent, child]));
     render(<App />);
@@ -345,7 +345,7 @@ describe('Work Item hierarchy UI', () => {
     const toggle = await screen.findByRole('button', { name: '展開 綠色父工作' });
     fireEvent.click(toggle);
     const childCard = taskCardText('繼承子工作').closest('.task-card') as HTMLElement;
-    expect(childCard.style.getPropertyValue('--task-color')).toBe('#5d9b63');
+    expect(childCard.style.getPropertyValue('--task-color')).toBe('#5bb98b');
 
     fireEvent.click(taskCardText('繼承子工作'));
     expect(screen.getByRole('button', { name: '沿用父任務' })).toHaveAttribute(
@@ -360,7 +360,7 @@ describe('Work Item hierarchy UI', () => {
         (taskCardText('繼承子工作').closest('.task-card') as HTMLElement).style.getPropertyValue(
           '--task-color',
         ),
-      ).toBe('#c85f5f'),
+      ).toBe('#eb8e90'),
     );
   });
 

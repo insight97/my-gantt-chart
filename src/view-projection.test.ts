@@ -14,7 +14,7 @@ const task = (id: string, overrides: Partial<Task> = {}): Task => ({
   status: 'backlog',
   notes: '',
   owner: '',
-  color: '#2f75bb',
+  color: '#5eb1ef',
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
   parentId: null,
@@ -68,9 +68,9 @@ describe('View Projection', () => {
   });
 
   it('projects inherited and overridden display colors without changing canonical Tasks', () => {
-    const parent = task('parent', { color: '#5d9b63' });
+    const parent = task('parent', { color: '#5bb98b' });
     const inherited = task('inherited', { parentId: 'parent', color: null });
-    const overridden = task('overridden', { parentId: 'parent', color: '#c85f5f' });
+    const overridden = task('overridden', { parentId: 'parent', color: '#eb8e90' });
     const project = { tasks: [parent, inherited, overridden] } as Project;
 
     const projection = buildViewProjection(
@@ -82,9 +82,9 @@ describe('View Projection', () => {
     expect(
       projection.backlog.rows.map(row => [row.workItem.id, row.workItem.color, row.displayColor]),
     ).toEqual([
-      ['parent', '#5d9b63', '#5d9b63'],
-      ['inherited', null, '#5d9b63'],
-      ['overridden', '#c85f5f', '#c85f5f'],
+      ['parent', '#5bb98b', '#5bb98b'],
+      ['inherited', null, '#5bb98b'],
+      ['overridden', '#eb8e90', '#eb8e90'],
     ]);
   });
 

@@ -1,22 +1,42 @@
 import type { Task } from './types';
 
-export const DEFAULT_TASK_COLOR = '#2f75bb';
+export const DEFAULT_TASK_COLOR = '#5eb1ef';
 
 export const TASK_COLOR_OPTIONS = [
   { name: '藍色', value: DEFAULT_TASK_COLOR },
-  { name: '青色', value: '#4f9aa3' },
-  { name: '綠色', value: '#5d9b63' },
-  { name: '紫色', value: '#8b6fb5' },
-  { name: '橘色', value: '#d48b45' },
-  { name: '紅色', value: '#c85f5f' },
-  { name: '金色', value: '#c09a38' },
-  { name: '灰色', value: '#6f7f8f' },
+  { name: '青色', value: '#53b9ab' },
+  { name: '綠色', value: '#5bb98b' },
+  { name: '紫色', value: '#be93e4' },
+  { name: '橘色', value: '#ec9455' },
+  { name: '紅色', value: '#eb8e90' },
+  { name: '金色', value: '#d5ae39' },
+  { name: '灰色', value: '#b9bbc6' },
 ] as const;
 
 const TASK_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+const LEGACY_DEFAULT_TASK_COLOR = '#2f75bb';
+const LEGACY_TASK_COLOR_MAP: Readonly<Record<string, string>> = {
+  '#2f75bb': '#5eb1ef',
+  '#4f9aa3': '#53b9ab',
+  '#5d9b63': '#5bb98b',
+  '#8b6fb5': '#be93e4',
+  '#d48b45': '#ec9455',
+  '#c85f5f': '#eb8e90',
+  '#c09a38': '#d5ae39',
+  '#6f7f8f': '#b9bbc6',
+};
 
 export function normalizeTaskColor(value: unknown): string | null {
   return typeof value === 'string' && TASK_COLOR_PATTERN.test(value) ? value.toLowerCase() : null;
+}
+
+export function migrateTaskColor(value: unknown): string | null {
+  const normalized = normalizeTaskColor(value);
+  return normalized ? (LEGACY_TASK_COLOR_MAP[normalized] ?? normalized) : null;
+}
+
+export function isLegacyDefaultTaskColor(value: unknown): boolean {
+  return normalizeTaskColor(value) === LEGACY_DEFAULT_TASK_COLOR;
 }
 
 /** Resolves every Task to its nearest explicit ancestor color, or the app default. */
