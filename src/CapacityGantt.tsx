@@ -13,6 +13,7 @@ import {
   periodDensity,
   periodDisplayLabel,
   timelinePositionForDate,
+  timelineDayWidthForDate,
   timelineScale,
   dropPreviewGeometry,
   TIMELINE_CAPACITY_ROW_HEIGHT,
@@ -345,15 +346,19 @@ function DailyDistributionTable({
 function TodayMarker({ periods, scale }: { periods: readonly TimelinePeriod[]; scale: number }) {
   const date = today();
   const left = Math.round(timelinePositionForDate(date, periods, scale));
+  const width = Math.max(3, timelineDayWidthForDate(date, periods, scale));
   return (
-    <span
-      className="timeline-today-marker"
-      style={{ left }}
-      title={`今天 ${date}`}
-      aria-label={`今天 ${date}`}
-    >
-      <i>今天</i>
-    </span>
+    <>
+      <span className="timeline-today-band" style={{ left, width }} aria-hidden="true" />
+      <span
+        className="timeline-today-marker"
+        style={{ left }}
+        title={`今天 ${date}`}
+        aria-label={`今天 ${date}`}
+      >
+        <i>今天</i>
+      </span>
+    </>
   );
 }
 
@@ -552,6 +557,7 @@ function TimelineGrid({
   } as CSSProperties;
   return (
     <div className="timeline-grid" style={style}>
+      <TodayMarker periods={periods} scale={scale} />
       <TimelineTaskRows
         rows={rows}
         periods={periods}
@@ -986,7 +992,6 @@ export default function CapacityGantt({
                 allocationStep={allocationStep}
                 onAdjustAllocation={onAdjustAllocation}
               />
-              <TodayMarker periods={periods} scale={scale} />
             </div>
           </div>
         </div>

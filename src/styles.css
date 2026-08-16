@@ -1309,6 +1309,15 @@ h1 {
 .timeline-canvas {
   position: relative;
 }
+.timeline-today-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgb(47 117 187 / 8%);
+  border-right: 1px solid rgb(47 117 187 / 18%);
+  pointer-events: none;
+  z-index: 0;
+}
 .timeline-today-marker {
   position: absolute;
   top: 0;

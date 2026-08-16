@@ -257,6 +257,16 @@ export function timelinePositionForDate(
   return index * scale + (daysBetween(period.start, date) / period.dates.length) * scale;
 }
 
+export function timelineDayWidthForDate(
+  date: string,
+  periods: readonly TimelinePeriod[],
+  scale: number,
+) {
+  if (!periods.length || !Number.isFinite(scale) || scale <= 0) return 0;
+  const period = periods[findPeriodIndex(periods, date)];
+  return scale / period.dates.length;
+}
+
 export function timelineDateAtPosition(
   position: number,
   periods: readonly TimelinePeriod[],
