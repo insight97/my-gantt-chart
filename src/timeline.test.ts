@@ -7,6 +7,7 @@ import {
   periodDisplayLabel,
   timelineRange,
   timelinePositionForDate,
+  timelineDayWidthForDate,
   timelineScale,
   timelineZoomPreset,
   zoomTimeline,
@@ -92,5 +93,12 @@ describe('語意時間軸', () => {
     expect(geometry?.width).toBeCloseTo(
       timelinePositionForDate('2026-07-19', periods, scale) - geometry!.left,
     );
+  });
+
+  it('calculates the visible width of one day inside aggregated periods', () => {
+    const periods = buildTimelinePeriods('2026-08-03', '2026-08-16', 'week');
+    const scale = timelineScale('week', timelineZoomPreset('week').pixelsPerDay);
+
+    expect(timelineDayWidthForDate('2026-08-10', periods, scale)).toBeCloseTo(scale / 7);
   });
 });
