@@ -1314,7 +1314,6 @@ h1 {
   top: 0;
   bottom: 0;
   background: rgb(47 117 187 / 8%);
-  border-right: 1px solid rgb(47 117 187 / 18%);
   pointer-events: none;
   z-index: 0;
 }
@@ -1322,16 +1321,14 @@ h1 {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 2px;
-  background: var(--blue);
+  background: transparent;
   z-index: 6;
   pointer-events: none;
 }
 .timeline-today-marker i {
   position: absolute;
   top: 2px;
-  left: 0;
-  transform: translateX(calc(-100% - 4px));
+  left: 4px;
   background: #e7f0f7;
   color: #174f7c;
   border-radius: 4px;
