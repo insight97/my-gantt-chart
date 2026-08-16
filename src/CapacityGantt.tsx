@@ -352,7 +352,7 @@ function TodayMarker({ periods, scale }: { periods: readonly TimelinePeriod[]; s
       <span className="timeline-today-band" style={{ left, width }} aria-hidden="true" />
       <span
         className="timeline-today-marker"
-        style={{ left }}
+        style={{ left, width }}
         title={`今天 ${date}`}
         aria-label={`今天 ${date}`}
       >
